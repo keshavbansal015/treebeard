@@ -1,0 +1,27 @@
+syntax = "proto3";
+
+option go_package = "github.com/dsg-uwaterloo/oblishard/proto/layertwo";
+
+package layertwo;
+
+service LayerTwo {
+    rpc Read (ReadRequest) returns (ReadReply) {}
+    rpc Write(WriteRequest) returns (WriteReply) {}    
+}
+
+message ReadRequest {
+    string block = 1;
+}
+
+message ReadReply {
+    string value = 1;
+}
+
+message WriteRequest {
+    string block = 1;
+    string value = 2;
+}
+
+message WriteReply {
+    bool success = 1;
+}
