@@ -3,22 +3,14 @@ package router
 import (
 	"context"
 	"fmt"
-	"hash/fnv"
 	"log"
 	"math"
 	"net"
 
 	pb "github.com/dsg-uwaterloo/oblishard/api/router"
+	utils "github.com/dsg-uwaterloo/oblishard/pkg/utils"
 	"google.golang.org/grpc"
 )
-
-func hash(s string) uint32 {
-	h := fnv.New32a()
-	h.Write([]byte(s))
-	return h.Sum32()
-} //TODO move it to a util package
-//TODO write unit test to prevent changes when the hash function changes
-//TODO is this fast enough?
 
 type routerServer struct {
 	pb.UnimplementedRouterServer
@@ -26,7 +18,7 @@ type routerServer struct {
 }
 
 func (r *routerServer) whereToForward(block string) (port int) {
-	h := hash(block)
+	h := utils.Hash(block)
 	return int(math.Mod(float64(h), float64(len(r.shardNodeRPCClients))))
 }
 
