@@ -5,38 +5,38 @@ import (
 	"fmt"
 	"log"
 
-	layeronepb "github.com/dsg-uwaterloo/oblishard/proto/layerone"
+	routerpb "github.com/dsg-uwaterloo/oblishard/api/router"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 )
 
-func startRPCClient() (layeronepb.LayerOneClient, *grpc.ClientConn, error) {
+func startRPCClient() (routerpb.RouterClient, *grpc.ClientConn, error) {
 	serverAddr := fmt.Sprintf("localhost:%d", 8765) //TODO change this to use env vars or other dynamic mechanisms
 	conn, err := grpc.Dial(serverAddr,
 		grpc.WithTransportCredentials(insecure.NewCredentials())) //TODO change to use TLS if needed
 	if err != nil {
 		return nil, nil, err
 	}
-	client := layeronepb.NewLayerOneClient(conn)
+	client := routerpb.NewRouterClient(conn)
 	return client, conn, nil
 }
 
 type client struct {
-	clientAPI layeronepb.LayerOneClient
+	clientAPI routerpb.RouterClient
 }
 
-func (c client) Read(block string) (value string, err error) {
+func (c *client) Read(block string) (value string, err error) {
 	reply, err := c.clientAPI.Read(context.Background(),
-		&layeronepb.ReadRequest{Block: block})
+		&routerpb.ReadRequest{Block: block})
 	if err != nil {
 		return "", err
 	}
 	return reply.Value, nil
 }
 
-func (c client) Write(block string, value string) (success bool, err error) {
+func (c *client) Write(block string, value string) (success bool, err error) {
 	reply, err := c.clientAPI.Write(context.Background(),
-		&layeronepb.WriteRequest{Block: block, Value: value})
+		&routerpb.WriteRequest{Block: block, Value: value})
 	if err != nil {
 		return false, err
 	}
@@ -51,9 +51,9 @@ func main() {
 	}
 	client := client{clientAPI: clientAPI}
 
-	value, err := client.Read("test")
+	value, err := client.Read("a")
 	if err != nil {
-		log.Printf("Failed to call Read on grpc server; %v", err)
+		log.Printf("Failed to call Read on router; %v", err)
 		return
 	}
 	fmt.Printf("Sucess in Read. Got value: %v", value)

@@ -1,10 +1,10 @@
 syntax = "proto3";
 
-option go_package = "github.com/dsg-uwaterloo/oblishard/proto/layerone";
+option go_package = "github.com/dsg-uwaterloo/oblishard/api/router";
 
-package layerone;
+package router;
 
-service LayerOne {
+service Router {
     rpc Read (ReadRequest) returns (ReadReply) {}
     rpc Write(WriteRequest) returns (WriteReply) {}
 }

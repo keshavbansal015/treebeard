@@ -1,10 +1,10 @@
 syntax = "proto3";
 
-option go_package = "github.com/dsg-uwaterloo/oblishard/proto/layertwo";
+option go_package = "github.com/dsg-uwaterloo/oblishard/api/shardnode";
 
-package layertwo;
+package shardnode;
 
-service LayerTwo {
+service ShardNode {
     rpc Read (ReadRequest) returns (ReadReply) {}
     rpc Write (WriteRequest) returns (WriteReply) {}    
 }
