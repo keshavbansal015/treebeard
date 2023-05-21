@@ -15,7 +15,7 @@ import (
 
 type routerServer struct {
 	pb.UnimplementedRouterServer
-	shardNodeRPCClients map[int]RPCClient //TODO maybe the name layerTwoRPCClients is a bit misleading but I don't know
+	shardNodeRPCClients map[int]ShardNodeRPCClient //TODO maybe the name layerTwoRPCClients is a bit misleading but I don't know
 }
 
 func (r *routerServer) whereToForward(block string) (shardNodeID int) {
@@ -41,7 +41,7 @@ func (r *routerServer) Write(ctx context.Context, writeRequest *pb.WriteRequest)
 	return &pb.WriteReply{Success: true}, nil
 }
 
-func StartRPCServer(shardNodeRPCClients map[int]RPCClient) {
+func StartRPCServer(shardNodeRPCClients map[int]ShardNodeRPCClient) {
 	lis, err := net.Listen("tcp", fmt.Sprintf("localhost:%d", 8745)) //TODO change this to use env vars or other dynamic mechanisms
 	if err != nil {
 		log.Fatalf("failed to listen: %v", err)

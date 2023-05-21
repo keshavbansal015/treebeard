@@ -4,8 +4,9 @@ import (
 	"fmt"
 	"log"
 
-	client "github.com/dsg-uwaterloo/oblishard/pkg/client"
+	"github.com/dsg-uwaterloo/oblishard/pkg/client"
 	"github.com/dsg-uwaterloo/oblishard/pkg/config"
+	"github.com/dsg-uwaterloo/oblishard/pkg/rpc"
 )
 
 func main() {
@@ -14,16 +15,14 @@ func main() {
 		log.Fatalf("Cannot read router endpoints from yaml file; %v", err)
 	}
 
-	rpcClients, err := client.StartRPCClients(routerEndpoints)
+	rpcClients, err := rpc.StartRPCClients(routerEndpoints, &client.RouterClientFactory{})
 	if err != nil {
 		log.Fatalf("Failed to start clients; %v", err)
 	}
-	for _, rpcClient := range rpcClients {
-		defer rpcClient.Conn.Close()
-	}
+	routerRPCClients := client.ConvertRPCClientInterfaces(rpcClients)
 
-	testRPCClient := rpcClients[0]
-	value, err := testRPCClient.Read("a")
+	testRouterRPCClient := routerRPCClients[0]
+	value, err := testRouterRPCClient.Read("a")
 	if err != nil {
 		log.Printf("Failed to call Read on router; %v", err)
 		return

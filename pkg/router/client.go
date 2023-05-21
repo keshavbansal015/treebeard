@@ -1,30 +1,28 @@
 package router
 
 import (
-	"fmt"
-
 	shardnodepb "github.com/dsg-uwaterloo/oblishard/api/shardnode"
-	"github.com/dsg-uwaterloo/oblishard/pkg/config"
+	"github.com/dsg-uwaterloo/oblishard/pkg/rpc"
 	"google.golang.org/grpc"
-	"google.golang.org/grpc/credentials/insecure"
 )
 
-type RPCClient struct {
+type ShardNodeClientFactory struct{}
+
+func (f *ShardNodeClientFactory) NewClient(conn *grpc.ClientConn) interface{} {
+	return shardnodepb.NewShardNodeClient(conn)
+}
+
+type ShardNodeRPCClient struct {
 	ClientAPI shardnodepb.ShardNodeClient
 	Conn      *grpc.ClientConn
 }
 
-func StartRPCClients(shardNodeEndpoints []config.Endpoint) (clients map[int]RPCClient, err error) {
-	clients = make(map[int]RPCClient)
-	for _, shardNodeEndpoint := range shardNodeEndpoints {
-		serverAddr := fmt.Sprintf("%s:%d", shardNodeEndpoint.IP, shardNodeEndpoint.Port)
-		conn, err := grpc.Dial(serverAddr,
-			grpc.WithTransportCredentials(insecure.NewCredentials())) //TODO change to use TLS if needed
-		if err != nil {
-			return nil, err
-		}
-		clientAPI := shardnodepb.NewShardNodeClient(conn)
-		clients[shardNodeEndpoint.ID] = RPCClient{ClientAPI: clientAPI, Conn: conn}
+func ConvertRPCClientInterfaces(rpcClients map[int]rpc.RPCClient) map[int]ShardNodeRPCClient {
+	var shardNodeRPCClients = make(map[int]ShardNodeRPCClient, len(rpcClients))
+	for id, rpcClient := range rpcClients {
+		shardNodeRPCClients[id] = ShardNodeRPCClient{
+			ClientAPI: rpcClient.ClientAPI.(shardnodepb.ShardNodeClient),
+			Conn:      rpcClient.Conn}
 	}
-	return clients, nil
+	return shardNodeRPCClients
 }
