@@ -42,7 +42,7 @@ func (r *routerServer) Write(ctx context.Context, writeRequest *pb.WriteRequest)
 }
 
 func StartRPCServer(shardNodeRPCClients map[int]RPCClient) {
-	lis, err := net.Listen("tcp", fmt.Sprintf("localhost:%d", 8765)) //TODO change this to use env vars or other dynamic mechanisms
+	lis, err := net.Listen("tcp", fmt.Sprintf("localhost:%d", 8745)) //TODO change this to use env vars or other dynamic mechanisms
 	if err != nil {
 		log.Fatalf("failed to listen: %v", err)
 	}

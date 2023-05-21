@@ -5,6 +5,7 @@ import (
 	"fmt"
 
 	routerpb "github.com/dsg-uwaterloo/oblishard/api/router"
+	"github.com/dsg-uwaterloo/oblishard/pkg/config"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 )
@@ -14,15 +15,19 @@ type RPCClient struct {
 	Conn      *grpc.ClientConn
 }
 
-func StartRPCClient() (RPCClient, error) {
-	serverAddr := fmt.Sprintf("localhost:%d", 8765) //TODO change this to use env vars or other dynamic mechanisms
-	conn, err := grpc.Dial(serverAddr,
-		grpc.WithTransportCredentials(insecure.NewCredentials())) //TODO change to use TLS if needed
-	if err != nil {
-		return RPCClient{}, err
+func StartRPCClients(routerEndpoints []config.Endpoint) (clients map[int]RPCClient, err error) {
+	clients = make(map[int]RPCClient)
+	for _, routerEndpoint := range routerEndpoints {
+		serverAddr := fmt.Sprintf("%s:%d", routerEndpoint.IP, routerEndpoint.Port)
+		conn, err := grpc.Dial(serverAddr,
+			grpc.WithTransportCredentials(insecure.NewCredentials())) //TODO change to use TLS if needed
+		if err != nil {
+			return nil, err
+		}
+		clientAPI := routerpb.NewRouterClient(conn)
+		clients[routerEndpoint.ID] = RPCClient{ClientAPI: clientAPI, Conn: conn}
 	}
-	client := routerpb.NewRouterClient(conn)
-	return RPCClient{ClientAPI: client, Conn: conn}, nil
+	return clients, nil
 }
 
 func (c *RPCClient) Read(block string) (value string, err error) {

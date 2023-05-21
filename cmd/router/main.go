@@ -8,7 +8,7 @@ import (
 )
 
 func main() {
-	shardNodeEndpoints, err := config.ReadEndpoints("../../configs/router_endpoints.yaml")
+	shardNodeEndpoints, err := config.ReadEndpoints("../../configs/shardnode_endpoints.yaml")
 	if err != nil {
 		log.Fatalf("Cannot read shard node endpoints from yaml file; %v", err)
 	}
