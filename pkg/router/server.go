@@ -8,6 +8,7 @@ import (
 	"net"
 
 	pb "github.com/dsg-uwaterloo/oblishard/api/router"
+	shardnodepb "github.com/dsg-uwaterloo/oblishard/api/shardnode"
 	utils "github.com/dsg-uwaterloo/oblishard/pkg/utils"
 	"google.golang.org/grpc"
 )
@@ -17,20 +18,26 @@ type routerServer struct {
 	shardNodeRPCClients map[int]RPCClient //TODO maybe the name layerTwoRPCClients is a bit misleading but I don't know
 }
 
-func (r *routerServer) whereToForward(block string) (port int) {
+func (r *routerServer) whereToForward(block string) (shardNodeID int) {
 	h := utils.Hash(block)
 	return int(math.Mod(float64(h), float64(len(r.shardNodeRPCClients))))
 }
 
 func (r *routerServer) Read(ctx context.Context, readRequest *pb.ReadRequest) (*pb.ReadReply, error) {
 	whereToForward := r.whereToForward(readRequest.Block)
-	fmt.Println("Read on router is called and I should forward to, ", whereToForward)
+	shardNodeRPCClient := r.shardNodeRPCClients[whereToForward]
+
+	shardNodeRPCClient.ClientAPI.Read(context.Background(),
+		&shardnodepb.ReadRequest{Block: readRequest.Block})
 	return &pb.ReadReply{Value: "test"}, nil
 }
 
 func (r *routerServer) Write(ctx context.Context, writeRequest *pb.WriteRequest) (*pb.WriteReply, error) {
 	whereToForward := r.whereToForward(writeRequest.Block)
-	fmt.Println("Write on router is called and I should forward to, ", whereToForward)
+	shardNodeRPCClient := r.shardNodeRPCClients[whereToForward]
+
+	shardNodeRPCClient.ClientAPI.Write(context.Background(),
+		&shardnodepb.WriteRequest{Block: writeRequest.Block, Value: writeRequest.Value})
 	return &pb.WriteReply{Success: true}, nil
 }
 
