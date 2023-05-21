@@ -12,7 +12,8 @@ import (
 
 type shardNodeServer struct {
 	pb.UnimplementedShardNodeServer
-} //TODO add id to each shardNodeServer
+	shardNodeServerID int
+}
 
 func (s *shardNodeServer) Read(ctx context.Context, readRequest *pb.ReadRequest) (*pb.ReadReply, error) {
 	fmt.Println("Read on shard node is called")
@@ -24,12 +25,12 @@ func (s *shardNodeServer) Write(ctx context.Context, writeRequest *pb.WriteReque
 	return &pb.WriteReply{Success: true}, nil
 }
 
-func StartRPCServer() { //TODO extract into another package to reduce duplication between layer codes
+func StartRPCServer(shardNodeServerID int) { //TODO extract into another package to reduce duplication between layer codes
 	lis, err := net.Listen("tcp", fmt.Sprintf("localhost:%d", 8766)) //TODO change this to use env vars or other dynamic mechanisms
 	if err != nil {
 		log.Fatalf("failed to listen: %v", err)
 	}
 	grpcServer := grpc.NewServer()
-	pb.RegisterShardNodeServer(grpcServer, &shardNodeServer{})
+	pb.RegisterShardNodeServer(grpcServer, &shardNodeServer{shardNodeServerID: shardNodeServerID})
 	grpcServer.Serve(lis)
 }

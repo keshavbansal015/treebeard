@@ -1,9 +1,17 @@
 package main
 
 import (
+	"log"
+	"os"
+	"strconv"
+
 	shardnode "github.com/dsg-uwaterloo/oblishard/pkg/shardnode"
 )
 
 func main() {
-	shardnode.StartRPCServer()
+	shardNodeID, err := strconv.Atoi(os.Args[1])
+	if err != nil {
+		log.Fatalf("The shardNodeId should be provided as a CLI argument; %v", err)
+	}
+	shardnode.StartRPCServer(shardNodeID)
 }
