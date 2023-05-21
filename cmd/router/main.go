@@ -7,9 +7,9 @@ import (
 )
 
 func main() {
-	layerTwoRPCClients, err := router.StartRPCClients()
+	shardNodeRPCClients, err := router.StartRPCClients()
 	if err != nil {
 		log.Fatalf("Failed to create client connections with shard node servers; %v", err)
 	}
-	router.StartRPCServer(layerTwoRPCClients)
+	router.StartRPCServer(shardNodeRPCClients)
 }
