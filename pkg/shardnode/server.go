@@ -25,8 +25,8 @@ func (s *shardNodeServer) Write(ctx context.Context, writeRequest *pb.WriteReque
 	return &pb.WriteReply{Success: true}, nil
 }
 
-func StartRPCServer(shardNodeServerID int) { //TODO extract into another package to reduce duplication between layer codes
-	lis, err := net.Listen("tcp", fmt.Sprintf("localhost:%d", 8748)) //TODO change this to use env vars or other dynamic mechanisms
+func StartRPCServer(shardNodeServerID int, port int) {
+	lis, err := net.Listen("tcp", fmt.Sprintf("localhost:%d", port))
 	if err != nil {
 		log.Fatalf("failed to listen: %v", err)
 	}
