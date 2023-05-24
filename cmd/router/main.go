@@ -1,24 +1,21 @@
 package main
 
 import (
+	"flag"
 	"log"
-	"os"
-	"strconv"
 
 	"github.com/dsg-uwaterloo/oblishard/pkg/config"
 	router "github.com/dsg-uwaterloo/oblishard/pkg/router"
 	"github.com/dsg-uwaterloo/oblishard/pkg/rpc"
 )
 
-// Usage: ./router <id> <port>
+// Usage: ./router -id=<nodeid> -port=<port>
 func main() {
-	routerID, err := strconv.Atoi(os.Args[1])
-	if err != nil {
-		log.Fatalf("The routerId should be provided as a CLI argument; %v", err)
-	}
-	port, err := strconv.Atoi(os.Args[2])
-	if err != nil {
-		log.Fatalf("The port should be provided as a CLI argument; %v", err)
+	routerID := flag.Int("id", 0, "node id as an integer")
+	port := flag.Int("port", 0, "node port")
+	flag.Parse()
+	if *port == 0 {
+		log.Fatalf("The port should be provided with the -port flag")
 	}
 
 	shardNodeEndpoints, err := config.ReadEndpoints("../../configs/shardnode_endpoints.yaml")
@@ -32,5 +29,5 @@ func main() {
 
 	shardNodeRPCClients := router.ConvertRPCClientInterfaces(rpcClients)
 
-	router.StartRPCServer(shardNodeRPCClients, routerID, port)
+	router.StartRPCServer(shardNodeRPCClients, *routerID, *port)
 }

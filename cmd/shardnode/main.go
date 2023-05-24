@@ -1,22 +1,19 @@
 package main
 
 import (
+	"flag"
 	"log"
-	"os"
-	"strconv"
 
 	shardnode "github.com/dsg-uwaterloo/oblishard/pkg/shardnode"
 )
 
-// Usage: ./shardnode <id> <port>
+// Usage: ./shardnode -id=<nodeid> -port=<port>
 func main() {
-	shardNodeID, err := strconv.Atoi(os.Args[1])
-	if err != nil {
-		log.Fatalf("The shardNodeId should be provided as a CLI argument; %v", err)
+	shardNodeID := flag.Int("id", 0, "node id as an integer")
+	port := flag.Int("port", 0, "node port")
+	flag.Parse()
+	if *port == 0 {
+		log.Fatalf("The port should be provided with the -port flag")
 	}
-	port, err := strconv.Atoi(os.Args[2])
-	if err != nil {
-		log.Fatalf("The port should be provided as a CLI argument; %v", err)
-	}
-	shardnode.StartRPCServer(shardNodeID, port)
+	shardnode.StartRPCServer(*shardNodeID, *port)
 }
