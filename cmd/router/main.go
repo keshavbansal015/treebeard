@@ -11,7 +11,7 @@ import (
 
 // Usage: ./router -id=<nodeid> -port=<port>
 func main() {
-	routerID := flag.Int("id", 0, "node id as an integer")
+	routerID := flag.Int("id", 0, "node id, starting consecutively from zero")
 	port := flag.Int("port", 0, "node port")
 	flag.Parse()
 	if *port == 0 {
