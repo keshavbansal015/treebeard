@@ -7,9 +7,9 @@ import (
 	shardnode "github.com/dsg-uwaterloo/oblishard/pkg/shardnode"
 )
 
-// Usage: ./shardnode -id=<nodeid> -port=<port>
+// Usage: ./shardnode -shardnodeid=<shardnodeid> -port=<port>
 func main() {
-	shardNodeID := flag.Int("id", 0, "node id, starting consecutively from zero")
+	shardNodeID := flag.Int("shardnodeid", 0, "shardnode id, starting consecutively from zero")
 	port := flag.Int("port", 0, "node port")
 	flag.Parse()
 	if *port == 0 {

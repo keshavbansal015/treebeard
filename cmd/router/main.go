@@ -9,9 +9,9 @@ import (
 	"github.com/dsg-uwaterloo/oblishard/pkg/rpc"
 )
 
-// Usage: ./router -id=<nodeid> -port=<port>
+// Usage: ./router -routerid=<routerid> -port=<port>
 func main() {
-	routerID := flag.Int("id", 0, "node id, starting consecutively from zero")
+	routerID := flag.Int("routerid", 0, "router id, starting consecutively from zero")
 	port := flag.Int("port", 0, "node port")
 	flag.Parse()
 	if *port == 0 {
