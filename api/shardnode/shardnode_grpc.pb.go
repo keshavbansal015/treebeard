@@ -24,6 +24,7 @@ const _ = grpc.SupportPackageIsVersion7
 type ShardNodeClient interface {
 	Read(ctx context.Context, in *ReadRequest, opts ...grpc.CallOption) (*ReadReply, error)
 	Write(ctx context.Context, in *WriteRequest, opts ...grpc.CallOption) (*WriteReply, error)
+	JoinRaftVoter(ctx context.Context, in *JoinRaftVoterRequest, opts ...grpc.CallOption) (*JoinRaftVoterReply, error)
 }
 
 type shardNodeClient struct {
@@ -52,12 +53,22 @@ func (c *shardNodeClient) Write(ctx context.Context, in *WriteRequest, opts ...g
 	return out, nil
 }
 
+func (c *shardNodeClient) JoinRaftVoter(ctx context.Context, in *JoinRaftVoterRequest, opts ...grpc.CallOption) (*JoinRaftVoterReply, error) {
+	out := new(JoinRaftVoterReply)
+	err := c.cc.Invoke(ctx, "/shardnode.ShardNode/JoinRaftVoter", in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // ShardNodeServer is the server API for ShardNode service.
 // All implementations must embed UnimplementedShardNodeServer
 // for forward compatibility
 type ShardNodeServer interface {
 	Read(context.Context, *ReadRequest) (*ReadReply, error)
 	Write(context.Context, *WriteRequest) (*WriteReply, error)
+	JoinRaftVoter(context.Context, *JoinRaftVoterRequest) (*JoinRaftVoterReply, error)
 	mustEmbedUnimplementedShardNodeServer()
 }
 
@@ -70,6 +81,9 @@ func (UnimplementedShardNodeServer) Read(context.Context, *ReadRequest) (*ReadRe
 }
 func (UnimplementedShardNodeServer) Write(context.Context, *WriteRequest) (*WriteReply, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method Write not implemented")
+}
+func (UnimplementedShardNodeServer) JoinRaftVoter(context.Context, *JoinRaftVoterRequest) (*JoinRaftVoterReply, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method JoinRaftVoter not implemented")
 }
 func (UnimplementedShardNodeServer) mustEmbedUnimplementedShardNodeServer() {}
 
@@ -120,6 +134,24 @@ func _ShardNode_Write_Handler(srv interface{}, ctx context.Context, dec func(int
 	return interceptor(ctx, in, info, handler)
 }
 
+func _ShardNode_JoinRaftVoter_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(JoinRaftVoterRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(ShardNodeServer).JoinRaftVoter(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: "/shardnode.ShardNode/JoinRaftVoter",
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(ShardNodeServer).JoinRaftVoter(ctx, req.(*JoinRaftVoterRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // ShardNode_ServiceDesc is the grpc.ServiceDesc for ShardNode service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -134,6 +166,10 @@ var ShardNode_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "Write",
 			Handler:    _ShardNode_Write_Handler,
+		},
+		{
+			MethodName: "JoinRaftVoter",
+			Handler:    _ShardNode_JoinRaftVoter_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},
