@@ -1,7 +1,7 @@
 package config
 
 import (
-	"io/ioutil"
+	"io/ioutil" //TODO: fix this it's deprecated
 
 	yaml "gopkg.in/yaml.v3"
 )
