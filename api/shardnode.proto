@@ -16,6 +16,7 @@ message ReadRequest {
 
 message ReadReply {
     string value = 1;
+    int32 leader_node_id = 2;
 }
 
 message WriteRequest {
@@ -25,6 +26,7 @@ message WriteRequest {
 
 message WriteReply {
     bool success = 1;
+    int32 leader_node_id = 2;
 }
 
 message JoinRaftVoterRequest {

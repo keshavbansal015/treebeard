@@ -6,7 +6,6 @@ import (
 
 	"github.com/dsg-uwaterloo/oblishard/pkg/config"
 	router "github.com/dsg-uwaterloo/oblishard/pkg/router"
-	"github.com/dsg-uwaterloo/oblishard/pkg/rpc"
 )
 
 // Usage: ./router -routerid=<routerid> -port=<port>
@@ -18,16 +17,14 @@ func main() {
 		log.Fatalf("The port should be provided with the -port flag")
 	}
 
-	shardNodeEndpoints, err := config.ReadEndpoints("../../configs/shardnode_endpoints.yaml")
+	shardNodeEndpoints, err := config.ReadShardNodeEndpoints("../../configs/shardnode_endpoints.yaml")
 	if err != nil {
 		log.Fatalf("Cannot read shard node endpoints from yaml file; %v", err)
 	}
-	rpcClients, err := rpc.StartRPCClients(shardNodeEndpoints, &router.ShardNodeClientFactory{})
+	rpcClients, err := router.StartShardNodeRPCClients(shardNodeEndpoints)
 	if err != nil {
 		log.Fatalf("Failed to create client connections with shard node servers; %v", err)
 	}
 
-	shardNodeRPCClients := router.ConvertRPCClientInterfaces(rpcClients)
-
-	router.StartRPCServer(shardNodeRPCClients, *routerID, *port)
+	router.StartRPCServer(rpcClients, *routerID, *port)
 }

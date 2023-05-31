@@ -2,31 +2,17 @@ package client
 
 import (
 	"context"
+	"fmt"
 
 	routerpb "github.com/dsg-uwaterloo/oblishard/api/router"
-	"github.com/dsg-uwaterloo/oblishard/pkg/rpc"
+	"github.com/dsg-uwaterloo/oblishard/pkg/config"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials/insecure"
 )
-
-type RouterClientFactory struct{}
-
-func (f *RouterClientFactory) NewClient(conn *grpc.ClientConn) interface{} {
-	return routerpb.NewRouterClient(conn)
-}
 
 type RouterRPCClient struct {
 	ClientAPI routerpb.RouterClient
 	Conn      *grpc.ClientConn
-}
-
-func ConvertRPCClientInterfaces(rpcClients map[int]rpc.RPCClient) map[int]RouterRPCClient {
-	var routerRPCClients = make(map[int]RouterRPCClient, len(rpcClients))
-	for id, rpcClient := range rpcClients {
-		routerRPCClients[id] = RouterRPCClient{
-			ClientAPI: rpcClient.ClientAPI.(routerpb.RouterClient),
-			Conn:      rpcClient.Conn}
-	}
-	return routerRPCClients
 }
 
 func (c *RouterRPCClient) Read(block string) (value string, err error) {
@@ -45,4 +31,18 @@ func (c *RouterRPCClient) Write(block string, value string) (success bool, err e
 		return false, err
 	}
 	return reply.Success, nil
+}
+
+func StartRouterRPCClients(endpoints []config.RouterEndpoint) (map[int]RouterRPCClient, error) {
+	clients := make(map[int]RouterRPCClient)
+	for _, endpoint := range endpoints {
+		serverAddr := fmt.Sprintf("%s:%d", endpoint.IP, endpoint.Port)
+		conn, err := grpc.Dial(serverAddr, grpc.WithTransportCredentials(insecure.NewCredentials()))
+		if err != nil {
+			return nil, err
+		}
+		clientAPI := routerpb.NewRouterClient(conn)
+		clients[endpoint.ID] = RouterRPCClient{ClientAPI: clientAPI, Conn: conn}
+	}
+	return clients, nil
 }

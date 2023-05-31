@@ -12,9 +12,9 @@ type whereToForwardTest struct {
 
 func createTestRouterServer(shardNodeRPCClientsCount int) (r *routerServer) {
 	r = &routerServer{}
-	r.shardNodeRPCClients = make(map[int]ShardNodeRPCClient, shardNodeRPCClientsCount)
+	r.shardNodeRPCClients = make(map[int]ReplicaRPCClientMap)
 	for i := 0; i < shardNodeRPCClientsCount; i++ {
-		r.shardNodeRPCClients[i] = ShardNodeRPCClient{}
+		r.shardNodeRPCClients[i] = make(ReplicaRPCClientMap)
 	}
 	return r
 }
