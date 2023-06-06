@@ -6,6 +6,7 @@ import (
 
 	routerpb "github.com/dsg-uwaterloo/oblishard/api/router"
 	"github.com/dsg-uwaterloo/oblishard/pkg/config"
+	"github.com/google/uuid"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 )
@@ -16,7 +17,9 @@ type RouterRPCClient struct {
 }
 
 func (c *RouterRPCClient) Read(block string) (value string, err error) {
-	reply, err := c.ClientAPI.Read(context.Background(),
+	requestID := uuid.New().String()
+	ctx := context.WithValue(context.Background(), "requestID", requestID)
+	reply, err := c.ClientAPI.Read(ctx,
 		&routerpb.ReadRequest{Block: block})
 	if err != nil {
 		return "", err
@@ -25,7 +28,9 @@ func (c *RouterRPCClient) Read(block string) (value string, err error) {
 }
 
 func (c *RouterRPCClient) Write(block string, value string) (success bool, err error) {
-	reply, err := c.ClientAPI.Write(context.Background(),
+	requestID := uuid.New().String()
+	ctx := context.WithValue(context.Background(), "requestID", requestID)
+	reply, err := c.ClientAPI.Write(ctx,
 		&routerpb.WriteRequest{Block: block, Value: value})
 	if err != nil {
 		return false, err
