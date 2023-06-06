@@ -22,6 +22,7 @@ type shardNodeServer struct {
 	shardNodeServerID int
 	replicaID         int
 	raftNode          *raft.Raft
+	shardNodeFSM      *shardNodeFSM
 	responseChannel   map[string]chan string //map of requestId to their channel for receiving response
 }
 
@@ -72,7 +73,13 @@ func (s *shardNodeServer) query(ctx context.Context, op OperationType, block str
 
 	//TODO: make the timeout accurate
 	//TODO: should i lock the raftNode?
-	s.raftNode.Apply(requestReplicationCommand, 1*time.Second)
+	err = s.raftNode.Apply(requestReplicationCommand, 1*time.Second).Error()
+	if err != nil {
+		return fmt.Errorf("could not apply log to the FSM; %s", err)
+	}
+	s.shardNodeFSM.mu.Lock()
+	defer s.shardNodeFSM.mu.Unlock()
+	fmt.Println(s.shardNodeFSM.requestLog["a"])
 	return nil
 }
 
@@ -122,7 +129,8 @@ func (s *shardNodeServer) JoinRaftVoter(ctx context.Context, joinRaftVoterReques
 
 func StartServer(shardNodeServerID int, rpcPort int, replicaID int, raftPort int, joinAddr string) {
 	isFirst := joinAddr == ""
-	r, err := startRaftServer(isFirst, replicaID, raftPort)
+	shardNodeFSM := newShardNodeFSM()
+	r, err := startRaftServer(isFirst, replicaID, raftPort, shardNodeFSM)
 	if err != nil {
 		log.Fatalf("The raft node creation did not succeed; %s", err)
 	}
@@ -156,6 +164,7 @@ func StartServer(shardNodeServerID int, rpcPort int, replicaID int, raftPort int
 			replicaID:         replicaID,
 			raftNode:          r,
 			responseChannel:   make(map[string]chan string),
+			shardNodeFSM:      shardNodeFSM,
 		})
 	grpcServer.Serve(lis)
 }

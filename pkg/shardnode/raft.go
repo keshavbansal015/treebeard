@@ -26,7 +26,7 @@ type shardNodeFSM struct {
 	//       * https://www.youtube.com/watch?v=C1EtfDnsdDs
 	//       * https://pkg.go.dev/sync
 
-	mx         sync.Mutex
+	mu         sync.Mutex
 	requestLog map[string][]string //map of block to requesting requestIDs
 
 	pathMap      map[string]int //map of requestID to new path
@@ -37,6 +37,31 @@ type shardNodeFSM struct {
 	// stash diff (TODO: for the blocks request part)
 }
 
+func newShardNodeFSM() *shardNodeFSM {
+	return &shardNodeFSM{
+		requestLog:   make(map[string][]string),
+		pathMap:      make(map[string]int),
+		storageIDMap: make(map[string]int),
+		responseMap:  make(map[string]string),
+	}
+}
+
+func (fsm *shardNodeFSM) handleReplicateRequestAndPathAndStorage(requestID string, r ReplicateRequestAndPathAndStoragePayload) {
+	fsm.mu.Lock()
+	defer fsm.mu.Unlock()
+
+	fsm.requestLog[r.RequestedBlock] = append(fsm.requestLog[r.RequestedBlock], requestID)
+	fsm.pathMap[requestID] = r.Path
+	fsm.storageIDMap[requestID] = r.StorageID
+}
+
+func (fsm *shardNodeFSM) handleReplicateResponse(requestID string, r ReplicateResponsePayload) {
+	fsm.mu.Lock()
+	defer fsm.mu.Unlock()
+
+	fsm.responseMap[requestID] = r.Response
+}
+
 func (fsm *shardNodeFSM) Apply(rLog *raft.Log) interface{} {
 	switch rLog.Type {
 	case raft.LogCommand:
@@ -45,6 +70,7 @@ func (fsm *shardNodeFSM) Apply(rLog *raft.Log) interface{} {
 		if err != nil {
 			return fmt.Errorf("could not unmarshall the command; %s", err)
 		}
+		requestID := command.RequestID
 		if command.Type == ReplicateRequestAndPathAndStorageCommand {
 			log.Println("got replication command for replicate request")
 			var requestReplicationPayload ReplicateRequestAndPathAndStoragePayload
@@ -52,7 +78,7 @@ func (fsm *shardNodeFSM) Apply(rLog *raft.Log) interface{} {
 			if err != nil {
 				return fmt.Errorf("could not unmarshall the request replication command; %s", err)
 			}
-			//TODO: update the fsm
+			fsm.handleReplicateRequestAndPathAndStorage(requestID, requestReplicationPayload)
 		} else if command.Type == ReplicateResponseCommand {
 			log.Println("got replication command for replicate response")
 			var responseReplicationPayload ReplicateResponsePayload
@@ -60,7 +86,7 @@ func (fsm *shardNodeFSM) Apply(rLog *raft.Log) interface{} {
 			if err != nil {
 				return fmt.Errorf("could not unmarshall the response replication command; %s", err)
 			}
-			//TODO: update the fsm
+			fsm.handleReplicateResponse(requestID, responseReplicationPayload)
 		} else {
 			fmt.Println("wrong command type")
 		}
@@ -83,7 +109,7 @@ func (fsm *shardNodeFSM) Snapshot() (raft.FSMSnapshot, error) {
 	return snapshotNoop{}, nil //TODO: implement
 }
 
-func startRaftServer(isFirst bool, replicaID int, raftPort int) (*raft.Raft, error) {
+func startRaftServer(isFirst bool, replicaID int, raftPort int, shardshardNodeFSM *shardNodeFSM) (*raft.Raft, error) {
 	dataDir := fmt.Sprintf("data-replicaid-%d", replicaID)
 	raftConfig := raft.DefaultConfig()
 	raftConfig.LocalID = raft.ServerID(strconv.Itoa(replicaID))
@@ -114,7 +140,7 @@ func startRaftServer(isFirst bool, replicaID int, raftPort int) (*raft.Raft, err
 		return nil, fmt.Errorf("could not create tcp transport; %s", err)
 	}
 
-	r, err := raft.NewRaft(raftConfig, &shardNodeFSM{}, store, store, snapshots, transport)
+	r, err := raft.NewRaft(raftConfig, shardshardNodeFSM, store, store, snapshots, transport)
 	if err != nil {
 		return nil, fmt.Errorf("could not create raft instance; %s", err)
 	}
