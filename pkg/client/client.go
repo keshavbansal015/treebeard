@@ -16,10 +16,14 @@ type RouterRPCClient struct {
 	Conn      *grpc.ClientConn
 }
 
-func (c *RouterRPCClient) Read(block string) (value string, err error) {
+func getContextWithRequestID() context.Context {
 	requestID := uuid.New().String()
 	ctx := context.WithValue(context.Background(), "requestID", requestID)
-	reply, err := c.ClientAPI.Read(ctx,
+	return ctx
+}
+
+func (c *RouterRPCClient) Read(block string) (value string, err error) {
+	reply, err := c.ClientAPI.Read(getContextWithRequestID(),
 		&routerpb.ReadRequest{Block: block})
 	if err != nil {
 		return "", err
@@ -28,9 +32,7 @@ func (c *RouterRPCClient) Read(block string) (value string, err error) {
 }
 
 func (c *RouterRPCClient) Write(block string, value string) (success bool, err error) {
-	requestID := uuid.New().String()
-	ctx := context.WithValue(context.Background(), "requestID", requestID)
-	reply, err := c.ClientAPI.Write(ctx,
+	reply, err := c.ClientAPI.Write(getContextWithRequestID(),
 		&routerpb.WriteRequest{Block: block, Value: value})
 	if err != nil {
 		return false, err
