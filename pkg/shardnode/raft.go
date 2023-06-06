@@ -7,17 +7,32 @@ import (
 	"os"
 	"path"
 	"strconv"
+	"sync"
 	"time"
 
 	"github.com/hashicorp/raft"
 	raftboltdb "github.com/hashicorp/raft-boltdb"
 )
 
-type shardNodeFSM struct { //TODO: think about race conditions. Do I need a mutex or sth similar?
-	// request log
-	// new path new storage
-	// OramNode response
-	// stash diff
+type shardNodeFSM struct {
+	//TODO note
+	//I'm starting with simple maps and one mutex to handle race conditions.
+	//However, there are other ways to design this that might be better regarding performance:
+	//    1. using different mutexes for different maps so that we just block the exact map that is having multiple access.
+	//    2. using sync.Map. This takes away type safety but might have better performance.
+	//       * https://medium.com/@deckarep/the-new-kid-in-town-gos-sync-map-de24a6bf7c2c
+	//       * https://www.youtube.com/watch?v=C1EtfDnsdDs
+	//       * https://pkg.go.dev/sync
+
+	mx         sync.Mutex
+	requestLog map[string][]string //map of block to requesting requestIDs
+
+	pathMap      map[string]int //map of requestID to new path
+	storageIDMap map[string]int //map of requestID to new storageID
+
+	responseMap map[string]string //map of requestID to response map[string]string
+
+	// stash diff (TODO: for the blocks request part)
 }
 
 func (fsm *shardNodeFSM) Apply(log *raft.Log) any {
