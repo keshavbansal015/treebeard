@@ -3,6 +3,7 @@ package shardnode
 import (
 	"fmt"
 	"io"
+	"log"
 	"net"
 	"os"
 	"path"
@@ -12,6 +13,7 @@ import (
 
 	"github.com/hashicorp/raft"
 	raftboltdb "github.com/hashicorp/raft-boltdb"
+	"github.com/vmihailenco/msgpack/v5"
 )
 
 type shardNodeFSM struct {
@@ -35,8 +37,37 @@ type shardNodeFSM struct {
 	// stash diff (TODO: for the blocks request part)
 }
 
-func (fsm *shardNodeFSM) Apply(log *raft.Log) any {
-	return 0 //TODO: implement
+func (fsm *shardNodeFSM) Apply(rLog *raft.Log) interface{} {
+	switch rLog.Type {
+	case raft.LogCommand:
+		var command Command
+		err := msgpack.Unmarshal(rLog.Data, &command)
+		if err != nil {
+			return fmt.Errorf("could not unmarshall the command; %s", err)
+		}
+		if command.Type == ReplicateRequestAndPathAndStorageCommand {
+			log.Println("got replication command for replicate request")
+			var requestReplicationPayload ReplicateRequestAndPathAndStoragePayload
+			err := msgpack.Unmarshal(command.Payload, &requestReplicationPayload)
+			if err != nil {
+				return fmt.Errorf("could not unmarshall the request replication command; %s", err)
+			}
+			//TODO: update the fsm
+		} else if command.Type == ReplicateResponseCommand {
+			log.Println("got replication command for replicate response")
+			var responseReplicationPayload ReplicateResponsePayload
+			err := msgpack.Unmarshal(command.Payload, &responseReplicationPayload)
+			if err != nil {
+				return fmt.Errorf("could not unmarshall the response replication command; %s", err)
+			}
+			//TODO: update the fsm
+		} else {
+			fmt.Println("wrong command type")
+		}
+	default:
+		return fmt.Errorf("unknown raft log type: %s", rLog.Type)
+	}
+	return nil
 }
 
 func (fsm *shardNodeFSM) Restore(rc io.ReadCloser) error {

@@ -9,6 +9,7 @@ import (
 
 	pb "github.com/dsg-uwaterloo/oblishard/api/router"
 	shardnodepb "github.com/dsg-uwaterloo/oblishard/api/shardnode"
+	"github.com/dsg-uwaterloo/oblishard/pkg/rpc"
 	utils "github.com/dsg-uwaterloo/oblishard/pkg/utils"
 	"google.golang.org/grpc"
 )
@@ -77,7 +78,7 @@ func StartRPCServer(shardNodeRPCClients map[int]ReplicaRPCClientMap, routerID in
 	if err != nil {
 		log.Fatalf("failed to listen: %v", err)
 	}
-	grpcServer := grpc.NewServer()
+	grpcServer := grpc.NewServer(grpc.UnaryInterceptor(rpc.ContextPropagationUnaryServerInterceptor()))
 	routerServer := &routerServer{
 		shardNodeRPCClients: shardNodeRPCClients,
 		routerID:            routerID,

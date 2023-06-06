@@ -9,6 +9,7 @@ import (
 	"github.com/google/uuid"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
+	"google.golang.org/grpc/metadata"
 )
 
 type RouterRPCClient struct {
@@ -18,7 +19,8 @@ type RouterRPCClient struct {
 
 func getContextWithRequestID() context.Context {
 	requestID := uuid.New().String()
-	ctx := context.WithValue(context.Background(), "requestID", requestID)
+	ctx := context.Background()
+	ctx = metadata.NewOutgoingContext(ctx, metadata.Pairs("requestid", requestID))
 	return ctx
 }
 

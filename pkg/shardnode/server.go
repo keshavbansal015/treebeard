@@ -6,11 +6,14 @@ import (
 	"log"
 	"net"
 	"strconv"
+	"time"
 
 	pb "github.com/dsg-uwaterloo/oblishard/api/shardnode"
 	"github.com/hashicorp/raft"
+	"github.com/vmihailenco/msgpack/v5"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
+	"google.golang.org/grpc/metadata"
 )
 
 // TODO: ensure that concurrent accesses to this struct from different gRPC calls don't cause race conditions
@@ -19,6 +22,7 @@ type shardNodeServer struct {
 	shardNodeServerID int
 	replicaID         int
 	raftNode          *raft.Raft
+	responseChannel   map[string]chan string //map of requestId to their channel for receiving response
 }
 
 func (s *shardNodeServer) isLeader() (isLeader bool, leaderID int, err error) {
@@ -34,6 +38,44 @@ func (s *shardNodeServer) isLeader() (isLeader bool, leaderID int, err error) {
 	}
 }
 
+type OperationType int
+
+const (
+	Read = iota
+	Write
+)
+
+func (s *shardNodeServer) query(ctx context.Context, op OperationType, block string, value string) error {
+	md, _ := metadata.FromIncomingContext(ctx)
+	requestID := md["requestid"][0]
+
+	requestReplicationPayload, err := msgpack.Marshal(
+		&ReplicateRequestAndPathAndStoragePayload{
+			RequestedBlock: block,
+			Path:           0, //TODO: update to use a real path
+			StorageID:      0, //TODO: update to use a real storage id
+		},
+	)
+	if err != nil {
+		return fmt.Errorf("could not marshal the request, path, storage replication payload %s", err)
+	}
+	requestReplicationCommand, err := msgpack.Marshal(
+		&Command{
+			Type:      ReplicateRequestAndPathAndStorageCommand,
+			RequestID: requestID,
+			Payload:   requestReplicationPayload,
+		},
+	)
+	if err != nil {
+		return fmt.Errorf("could not marshal the request, path, storage replication command %s", err)
+	}
+
+	//TODO: make the timeout accurate
+	//TODO: should i lock the raftNode?
+	s.raftNode.Apply(requestReplicationCommand, 1*time.Second)
+	return nil
+}
+
 func (s *shardNodeServer) Read(ctx context.Context, readRequest *pb.ReadRequest) (*pb.ReadReply, error) {
 	isLeader, leaderID, err := s.isLeader()
 	if err != nil {
@@ -43,6 +85,7 @@ func (s *shardNodeServer) Read(ctx context.Context, readRequest *pb.ReadRequest)
 		return &pb.ReadReply{Value: "", LeaderNodeId: int32(leaderID)}, nil
 	}
 	fmt.Println("Read on shard node is called")
+	s.query(ctx, Read, readRequest.Block, "")
 	return &pb.ReadReply{Value: "test", LeaderNodeId: int32(leaderID)}, nil
 }
 
@@ -56,6 +99,7 @@ func (s *shardNodeServer) Write(ctx context.Context, writeRequest *pb.WriteReque
 	}
 
 	fmt.Println("Write on shard node is called")
+	s.query(ctx, Write, writeRequest.Block, writeRequest.Value)
 	return &pb.WriteReply{Success: true, LeaderNodeId: int32(leaderID)}, nil
 }
 
@@ -111,6 +155,7 @@ func StartServer(shardNodeServerID int, rpcPort int, replicaID int, raftPort int
 			shardNodeServerID: shardNodeServerID,
 			replicaID:         replicaID,
 			raftNode:          r,
+			responseChannel:   make(map[string]chan string),
 		})
 	grpcServer.Serve(lis)
 }
