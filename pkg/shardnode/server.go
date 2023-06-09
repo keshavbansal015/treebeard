@@ -8,6 +8,7 @@ import (
 	"strconv"
 	"time"
 
+	leadernotifpb "github.com/dsg-uwaterloo/oblishard/api/leadernotif"
 	pb "github.com/dsg-uwaterloo/oblishard/api/shardnode"
 	"github.com/hashicorp/raft"
 	"github.com/vmihailenco/msgpack/v5"
@@ -77,9 +78,19 @@ func (s *shardNodeServer) query(ctx context.Context, op OperationType, block str
 	if err != nil {
 		return fmt.Errorf("could not apply log to the FSM; %s", err)
 	}
-	s.shardNodeFSM.mu.Lock()
-	defer s.shardNodeFSM.mu.Unlock()
-	fmt.Println(s.shardNodeFSM.requestLog["a"])
+
+	func() {
+		s.shardNodeFSM.mu.Lock()
+		defer s.shardNodeFSM.mu.Unlock()
+		if len(s.shardNodeFSM.requestLog[block]) > 1 {
+			// new fake random path' and storage'
+			// send request to the ORAM node
+		} else {
+			// send request to the ORAM node
+			// replicate after getting the response
+		}
+	}()
+
 	return nil
 }
 
@@ -127,6 +138,24 @@ func (s *shardNodeServer) JoinRaftVoter(ctx context.Context, joinRaftVoterReques
 	return &pb.JoinRaftVoterReply{Success: true}, nil
 }
 
+func (s *shardNodeServer) announceLeadershipChanges() {
+	serverAddr := fmt.Sprintf("%s:%d", "127.0.0.1", 1212) // TODO: change this to a dynamic format
+	conn, err := grpc.Dial(serverAddr, grpc.WithTransportCredentials(insecure.NewCredentials()))
+	if err != nil {
+		log.Fatalln("can't dial the leadernotif service")
+	}
+
+	clientAPI := leadernotifpb.NewLeaderNotifClient(conn)
+	r := s.raftNode
+	leaderChangeChan := r.LeaderCh()
+	for {
+		leaderStatus := <-leaderChangeChan
+		if leaderStatus { // if we are the new leader
+			clientAPI.Publish(context.Background(), &leadernotifpb.PublishRequest{NodeLayer: "shardnode", LeaderId: int32(s.replicaID)})
+		}
+	}
+}
+
 func StartServer(shardNodeServerID int, rpcPort int, replicaID int, raftPort int, joinAddr string) {
 	isFirst := joinAddr == ""
 	shardNodeFSM := newShardNodeFSM()
@@ -157,14 +186,15 @@ func StartServer(shardNodeServerID int, rpcPort int, replicaID int, raftPort int
 	if err != nil {
 		log.Fatalf("failed to listen: %v", err)
 	}
+	shardnodeServer := &shardNodeServer{
+		shardNodeServerID: shardNodeServerID,
+		replicaID:         replicaID,
+		raftNode:          r,
+		responseChannel:   make(map[string]chan string),
+		shardNodeFSM:      shardNodeFSM,
+	}
+	go shardnodeServer.announceLeadershipChanges()
 	grpcServer := grpc.NewServer()
-	pb.RegisterShardNodeServer(grpcServer,
-		&shardNodeServer{
-			shardNodeServerID: shardNodeServerID,
-			replicaID:         replicaID,
-			raftNode:          r,
-			responseChannel:   make(map[string]chan string),
-			shardNodeFSM:      shardNodeFSM,
-		})
+	pb.RegisterShardNodeServer(grpcServer, shardnodeServer)
 	grpcServer.Serve(lis)
 }
