@@ -57,6 +57,7 @@ func (r *routerServer) Write(ctx context.Context, writeRequest *pb.WriteRequest)
 	return &pb.WriteReply{Success: true}, nil
 }
 
+// TODO: currently if a router fails and restarts it loses its prior knowledge about the current leader
 func (r *routerServer) subscribeToShardNodeLeaderChanges() {
 	serverAddr := fmt.Sprintf("%s:%d", "127.0.0.1", 1212) // TODO: change this to a dynamic format
 	conn, err := grpc.Dial(serverAddr, grpc.WithTransportCredentials(insecure.NewCredentials()))
