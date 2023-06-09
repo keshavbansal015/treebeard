@@ -151,7 +151,14 @@ func (s *shardNodeServer) announceLeadershipChanges() {
 	for {
 		leaderStatus := <-leaderChangeChan
 		if leaderStatus { // if we are the new leader
-			clientAPI.Publish(context.Background(), &leadernotifpb.PublishRequest{NodeLayer: "shardnode", LeaderId: int32(s.replicaID)})
+			clientAPI.Publish(
+				context.Background(),
+				&leadernotifpb.PublishRequest{
+					NodeLayer: "shardnode",
+					Id:        int32(s.shardNodeServerID),
+					LeaderId:  int32(s.replicaID),
+				},
+			)
 		}
 	}
 }

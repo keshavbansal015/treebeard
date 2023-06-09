@@ -11,7 +11,8 @@ service LeaderNotif {
 
 message PublishRequest {
     string node_layer = 1;
-    int32 leader_id = 2;
+    int32 id = 2;
+    int32 leader_id = 3;
 }
 
 message PublishReply {
@@ -24,4 +25,5 @@ message SubscribeRequest {
 
 message LeaderChange {
     int32 leader_id = 1;
+    int32 id = 2; // the shard node id or the oram node id
 }

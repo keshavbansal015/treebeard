@@ -79,8 +79,9 @@ func (r *routerServer) subscribeToShardNodeLeaderChanges() {
 			log.Fatalf("error in understanding the current leader of the raft cluster")
 		}
 		newLeaderID := leaderChange.LeaderId
+		nodeID := int(leaderChange.Id)
 		fmt.Printf("got new leader id for the raft cluster: %d\n", newLeaderID)
-		r.shardNodeLeaderNodeIDMap[0] = int(newLeaderID) //TODO: change the zero to the correct shard node
+		r.shardNodeLeaderNodeIDMap[nodeID] = int(newLeaderID)
 	}
 }
 
