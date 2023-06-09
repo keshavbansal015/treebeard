@@ -1,0 +1,27 @@
+syntax = "proto3";
+
+option go_package = "github.com/dsg-uwaterloo/oblishard/api/leadernotif";
+
+package leadernotif;
+
+service LeaderNotif {
+    rpc Publish(PublishRequest) returns (PublishReply) {}
+    rpc Subscribe(SubscribeRequest) returns (stream LeaderChange) {}
+}
+
+message PublishRequest {
+    string node_layer = 1;
+    int32 leader_id = 2;
+}
+
+message PublishReply {
+    bool success = 1;
+}
+
+message SubscribeRequest {
+    string node_layer = 1;
+}
+
+message LeaderChange {
+    int32 leader_id = 1;
+}
