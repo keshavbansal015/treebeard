@@ -1,0 +1,27 @@
+syntax = "proto3";
+
+option go_package = "github.com/dsg-uwaterloo/oblishard/api/oramnode";
+
+package oramnode;
+
+service OramNode {
+    rpc ReadPath (ReadPathRequest) returns (ReadPathReply) {}
+    rpc JoinRaftVoter (JoinRaftVoterRequest) returns (JoinRaftVoterReply) {}
+}
+
+message ReadPathRequest {
+    string block = 1;
+}
+
+message ReadPathReply {
+    string value = 1;
+}
+
+message JoinRaftVoterRequest {
+    int32 node_id = 1;
+    string node_addr = 2;
+}
+
+message JoinRaftVoterReply {
+    bool success = 1;
+}
