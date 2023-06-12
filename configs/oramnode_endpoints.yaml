@@ -1,0 +1,13 @@
+endpoints:
+  - ip: 127.0.0.1
+    port: 8751
+    id: 0
+    replicaid: 0
+  - ip: 127.0.0.1
+    port: 8752
+    id: 0
+    replicaid: 1
+  - ip: 127.0.0.1
+    port: 8753
+    id: 0
+    replicaid: 2

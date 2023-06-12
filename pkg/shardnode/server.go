@@ -4,11 +4,13 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"math/rand"
 	"net"
 	"strconv"
 	"time"
 
 	leadernotifpb "github.com/dsg-uwaterloo/oblishard/api/leadernotif"
+	oramnodepb "github.com/dsg-uwaterloo/oblishard/api/oramnode"
 	pb "github.com/dsg-uwaterloo/oblishard/api/shardnode"
 	"github.com/hashicorp/raft"
 	"github.com/vmihailenco/msgpack/v5"
@@ -20,11 +22,13 @@ import (
 // TODO: ensure that concurrent accesses to this struct from different gRPC calls don't cause race conditions
 type shardNodeServer struct {
 	pb.UnimplementedShardNodeServer
-	shardNodeServerID int
-	replicaID         int
-	raftNode          *raft.Raft
-	shardNodeFSM      *shardNodeFSM
-	responseChannel   map[string]chan string //map of requestId to their channel for receiving response
+	shardNodeServerID       int
+	replicaID               int
+	raftNode                *raft.Raft
+	shardNodeFSM            *shardNodeFSM
+	responseChannel         map[string]chan string //map of requestId to their channel for receiving response
+	oramNodeClients         map[int]ReplicaRPCClientMap
+	oramNodeLeaderNodeIDMap map[int]int //map of oram node id to the current leader
 }
 
 type OperationType int
@@ -33,6 +37,35 @@ const (
 	Read = iota
 	Write
 )
+
+// TODO: currently if a shardnode fails and restarts it loses its prior knowledge about the current leader
+func (s *shardNodeServer) subscribeToOramNodeLeaderChanges() {
+	serverAddr := fmt.Sprintf("%s:%d", "127.0.0.1", 1212) // TODO: change this to a dynamic format
+	conn, err := grpc.Dial(serverAddr, grpc.WithTransportCredentials(insecure.NewCredentials()))
+	if err != nil {
+		log.Fatalln("can't dial the leadernotif service")
+	}
+	clientAPI := leadernotifpb.NewLeaderNotifClient(conn)
+	stream, err := clientAPI.Subscribe(
+		context.Background(),
+		&leadernotifpb.SubscribeRequest{
+			NodeLayer: "oramnode",
+		},
+	)
+	if err != nil {
+		log.Fatalf("could not connect to the leadernotif service")
+	}
+	for {
+		leaderChange, err := stream.Recv()
+		if err != nil {
+			log.Fatalf("error in understanding the current leader of the raft cluster")
+		}
+		newLeaderID := leaderChange.LeaderId
+		nodeID := int(leaderChange.Id)
+		fmt.Printf("got new leader id for the raft cluster: %d\n", newLeaderID)
+		s.oramNodeLeaderNodeIDMap[nodeID] = int(newLeaderID)
+	}
+}
 
 func (s *shardNodeServer) query(ctx context.Context, op OperationType, block string, value string) error {
 	md, _ := metadata.FromIncomingContext(ctx)
@@ -69,12 +102,36 @@ func (s *shardNodeServer) query(ctx context.Context, op OperationType, block str
 	func() {
 		s.shardNodeFSM.mu.Lock()
 		defer s.shardNodeFSM.mu.Unlock()
-		if len(s.shardNodeFSM.requestLog[block]) > 1 {
-			// new fake random path' and storage'
-			// send request to the ORAM node
+		oramNodesLen := len(s.oramNodeClients)
+		randomOramNodeIndex := rand.Intn(oramNodesLen)
+		randomOramNode := s.oramNodeClients[randomOramNodeIndex]
+		leader := randomOramNode[s.oramNodeLeaderNodeIDMap[randomOramNodeIndex]]
+		if s.shardNodeFSM.requestLog[block][0] != requestID {
+			randomPath := 0      // TODO: change after adding the tree logic
+			randomStorageID := 0 //TODO: change after adding the tree logic
+			leader.ClientAPI.ReadPath(
+				ctx,
+				&oramnodepb.ReadPathRequest{
+					Block:     block,
+					Path:      int32(randomPath),
+					StorageId: int32(randomStorageID),
+					IsReal:    false,
+				},
+			)
+			// ignore the response and wait for the actual response on the channel
 		} else {
-			// send request to the ORAM node
-			// replicate after getting the response
+			path := 0      //TODO: read from position map
+			storageID := 0 //TODO: read from position map
+			leader.ClientAPI.ReadPath(
+				ctx,
+				&oramnodepb.ReadPathRequest{
+					Block:     block,
+					Path:      int32(path),
+					StorageId: int32(storageID),
+					IsReal:    true,
+				},
+			)
+			//...
 		}
 	}()
 
@@ -135,7 +192,7 @@ func (s *shardNodeServer) announceLeadershipChanges() {
 	}
 }
 
-func StartServer(shardNodeServerID int, rpcPort int, replicaID int, raftPort int, joinAddr string) {
+func StartServer(shardNodeServerID int, rpcPort int, replicaID int, raftPort int, joinAddr string, oramNodeRPCClients map[int]ReplicaRPCClientMap) {
 	isFirst := joinAddr == ""
 	shardNodeFSM := newShardNodeFSM()
 	r, err := startRaftServer(isFirst, replicaID, raftPort, shardNodeFSM)
@@ -166,11 +223,13 @@ func StartServer(shardNodeServerID int, rpcPort int, replicaID int, raftPort int
 		log.Fatalf("failed to listen: %v", err)
 	}
 	shardnodeServer := &shardNodeServer{
-		shardNodeServerID: shardNodeServerID,
-		replicaID:         replicaID,
-		raftNode:          r,
-		responseChannel:   make(map[string]chan string),
-		shardNodeFSM:      shardNodeFSM,
+		shardNodeServerID:       shardNodeServerID,
+		replicaID:               replicaID,
+		raftNode:                r,
+		responseChannel:         make(map[string]chan string),
+		shardNodeFSM:            shardNodeFSM,
+		oramNodeClients:         oramNodeRPCClients,
+		oramNodeLeaderNodeIDMap: make(map[int]int),
 	}
 	go shardnodeServer.announceLeadershipChanges()
 	grpcServer := grpc.NewServer()
