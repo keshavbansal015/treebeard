@@ -22,8 +22,7 @@ const _ = grpc.SupportPackageIsVersion7
 //
 // For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
 type ShardNodeClient interface {
-	Read(ctx context.Context, in *ReadRequest, opts ...grpc.CallOption) (*ReadReply, error)
-	Write(ctx context.Context, in *WriteRequest, opts ...grpc.CallOption) (*WriteReply, error)
+	ReadPath(ctx context.Context, in *ReadPathRequest, opts ...grpc.CallOption) (*ReadPathReply, error)
 	JoinRaftVoter(ctx context.Context, in *JoinRaftVoterRequest, opts ...grpc.CallOption) (*JoinRaftVoterReply, error)
 }
 
@@ -35,18 +34,9 @@ func NewShardNodeClient(cc grpc.ClientConnInterface) ShardNodeClient {
 	return &shardNodeClient{cc}
 }
 
-func (c *shardNodeClient) Read(ctx context.Context, in *ReadRequest, opts ...grpc.CallOption) (*ReadReply, error) {
-	out := new(ReadReply)
-	err := c.cc.Invoke(ctx, "/shardnode.ShardNode/Read", in, out, opts...)
-	if err != nil {
-		return nil, err
-	}
-	return out, nil
-}
-
-func (c *shardNodeClient) Write(ctx context.Context, in *WriteRequest, opts ...grpc.CallOption) (*WriteReply, error) {
-	out := new(WriteReply)
-	err := c.cc.Invoke(ctx, "/shardnode.ShardNode/Write", in, out, opts...)
+func (c *shardNodeClient) ReadPath(ctx context.Context, in *ReadPathRequest, opts ...grpc.CallOption) (*ReadPathReply, error) {
+	out := new(ReadPathReply)
+	err := c.cc.Invoke(ctx, "/shardnode.ShardNode/ReadPath", in, out, opts...)
 	if err != nil {
 		return nil, err
 	}
@@ -66,8 +56,7 @@ func (c *shardNodeClient) JoinRaftVoter(ctx context.Context, in *JoinRaftVoterRe
 // All implementations must embed UnimplementedShardNodeServer
 // for forward compatibility
 type ShardNodeServer interface {
-	Read(context.Context, *ReadRequest) (*ReadReply, error)
-	Write(context.Context, *WriteRequest) (*WriteReply, error)
+	ReadPath(context.Context, *ReadPathRequest) (*ReadPathReply, error)
 	JoinRaftVoter(context.Context, *JoinRaftVoterRequest) (*JoinRaftVoterReply, error)
 	mustEmbedUnimplementedShardNodeServer()
 }
@@ -76,11 +65,8 @@ type ShardNodeServer interface {
 type UnimplementedShardNodeServer struct {
 }
 
-func (UnimplementedShardNodeServer) Read(context.Context, *ReadRequest) (*ReadReply, error) {
-	return nil, status.Errorf(codes.Unimplemented, "method Read not implemented")
-}
-func (UnimplementedShardNodeServer) Write(context.Context, *WriteRequest) (*WriteReply, error) {
-	return nil, status.Errorf(codes.Unimplemented, "method Write not implemented")
+func (UnimplementedShardNodeServer) ReadPath(context.Context, *ReadPathRequest) (*ReadPathReply, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method ReadPath not implemented")
 }
 func (UnimplementedShardNodeServer) JoinRaftVoter(context.Context, *JoinRaftVoterRequest) (*JoinRaftVoterReply, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method JoinRaftVoter not implemented")
@@ -98,38 +84,20 @@ func RegisterShardNodeServer(s grpc.ServiceRegistrar, srv ShardNodeServer) {
 	s.RegisterService(&ShardNode_ServiceDesc, srv)
 }
 
-func _ShardNode_Read_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(ReadRequest)
+func _ShardNode_ReadPath_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ReadPathRequest)
 	if err := dec(in); err != nil {
 		return nil, err
 	}
 	if interceptor == nil {
-		return srv.(ShardNodeServer).Read(ctx, in)
+		return srv.(ShardNodeServer).ReadPath(ctx, in)
 	}
 	info := &grpc.UnaryServerInfo{
 		Server:     srv,
-		FullMethod: "/shardnode.ShardNode/Read",
+		FullMethod: "/shardnode.ShardNode/ReadPath",
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(ShardNodeServer).Read(ctx, req.(*ReadRequest))
-	}
-	return interceptor(ctx, in, info, handler)
-}
-
-func _ShardNode_Write_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(WriteRequest)
-	if err := dec(in); err != nil {
-		return nil, err
-	}
-	if interceptor == nil {
-		return srv.(ShardNodeServer).Write(ctx, in)
-	}
-	info := &grpc.UnaryServerInfo{
-		Server:     srv,
-		FullMethod: "/shardnode.ShardNode/Write",
-	}
-	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(ShardNodeServer).Write(ctx, req.(*WriteRequest))
+		return srv.(ShardNodeServer).ReadPath(ctx, req.(*ReadPathRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
@@ -160,12 +128,8 @@ var ShardNode_ServiceDesc = grpc.ServiceDesc{
 	HandlerType: (*ShardNodeServer)(nil),
 	Methods: []grpc.MethodDesc{
 		{
-			MethodName: "Read",
-			Handler:    _ShardNode_Read_Handler,
-		},
-		{
-			MethodName: "Write",
-			Handler:    _ShardNode_Write_Handler,
+			MethodName: "ReadPath",
+			Handler:    _ShardNode_ReadPath_Handler,
 		},
 		{
 			MethodName: "JoinRaftVoter",

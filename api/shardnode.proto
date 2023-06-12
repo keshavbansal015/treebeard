@@ -5,28 +5,19 @@ option go_package = "github.com/dsg-uwaterloo/oblishard/api/shardnode";
 package shardnode;
 
 service ShardNode {
-    rpc Read (ReadRequest) returns (ReadReply) {}
-    rpc Write (WriteRequest) returns (WriteReply) {}    
+    rpc ReadPath (ReadPathRequest) returns (ReadPathReply) {}
     rpc JoinRaftVoter (JoinRaftVoterRequest) returns (JoinRaftVoterReply) {}
 }
 
-message ReadRequest {
+message ReadPathRequest {
     string block = 1;
+    int32 path = 2;
+    int32 storage_id = 3;
+    bool is_real = 4;
 }
 
-message ReadReply {
+message ReadPathReply {
     string value = 1;
-    int32 leader_node_id = 2;
-}
-
-message WriteRequest {
-    string block = 1;
-    string value = 2;
-}
-
-message WriteReply {
-    bool success = 1;
-    int32 leader_node_id = 2;
 }
 
 message JoinRaftVoterRequest {
