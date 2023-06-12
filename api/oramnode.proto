@@ -11,6 +11,9 @@ service OramNode {
 
 message ReadPathRequest {
     string block = 1;
+    int32 path = 2;
+    int32 storage_id = 3;
+    bool is_real = 4;
 }
 
 message ReadPathReply {
