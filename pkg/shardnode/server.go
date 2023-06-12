@@ -27,19 +27,6 @@ type shardNodeServer struct {
 	responseChannel   map[string]chan string //map of requestId to their channel for receiving response
 }
 
-func (s *shardNodeServer) isLeader() (isLeader bool, leaderID int, err error) {
-	_, serverID := s.raftNode.LeaderWithID()
-	if serverID == "" {
-		return false, 0, fmt.Errorf("the leader is unknown or there is no current leader")
-	}
-	leaderReplicaID, _ := strconv.Atoi(string(serverID))
-	if leaderReplicaID == s.replicaID {
-		return true, s.replicaID, nil
-	} else {
-		return false, leaderReplicaID, nil
-	}
-}
-
 type OperationType int
 
 const (
@@ -95,30 +82,15 @@ func (s *shardNodeServer) query(ctx context.Context, op OperationType, block str
 }
 
 func (s *shardNodeServer) Read(ctx context.Context, readRequest *pb.ReadRequest) (*pb.ReadReply, error) {
-	isLeader, leaderID, err := s.isLeader()
-	if err != nil {
-		return &pb.ReadReply{Value: "", LeaderNodeId: -1}, err
-	}
-	if !isLeader {
-		return &pb.ReadReply{Value: "", LeaderNodeId: int32(leaderID)}, nil
-	}
 	fmt.Println("Read on shard node is called")
 	s.query(ctx, Read, readRequest.Block, "")
-	return &pb.ReadReply{Value: "test", LeaderNodeId: int32(leaderID)}, nil
+	return &pb.ReadReply{Value: "test"}, nil
 }
 
 func (s *shardNodeServer) Write(ctx context.Context, writeRequest *pb.WriteRequest) (*pb.WriteReply, error) {
-	isLeader, leaderID, err := s.isLeader()
-	if err != nil {
-		return &pb.WriteReply{Success: false, LeaderNodeId: -1}, err
-	}
-	if !isLeader {
-		return &pb.WriteReply{Success: false, LeaderNodeId: int32(leaderID)}, nil
-	}
-
 	fmt.Println("Write on shard node is called")
 	s.query(ctx, Write, writeRequest.Block, writeRequest.Value)
-	return &pb.WriteReply{Success: true, LeaderNodeId: int32(leaderID)}, nil
+	return &pb.WriteReply{Success: true}, nil
 }
 
 func (s *shardNodeServer) JoinRaftVoter(ctx context.Context, joinRaftVoterRequest *pb.JoinRaftVoterRequest) (*pb.JoinRaftVoterReply, error) {
