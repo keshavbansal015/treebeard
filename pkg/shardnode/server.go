@@ -67,6 +67,48 @@ func (s *shardNodeServer) subscribeToOramNodeLeaderChanges() {
 	}
 }
 
+func (s *shardNodeServer) handleReadPathFromOramNode(ctx context.Context, block string, requestID string) error {
+	s.shardNodeFSM.mu.Lock()
+	defer s.shardNodeFSM.mu.Unlock()
+
+	oramNodesLen := len(s.oramNodeClients)
+	randomOramNodeIndex := rand.Intn(oramNodesLen)
+	randomOramNode := s.oramNodeClients[randomOramNodeIndex]
+	leader := randomOramNode[s.oramNodeLeaderNodeIDMap[randomOramNodeIndex]]
+	if s.shardNodeFSM.requestLog[block][0] != requestID {
+		randomPath := 0      // TODO: change after adding the tree logic
+		randomStorageID := 0 //TODO: change after adding the tree logic
+		leader.ClientAPI.ReadPath(
+			ctx,
+			&oramnodepb.ReadPathRequest{
+				Block:     block,
+				Path:      int32(randomPath),
+				StorageId: int32(randomStorageID),
+				IsReal:    false,
+			},
+		)
+		// ignore the response and wait for the actual response on the channel
+	} else {
+		path := 0      //TODO: read from position map
+		storageID := 0 //TODO: read from position map
+		reply, err := leader.ClientAPI.ReadPath(
+			ctx,
+			&oramnodepb.ReadPathRequest{
+				Block:     block,
+				Path:      int32(path),
+				StorageId: int32(storageID),
+				IsReal:    true,
+			},
+		)
+		if err != nil {
+			return fmt.Errorf("could not call the ReadPath RPC on the oram node. %s", err)
+		}
+		fmt.Printf("the reply value is: %s", reply.Value)
+		//repicate the response
+	}
+	return nil
+}
+
 func (s *shardNodeServer) query(ctx context.Context, op OperationType, block string, value string) error {
 	md, _ := metadata.FromIncomingContext(ctx)
 	requestID := md["requestid"][0]
@@ -99,41 +141,7 @@ func (s *shardNodeServer) query(ctx context.Context, op OperationType, block str
 		return fmt.Errorf("could not apply log to the FSM; %s", err)
 	}
 
-	func() {
-		s.shardNodeFSM.mu.Lock()
-		defer s.shardNodeFSM.mu.Unlock()
-		oramNodesLen := len(s.oramNodeClients)
-		randomOramNodeIndex := rand.Intn(oramNodesLen)
-		randomOramNode := s.oramNodeClients[randomOramNodeIndex]
-		leader := randomOramNode[s.oramNodeLeaderNodeIDMap[randomOramNodeIndex]]
-		if s.shardNodeFSM.requestLog[block][0] != requestID {
-			randomPath := 0      // TODO: change after adding the tree logic
-			randomStorageID := 0 //TODO: change after adding the tree logic
-			leader.ClientAPI.ReadPath(
-				ctx,
-				&oramnodepb.ReadPathRequest{
-					Block:     block,
-					Path:      int32(randomPath),
-					StorageId: int32(randomStorageID),
-					IsReal:    false,
-				},
-			)
-			// ignore the response and wait for the actual response on the channel
-		} else {
-			path := 0      //TODO: read from position map
-			storageID := 0 //TODO: read from position map
-			leader.ClientAPI.ReadPath(
-				ctx,
-				&oramnodepb.ReadPathRequest{
-					Block:     block,
-					Path:      int32(path),
-					StorageId: int32(storageID),
-					IsReal:    true,
-				},
-			)
-			//...
-		}
-	}()
+	s.handleReadPathFromOramNode(ctx, block, requestID)
 
 	return nil
 }
