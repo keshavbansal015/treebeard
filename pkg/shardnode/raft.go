@@ -34,6 +34,7 @@ type shardNodeFSM struct {
 
 	responseMap map[string]string //map of requestID to response map[string]string
 
+	stash map[string]string //map of block to value
 	// stash diff (TODO: for the blocks request part)
 }
 
@@ -43,6 +44,7 @@ func newShardNodeFSM() *shardNodeFSM {
 		pathMap:      make(map[string]int),
 		storageIDMap: make(map[string]int),
 		responseMap:  make(map[string]string),
+		stash:        make(map[string]string),
 	}
 }
 
