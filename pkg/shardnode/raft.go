@@ -60,6 +60,7 @@ func (fsm *shardNodeFSM) handleReplicateResponse(requestID string, r ReplicateRe
 	defer fsm.mu.Unlock()
 
 	fsm.responseMap[requestID] = r.Response
+	//TODO: start a go routine to handle the replica responsibilites after this function returns. Just for followers
 }
 
 func (fsm *shardNodeFSM) Apply(rLog *raft.Log) interface{} {

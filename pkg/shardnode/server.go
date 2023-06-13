@@ -67,7 +67,7 @@ func (s *shardNodeServer) subscribeToOramNodeLeaderChanges() {
 	}
 }
 
-func (s *shardNodeServer) handleReadPathFromOramNode(ctx context.Context, block string, requestID string) error {
+func (s *shardNodeServer) handleReadPathFromOramNode(ctx context.Context, block string, requestID string) (responseReplicationCommand []byte, err error) {
 	s.shardNodeFSM.mu.Lock()
 	defer s.shardNodeFSM.mu.Unlock()
 
@@ -101,12 +101,31 @@ func (s *shardNodeServer) handleReadPathFromOramNode(ctx context.Context, block 
 			},
 		)
 		if err != nil {
-			return fmt.Errorf("could not call the ReadPath RPC on the oram node. %s", err)
+			return nil, fmt.Errorf("could not call the ReadPath RPC on the oram node. %s", err)
 		}
 		fmt.Printf("the reply value is: %s", reply.Value)
 		//repicate the response
+		responseReplicationPayload, err := msgpack.Marshal(
+			&ReplicateResponsePayload{
+				Response: reply.Value,
+			},
+		)
+		if err != nil {
+			return nil, fmt.Errorf("could not marshal the response replication payload; %s", err)
+		}
+		responseReplicationCommand, err := msgpack.Marshal(
+			&Command{
+				Type:      ReplicateResponseCommand,
+				RequestID: requestID,
+				Payload:   responseReplicationPayload,
+			},
+		)
+		if err != nil {
+			return nil, fmt.Errorf("could not marshal the response replication command; %s", err)
+		}
+		return responseReplicationCommand, nil
 	}
-	return nil
+	return nil, nil
 }
 
 func (s *shardNodeServer) query(ctx context.Context, op OperationType, block string, value string) error {
@@ -141,7 +160,16 @@ func (s *shardNodeServer) query(ctx context.Context, op OperationType, block str
 		return fmt.Errorf("could not apply log to the FSM; %s", err)
 	}
 
-	s.handleReadPathFromOramNode(ctx, block, requestID)
+	responseReplicationCommand, err := s.handleReadPathFromOramNode(ctx, block, requestID)
+	if err != nil {
+		return fmt.Errorf("could not handle read path; %s", err)
+	}
+	//TODO: make the timeout accurate
+	//TODO: should i lock the raftNode?
+	err = s.raftNode.Apply(responseReplicationCommand, 1*time.Second).Error()
+	if err != nil {
+		return fmt.Errorf("could not apply log to the FSM; %s", err)
+	}
 
 	return nil
 }
