@@ -12,7 +12,7 @@ import (
 	"time"
 
 	"github.com/hashicorp/raft"
-	raftboltdb "github.com/hashicorp/raft-boltdb"
+	raftboltdb "github.com/hashicorp/raft-boltdb/v2"
 	"github.com/vmihailenco/msgpack/v5"
 )
 
