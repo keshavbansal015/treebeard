@@ -6,6 +6,7 @@ import (
 	"log"
 	"math"
 	"net"
+	"sync"
 
 	leadernotifpb "github.com/dsg-uwaterloo/oblishard/api/leadernotif"
 	pb "github.com/dsg-uwaterloo/oblishard/api/router"
@@ -21,6 +22,7 @@ type routerServer struct {
 	shardNodeRPCClients      map[int]ReplicaRPCClientMap
 	routerID                 int
 	shardNodeLeaderNodeIDMap map[int]int //map of shard node id to the current leader
+	mu                       sync.Mutex
 }
 
 func (r *routerServer) whereToForward(block string) (shardNodeID int) {
@@ -28,12 +30,17 @@ func (r *routerServer) whereToForward(block string) (shardNodeID int) {
 	return int(math.Mod(float64(h), float64(len(r.shardNodeRPCClients))))
 }
 
+func (r *routerServer) getCurrentLeaderIndex(shardNodeId int) int {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return r.shardNodeLeaderNodeIDMap[shardNodeId]
+}
+
 func (r *routerServer) Read(ctx context.Context, readRequest *pb.ReadRequest) (*pb.ReadReply, error) {
 	whereToForward := r.whereToForward(readRequest.Block)
 	shardNodeRPCClient := r.shardNodeRPCClients[whereToForward]
 
-	currentLeader := r.shardNodeLeaderNodeIDMap[whereToForward]
-	reply, err := shardNodeRPCClient[currentLeader].ClientAPI.Read(ctx,
+	reply, err := shardNodeRPCClient[r.getCurrentLeaderIndex(whereToForward)].ClientAPI.Read(ctx,
 		&shardnodepb.ReadRequest{Block: readRequest.Block})
 	if err != nil {
 		fmt.Println(err)
@@ -47,8 +54,7 @@ func (r *routerServer) Write(ctx context.Context, writeRequest *pb.WriteRequest)
 	whereToForward := r.whereToForward(writeRequest.Block)
 	shardNodeRPCClient := r.shardNodeRPCClients[whereToForward]
 
-	currentLeader := r.shardNodeLeaderNodeIDMap[whereToForward]
-	reply, err := shardNodeRPCClient[currentLeader].ClientAPI.Write(ctx,
+	reply, err := shardNodeRPCClient[r.getCurrentLeaderIndex(whereToForward)].ClientAPI.Write(ctx,
 		&shardnodepb.WriteRequest{Block: writeRequest.Block, Value: writeRequest.Value})
 	if err != nil {
 		return &pb.WriteReply{Success: reply.Success}, err
@@ -82,7 +88,9 @@ func (r *routerServer) subscribeToShardNodeLeaderChanges() {
 		newLeaderID := leaderChange.LeaderId
 		nodeID := int(leaderChange.Id)
 		fmt.Printf("got new leader id for the raft cluster: %d\n", newLeaderID)
+		r.mu.Lock()
 		r.shardNodeLeaderNodeIDMap[nodeID] = int(newLeaderID)
+		r.mu.Unlock()
 	}
 }
 
