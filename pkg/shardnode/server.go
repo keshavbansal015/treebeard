@@ -26,7 +26,6 @@ type shardNodeServer struct {
 	replicaID               int
 	raftNode                *raft.Raft
 	shardNodeFSM            *shardNodeFSM
-	responseChannel         map[string]chan string //map of requestId to their channel for receiving response
 	oramNodeClients         map[int]ReplicaRPCClientMap
 	oramNodeLeaderNodeIDMap map[int]int //map of oram node id to the current leader
 }
@@ -91,11 +90,15 @@ func (s *shardNodeServer) getPathAndStorageBasedOnRequest(block string, requestI
 	}
 }
 
-func (s *shardNodeServer) getResponseReplicationCommand(response string, requestID string) ([]byte, error) {
+func (s *shardNodeServer) getResponseReplicationCommand(response string, requestID string, block string, newValue string, opType OperationType) ([]byte, error) {
 	//repicate the response
+	nodeState := s.raftNode.State()
+	isLeader := nodeState == raft.Leader
 	responseReplicationPayload, err := msgpack.Marshal(
 		&ReplicateResponsePayload{
-			Response: response,
+			Response:       response,
+			IsLeader:       isLeader,
+			RequestedBlock: block,
 		},
 	)
 	if err != nil {
@@ -114,7 +117,15 @@ func (s *shardNodeServer) getResponseReplicationCommand(response string, request
 	return responseReplicationCommand, nil
 }
 
-func (s *shardNodeServer) query(ctx context.Context, op OperationType, block string, value string) error {
+func (s *shardNodeServer) createResponseChannelForRequestID(requestID string) chan string {
+	s.shardNodeFSM.mu.Lock()
+	defer s.shardNodeFSM.mu.Unlock()
+	ch := make(chan string)
+	s.shardNodeFSM.responseChannel[requestID] = ch
+	return ch
+}
+
+func (s *shardNodeServer) query(ctx context.Context, op OperationType, block string, value string) (string, error) {
 	md, _ := metadata.FromIncomingContext(ctx)
 	requestID := md["requestid"][0]
 
@@ -126,7 +137,7 @@ func (s *shardNodeServer) query(ctx context.Context, op OperationType, block str
 		},
 	)
 	if err != nil {
-		return fmt.Errorf("could not marshal the request, path, storage replication payload %s", err)
+		return "", fmt.Errorf("could not marshal the request, path, storage replication payload %s", err)
 	}
 	requestReplicationCommand, err := msgpack.Marshal(
 		&Command{
@@ -136,14 +147,14 @@ func (s *shardNodeServer) query(ctx context.Context, op OperationType, block str
 		},
 	)
 	if err != nil {
-		return fmt.Errorf("could not marshal the request, path, storage replication command %s", err)
+		return "", fmt.Errorf("could not marshal the request, path, storage replication command %s", err)
 	}
 
 	//TODO: make the timeout accurate
 	//TODO: should i lock the raftNode?
 	err = s.raftNode.Apply(requestReplicationCommand, 1*time.Second).Error()
 	if err != nil {
-		return fmt.Errorf("could not apply log to the FSM; %s", err)
+		return "", fmt.Errorf("could not apply log to the FSM; %s", err)
 	}
 
 	leader := s.getRandomOramNodeLeader()
@@ -158,36 +169,41 @@ func (s *shardNodeServer) query(ctx context.Context, op OperationType, block str
 		},
 	)
 	if err != nil {
-		return fmt.Errorf("could not call the ReadPath RPC on the oram node. %s", err)
+		return "", fmt.Errorf("could not call the ReadPath RPC on the oram node. %s", err)
 	}
-	if !s.isInitialRequest(block, requestID) {
-		// ignore the response and wait for the actual response on the channel
-	} else {
-		responseReplicationCommand, err := s.getResponseReplicationCommand(reply.Value, requestID)
+	responseChannel := s.createResponseChannelForRequestID(requestID)
+	if s.isInitialRequest(block, requestID) {
+		responseReplicationCommand, err := s.getResponseReplicationCommand(reply.Value, requestID, block, value, op)
 		if err != nil {
-			return fmt.Errorf("could not create response replication command; %s", err)
+			return "", fmt.Errorf("could not create response replication command; %s", err)
 		}
 		//TODO: make the timeout accurate
 		//TODO: should i lock the raftNode?
 		err = s.raftNode.Apply(responseReplicationCommand, 1*time.Second).Error()
 		if err != nil {
-			return fmt.Errorf("could not apply log to the FSM; %s", err)
+			return "", fmt.Errorf("could not apply log to the FSM; %s", err)
 		}
 	}
-
-	return nil
+	responseValue := <-responseChannel
+	return responseValue, nil
 }
 
 func (s *shardNodeServer) Read(ctx context.Context, readRequest *pb.ReadRequest) (*pb.ReadReply, error) {
 	fmt.Println("Read on shard node is called")
-	s.query(ctx, Read, readRequest.Block, "")
-	return &pb.ReadReply{Value: "test"}, nil
+	val, err := s.query(ctx, Read, readRequest.Block, "")
+	if err != nil {
+		return nil, err
+	}
+	return &pb.ReadReply{Value: val}, nil
 }
 
 func (s *shardNodeServer) Write(ctx context.Context, writeRequest *pb.WriteRequest) (*pb.WriteReply, error) {
 	fmt.Println("Write on shard node is called")
-	s.query(ctx, Write, writeRequest.Block, writeRequest.Value)
-	return &pb.WriteReply{Success: true}, nil
+	val, err := s.query(ctx, Write, writeRequest.Block, writeRequest.Value)
+	if err != nil {
+		return nil, err
+	}
+	return &pb.WriteReply{Success: val == writeRequest.Value}, nil
 }
 
 func (s *shardNodeServer) JoinRaftVoter(ctx context.Context, joinRaftVoterRequest *pb.JoinRaftVoterRequest) (*pb.JoinRaftVoterReply, error) {
@@ -266,12 +282,12 @@ func StartServer(shardNodeServerID int, rpcPort int, replicaID int, raftPort int
 		shardNodeServerID:       shardNodeServerID,
 		replicaID:               replicaID,
 		raftNode:                r,
-		responseChannel:         make(map[string]chan string),
 		shardNodeFSM:            shardNodeFSM,
 		oramNodeClients:         oramNodeRPCClients,
 		oramNodeLeaderNodeIDMap: make(map[int]int),
 	}
 	go shardnodeServer.announceLeadershipChanges()
+	go shardnodeServer.subscribeToOramNodeLeaderChanges()
 	grpcServer := grpc.NewServer()
 	pb.RegisterShardNodeServer(grpcServer, shardnodeServer)
 	grpcServer.Serve(lis)

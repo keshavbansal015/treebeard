@@ -18,6 +18,7 @@ type oramNodeServer struct {
 
 func (o *oramNodeServer) ReadPath(context.Context, *pb.ReadPathRequest) (*pb.ReadPathReply, error) {
 	//TODO: implement
+	//TODO: it should return an error if the block does not exist
 	return &pb.ReadPathReply{Value: "test_val_from_oram_node"}, nil
 }
 

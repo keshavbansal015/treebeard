@@ -34,17 +34,21 @@ type shardNodeFSM struct {
 
 	responseMap map[string]string //map of requestID to response map[string]string
 
-	stash map[string]string //map of block to value
-	// stash diff (TODO: for the blocks request part)
+	stash             map[string]string //map of block to value
+	stashLogicalTimes map[string]int    //map of block to logical time
+
+	responseChannel map[string]chan string //map of requestId to their channel for receiving response
 }
 
 func newShardNodeFSM() *shardNodeFSM {
 	return &shardNodeFSM{
-		requestLog:   make(map[string][]string),
-		pathMap:      make(map[string]int),
-		storageIDMap: make(map[string]int),
-		responseMap:  make(map[string]string),
-		stash:        make(map[string]string),
+		requestLog:        make(map[string][]string),
+		pathMap:           make(map[string]int),
+		storageIDMap:      make(map[string]int),
+		responseMap:       make(map[string]string),
+		stash:             make(map[string]string),
+		stashLogicalTimes: make(map[string]int),
+		responseChannel:   make(map[string]chan string),
 	}
 }
 
@@ -57,12 +61,39 @@ func (fsm *shardNodeFSM) handleReplicateRequestAndPathAndStorage(requestID strin
 	fsm.storageIDMap[requestID] = r.StorageID
 }
 
+func (fsm *shardNodeFSM) handleLocalReplicaChanges(block string, requestID string, newValue string, opType OperationType, isLeader bool) {
+	fsm.mu.Lock()
+	defer fsm.mu.Unlock()
+	_, exists := fsm.stash[block]
+	if exists {
+		fsm.stashLogicalTimes[block]++
+		if opType == Write {
+			fsm.stash[block] = newValue
+		}
+	} else {
+		response := fsm.responseMap[requestID]
+		if opType == Read {
+			fsm.stash[block] = response
+		} else if opType == Write {
+			fsm.stash[block] = newValue
+		}
+		if isLeader {
+			for _, waitingRequestID := range fsm.requestLog[block] {
+				fsm.responseChannel[waitingRequestID] <- fsm.stash[block]
+			}
+		}
+	}
+	if isLeader {
+		fsm.responseChannel[requestID] <- fsm.stash[block]
+	}
+}
+
 func (fsm *shardNodeFSM) handleReplicateResponse(requestID string, r ReplicateResponsePayload) {
 	fsm.mu.Lock()
 	defer fsm.mu.Unlock()
 
 	fsm.responseMap[requestID] = r.Response
-	//TODO: start a go routine to handle the replica responsibilites after this function returns. Just for followers
+	go fsm.handleLocalReplicaChanges(r.RequestedBlock, requestID, r.NewValue, r.OpType, r.IsLeader)
 }
 
 func (fsm *shardNodeFSM) Apply(rLog *raft.Log) interface{} {

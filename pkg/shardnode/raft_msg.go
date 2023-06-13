@@ -20,5 +20,9 @@ type ReplicateRequestAndPathAndStoragePayload struct {
 }
 
 type ReplicateResponsePayload struct {
-	Response string
+	RequestedBlock string
+	Response       string
+	IsLeader       bool
+	NewValue       string
+	OpType         OperationType
 }
