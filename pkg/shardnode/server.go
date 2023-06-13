@@ -67,65 +67,51 @@ func (s *shardNodeServer) subscribeToOramNodeLeaderChanges() {
 	}
 }
 
-func (s *shardNodeServer) handleReadPathFromOramNode(ctx context.Context, block string, requestID string) (responseReplicationCommand []byte, err error) {
+func (s *shardNodeServer) getRandomOramNodeLeader() oramNodeRPCClient {
 	s.shardNodeFSM.mu.Lock()
 	defer s.shardNodeFSM.mu.Unlock()
-
 	oramNodesLen := len(s.oramNodeClients)
 	randomOramNodeIndex := rand.Intn(oramNodesLen)
 	randomOramNode := s.oramNodeClients[randomOramNodeIndex]
 	leader := randomOramNode[s.oramNodeLeaderNodeIDMap[randomOramNodeIndex]]
-	if s.shardNodeFSM.requestLog[block][0] != requestID {
-		randomPath := 0      // TODO: change after adding the tree logic
-		randomStorageID := 0 //TODO: change after adding the tree logic
-		leader.ClientAPI.ReadPath(
-			ctx,
-			&oramnodepb.ReadPathRequest{
-				Block:     block,
-				Path:      int32(randomPath),
-				StorageId: int32(randomStorageID),
-				IsReal:    false,
-			},
-		)
-		// ignore the response and wait for the actual response on the channel
+	return leader
+}
+
+func (s *shardNodeServer) isInitialRequest(block string, requestID string) bool {
+	s.shardNodeFSM.mu.Lock()
+	defer s.shardNodeFSM.mu.Unlock()
+	return s.shardNodeFSM.requestLog[block][0] == requestID
+}
+
+func (s *shardNodeServer) getPathAndStorageBasedOnRequest(block string, requestID string) (path int, storageID int) {
+	if !s.isInitialRequest(block, requestID) {
+		return 0, 0 // TODO: change to a random path and storage after adding the tree logic
 	} else {
-		path := 0      //TODO: read from position map
-		storageID := 0 //TODO: read from position map
-		reply, err := leader.ClientAPI.ReadPath(
-			ctx,
-			&oramnodepb.ReadPathRequest{
-				Block:     block,
-				Path:      int32(path),
-				StorageId: int32(storageID),
-				IsReal:    true,
-			},
-		)
-		if err != nil {
-			return nil, fmt.Errorf("could not call the ReadPath RPC on the oram node. %s", err)
-		}
-		fmt.Printf("the reply value is: %s", reply.Value)
-		//repicate the response
-		responseReplicationPayload, err := msgpack.Marshal(
-			&ReplicateResponsePayload{
-				Response: reply.Value,
-			},
-		)
-		if err != nil {
-			return nil, fmt.Errorf("could not marshal the response replication payload; %s", err)
-		}
-		responseReplicationCommand, err := msgpack.Marshal(
-			&Command{
-				Type:      ReplicateResponseCommand,
-				RequestID: requestID,
-				Payload:   responseReplicationPayload,
-			},
-		)
-		if err != nil {
-			return nil, fmt.Errorf("could not marshal the response replication command; %s", err)
-		}
-		return responseReplicationCommand, nil
+		return 0, 0 // TODO: change to a real path and storage from position map after adding the tree logic
 	}
-	return nil, nil
+}
+
+func (s *shardNodeServer) getResponseReplicationCommand(response string, requestID string) ([]byte, error) {
+	//repicate the response
+	responseReplicationPayload, err := msgpack.Marshal(
+		&ReplicateResponsePayload{
+			Response: response,
+		},
+	)
+	if err != nil {
+		return nil, fmt.Errorf("could not marshal the response replication payload; %s", err)
+	}
+	responseReplicationCommand, err := msgpack.Marshal(
+		&Command{
+			Type:      ReplicateResponseCommand,
+			RequestID: requestID,
+			Payload:   responseReplicationPayload,
+		},
+	)
+	if err != nil {
+		return nil, fmt.Errorf("could not marshal the response replication command; %s", err)
+	}
+	return responseReplicationCommand, nil
 }
 
 func (s *shardNodeServer) query(ctx context.Context, op OperationType, block string, value string) error {
@@ -160,15 +146,33 @@ func (s *shardNodeServer) query(ctx context.Context, op OperationType, block str
 		return fmt.Errorf("could not apply log to the FSM; %s", err)
 	}
 
-	responseReplicationCommand, err := s.handleReadPathFromOramNode(ctx, block, requestID)
+	leader := s.getRandomOramNodeLeader()
+	path, storageID := s.getPathAndStorageBasedOnRequest(block, requestID)
+	reply, err := leader.ClientAPI.ReadPath(
+		ctx,
+		&oramnodepb.ReadPathRequest{
+			Block:     block,
+			Path:      int32(path),
+			StorageId: int32(storageID),
+			IsReal:    true,
+		},
+	)
 	if err != nil {
-		return fmt.Errorf("could not handle read path; %s", err)
+		return fmt.Errorf("could not call the ReadPath RPC on the oram node. %s", err)
 	}
-	//TODO: make the timeout accurate
-	//TODO: should i lock the raftNode?
-	err = s.raftNode.Apply(responseReplicationCommand, 1*time.Second).Error()
-	if err != nil {
-		return fmt.Errorf("could not apply log to the FSM; %s", err)
+	if !s.isInitialRequest(block, requestID) {
+		// ignore the response and wait for the actual response on the channel
+	} else {
+		responseReplicationCommand, err := s.getResponseReplicationCommand(reply.Value, requestID)
+		if err != nil {
+			return fmt.Errorf("could not create response replication command; %s", err)
+		}
+		//TODO: make the timeout accurate
+		//TODO: should i lock the raftNode?
+		err = s.raftNode.Apply(responseReplicationCommand, 1*time.Second).Error()
+		if err != nil {
+			return fmt.Errorf("could not apply log to the FSM; %s", err)
+		}
 	}
 
 	return nil
