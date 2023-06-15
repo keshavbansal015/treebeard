@@ -61,39 +61,41 @@ func (fsm *shardNodeFSM) handleReplicateRequestAndPathAndStorage(requestID strin
 	fsm.storageIDMap[requestID] = r.StorageID
 }
 
-func (fsm *shardNodeFSM) handleLocalReplicaChanges(block string, requestID string, newValue string, opType OperationType, isLeader bool) {
+type localReplicaChangeHandlerFunc func(requestID string, r ReplicateResponsePayload)
+
+func (fsm *shardNodeFSM) handleLocalReplicaChanges(requestID string, r ReplicateResponsePayload) {
 	fsm.mu.Lock()
 	defer fsm.mu.Unlock()
-	_, exists := fsm.stash[block]
+	_, exists := fsm.stash[r.RequestedBlock]
 	if exists {
-		fsm.stashLogicalTimes[block]++
-		if opType == Write {
-			fsm.stash[block] = newValue
+		fsm.stashLogicalTimes[r.RequestedBlock]++
+		if r.OpType == Write {
+			fsm.stash[r.RequestedBlock] = r.NewValue
 		}
 	} else {
 		response := fsm.responseMap[requestID]
-		if opType == Read {
-			fsm.stash[block] = response
-		} else if opType == Write {
-			fsm.stash[block] = newValue
+		if r.OpType == Read {
+			fsm.stash[r.RequestedBlock] = response
+		} else if r.OpType == Write {
+			fsm.stash[r.RequestedBlock] = r.NewValue
 		}
-		if isLeader {
-			for _, waitingRequestID := range fsm.requestLog[block] {
-				fsm.responseChannel[waitingRequestID] <- fsm.stash[block]
+		if r.IsLeader {
+			for _, waitingRequestID := range fsm.requestLog[r.RequestedBlock] {
+				fsm.responseChannel[waitingRequestID] <- fsm.stash[r.RequestedBlock]
 			}
 		}
 	}
-	if isLeader {
-		fsm.responseChannel[requestID] <- fsm.stash[block]
+	if r.IsLeader {
+		fsm.responseChannel[requestID] <- fsm.stash[r.RequestedBlock]
 	}
 }
 
-func (fsm *shardNodeFSM) handleReplicateResponse(requestID string, r ReplicateResponsePayload) {
+func (fsm *shardNodeFSM) handleReplicateResponse(requestID string, r ReplicateResponsePayload, f localReplicaChangeHandlerFunc) {
 	fsm.mu.Lock()
 	defer fsm.mu.Unlock()
 
 	fsm.responseMap[requestID] = r.Response
-	go fsm.handleLocalReplicaChanges(r.RequestedBlock, requestID, r.NewValue, r.OpType, r.IsLeader)
+	go f(requestID, r)
 }
 
 func (fsm *shardNodeFSM) Apply(rLog *raft.Log) interface{} {
@@ -120,7 +122,7 @@ func (fsm *shardNodeFSM) Apply(rLog *raft.Log) interface{} {
 			if err != nil {
 				return fmt.Errorf("could not unmarshall the response replication command; %s", err)
 			}
-			fsm.handleReplicateResponse(requestID, responseReplicationPayload)
+			fsm.handleReplicateResponse(requestID, responseReplicationPayload, fsm.handleLocalReplicaChanges)
 		} else {
 			fmt.Println("wrong command type")
 		}
