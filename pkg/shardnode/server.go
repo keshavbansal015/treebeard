@@ -14,7 +14,6 @@ import (
 	oramnodepb "github.com/dsg-uwaterloo/oblishard/api/oramnode"
 	pb "github.com/dsg-uwaterloo/oblishard/api/shardnode"
 	"github.com/hashicorp/raft"
-	"github.com/vmihailenco/msgpack/v5"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/metadata"
@@ -96,33 +95,6 @@ func (s *shardNodeServer) getPathAndStorageBasedOnRequest(block string, requestI
 	}
 }
 
-func (s *shardNodeServer) getResponseReplicationCommand(response string, requestID string, block string, newValue string, opType OperationType) ([]byte, error) {
-	//repicate the response
-	nodeState := s.raftNode.State()
-	isLeader := nodeState == raft.Leader
-	responseReplicationPayload, err := msgpack.Marshal(
-		&ReplicateResponsePayload{
-			Response:       response,
-			IsLeader:       isLeader,
-			RequestedBlock: block,
-		},
-	)
-	if err != nil {
-		return nil, fmt.Errorf("could not marshal the response replication payload; %s", err)
-	}
-	responseReplicationCommand, err := msgpack.Marshal(
-		&Command{
-			Type:      ReplicateResponseCommand,
-			RequestID: requestID,
-			Payload:   responseReplicationPayload,
-		},
-	)
-	if err != nil {
-		return nil, fmt.Errorf("could not marshal the response replication command; %s", err)
-	}
-	return responseReplicationCommand, nil
-}
-
 func (s *shardNodeServer) createResponseChannelForRequestID(requestID string) chan string {
 	s.shardNodeFSM.mu.Lock()
 	defer s.shardNodeFSM.mu.Unlock()
@@ -135,25 +107,9 @@ func (s *shardNodeServer) query(ctx context.Context, op OperationType, block str
 	md, _ := metadata.FromIncomingContext(ctx)
 	requestID := md["requestid"][0]
 
-	requestReplicationPayload, err := msgpack.Marshal(
-		&ReplicateRequestAndPathAndStoragePayload{
-			RequestedBlock: block,
-			Path:           0, //TODO: update to use a real path
-			StorageID:      0, //TODO: update to use a real storage id
-		},
-	)
+	requestReplicationCommand, err := newRequestReplicationCommand(block, requestID)
 	if err != nil {
-		return "", fmt.Errorf("could not marshal the request, path, storage replication payload %s", err)
-	}
-	requestReplicationCommand, err := msgpack.Marshal(
-		&Command{
-			Type:      ReplicateRequestAndPathAndStorageCommand,
-			RequestID: requestID,
-			Payload:   requestReplicationPayload,
-		},
-	)
-	if err != nil {
-		return "", fmt.Errorf("could not marshal the request, path, storage replication command %s", err)
+		return "", fmt.Errorf("could not create request replication command; %s", err)
 	}
 
 	//TODO: make the timeout accurate
@@ -179,7 +135,7 @@ func (s *shardNodeServer) query(ctx context.Context, op OperationType, block str
 	}
 	responseChannel := s.createResponseChannelForRequestID(requestID)
 	if s.isInitialRequest(block, requestID) {
-		responseReplicationCommand, err := s.getResponseReplicationCommand(reply.Value, requestID, block, value, op)
+		responseReplicationCommand, err := newResponseReplicationCommand(reply.Value, requestID, block, value, op, s.raftNode.State() == raft.Leader)
 		if err != nil {
 			return "", fmt.Errorf("could not create response replication command; %s", err)
 		}
