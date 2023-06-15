@@ -7,6 +7,7 @@ import (
 	"math/rand"
 	"net"
 	"strconv"
+	"sync"
 	"time"
 
 	leadernotifpb "github.com/dsg-uwaterloo/oblishard/api/leadernotif"
@@ -28,6 +29,7 @@ type shardNodeServer struct {
 	shardNodeFSM            *shardNodeFSM
 	oramNodeClients         map[int]ReplicaRPCClientMap
 	oramNodeLeaderNodeIDMap map[int]int //map of oram node id to the current leader
+	mu                      sync.Mutex
 }
 
 type OperationType int
@@ -62,7 +64,9 @@ func (s *shardNodeServer) subscribeToOramNodeLeaderChanges() {
 		newLeaderID := leaderChange.LeaderId
 		nodeID := int(leaderChange.Id)
 		fmt.Printf("got new leader id for the raft cluster: %d\n", newLeaderID)
+		s.mu.Lock()
 		s.oramNodeLeaderNodeIDMap[nodeID] = int(newLeaderID)
+		s.mu.Unlock()
 	}
 }
 
@@ -72,7 +76,9 @@ func (s *shardNodeServer) getRandomOramNodeLeader() oramNodeRPCClient {
 	oramNodesLen := len(s.oramNodeClients)
 	randomOramNodeIndex := rand.Intn(oramNodesLen)
 	randomOramNode := s.oramNodeClients[randomOramNodeIndex]
+	s.mu.Lock()
 	leader := randomOramNode[s.oramNodeLeaderNodeIDMap[randomOramNodeIndex]]
+	s.mu.Unlock()
 	return leader
 }
 
