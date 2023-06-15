@@ -79,14 +79,11 @@ func (fsm *shardNodeFSM) handleLocalReplicaChanges(requestID string, r Replicate
 		} else if r.OpType == Write {
 			fsm.stash[r.RequestedBlock] = r.NewValue
 		}
-		if r.IsLeader {
-			for _, waitingRequestID := range fsm.requestLog[r.RequestedBlock] {
-				fsm.responseChannel[waitingRequestID] <- fsm.stash[r.RequestedBlock]
-			}
-		}
 	}
 	if r.IsLeader {
-		fsm.responseChannel[requestID] <- fsm.stash[r.RequestedBlock]
+		for _, waitingRequestID := range fsm.requestLog[r.RequestedBlock] {
+			fsm.responseChannel[waitingRequestID] <- fsm.stash[r.RequestedBlock]
+		}
 	}
 }
 
