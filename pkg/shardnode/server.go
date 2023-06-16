@@ -34,8 +34,6 @@ const (
 )
 
 func (s *shardNodeServer) getRandomOramNodeReplicaMap() ReplicaRPCClientMap {
-	s.shardNodeFSM.mu.Lock()
-	defer s.shardNodeFSM.mu.Unlock()
 	oramNodesLen := len(s.oramNodeClients)
 	randomOramNodeIndex := rand.Intn(oramNodesLen)
 	randomOramNode := s.oramNodeClients[randomOramNodeIndex]
