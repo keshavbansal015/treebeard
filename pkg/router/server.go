@@ -6,23 +6,19 @@ import (
 	"log"
 	"math"
 	"net"
-	"sync"
+	"time"
 
-	leadernotifpb "github.com/dsg-uwaterloo/oblishard/api/leadernotif"
 	pb "github.com/dsg-uwaterloo/oblishard/api/router"
 	shardnodepb "github.com/dsg-uwaterloo/oblishard/api/shardnode"
 	"github.com/dsg-uwaterloo/oblishard/pkg/rpc"
 	utils "github.com/dsg-uwaterloo/oblishard/pkg/utils"
 	"google.golang.org/grpc"
-	"google.golang.org/grpc/credentials/insecure"
 )
 
 type routerServer struct {
 	pb.UnimplementedRouterServer
-	shardNodeRPCClients      map[int]ReplicaRPCClientMap
-	routerID                 int
-	shardNodeLeaderNodeIDMap map[int]int //map of shard node id to the current leader
-	mu                       sync.Mutex
+	shardNodeRPCClients map[int]ReplicaRPCClientMap
+	routerID            int
 }
 
 func (r *routerServer) whereToForward(block string) (shardNodeID int) {
@@ -30,67 +26,61 @@ func (r *routerServer) whereToForward(block string) (shardNodeID int) {
 	return int(math.Mod(float64(h), float64(len(r.shardNodeRPCClients))))
 }
 
-func (r *routerServer) getCurrentLeaderIndex(shardNodeId int) int {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	return r.shardNodeLeaderNodeIDMap[shardNodeId]
-}
-
 func (r *routerServer) Read(ctx context.Context, readRequest *pb.ReadRequest) (*pb.ReadReply, error) {
 	whereToForward := r.whereToForward(readRequest.Block)
 	shardNodeRPCClient := r.shardNodeRPCClients[whereToForward]
 
-	reply, err := shardNodeRPCClient[r.getCurrentLeaderIndex(whereToForward)].ClientAPI.Read(ctx,
-		&shardnodepb.ReadRequest{Block: readRequest.Block})
-	if err != nil {
-		fmt.Println(err)
-		return nil, err
+	type readResult struct {
+		reply *shardnodepb.ReadReply
+		err   error
+	}
+	responseChannel := make(chan readResult)
+	for _, client := range shardNodeRPCClient {
+		go func(client ShardNodeRPCClient) {
+			reply, err := client.ClientAPI.Read(ctx, &shardnodepb.ReadRequest{Block: readRequest.Block})
+			responseChannel <- readResult{reply: reply, err: err}
+		}(client)
 	}
 
-	return &pb.ReadReply{Value: reply.Value}, nil
+	timeout := time.After(2 * time.Second)
+	for {
+		select {
+		case readResult := <-responseChannel:
+			if readResult.err == nil {
+				return &pb.ReadReply{Value: readResult.reply.Value}, nil
+			}
+		case <-timeout:
+			return nil, fmt.Errorf("could not read value from the shardnode")
+		}
+	}
 }
 
 func (r *routerServer) Write(ctx context.Context, writeRequest *pb.WriteRequest) (*pb.WriteReply, error) {
 	whereToForward := r.whereToForward(writeRequest.Block)
 	shardNodeRPCClient := r.shardNodeRPCClients[whereToForward]
 
-	reply, err := shardNodeRPCClient[r.getCurrentLeaderIndex(whereToForward)].ClientAPI.Write(ctx,
-		&shardnodepb.WriteRequest{Block: writeRequest.Block, Value: writeRequest.Value})
-	if err != nil {
-		return &pb.WriteReply{Success: reply.Success}, err
+	type writeResult struct {
+		reply *shardnodepb.WriteReply
+		err   error
+	}
+	responseChannel := make(chan writeResult)
+	for _, client := range shardNodeRPCClient {
+		go func(client ShardNodeRPCClient) {
+			reply, err := client.ClientAPI.Write(ctx, &shardnodepb.WriteRequest{Block: writeRequest.Block, Value: writeRequest.Value})
+			responseChannel <- writeResult{reply: reply, err: err}
+		}(client)
 	}
 
-	return &pb.WriteReply{Success: true}, nil
-}
-
-// TODO: currently if a router fails and restarts it loses its prior knowledge about the current leader
-func (r *routerServer) subscribeToShardNodeLeaderChanges() {
-	serverAddr := fmt.Sprintf("%s:%d", "127.0.0.1", 1212) // TODO: change this to a dynamic format
-	conn, err := grpc.Dial(serverAddr, grpc.WithTransportCredentials(insecure.NewCredentials()))
-	if err != nil {
-		log.Fatalln("can't dial the leadernotif service")
-	}
-	clientAPI := leadernotifpb.NewLeaderNotifClient(conn)
-	stream, err := clientAPI.Subscribe(
-		context.Background(),
-		&leadernotifpb.SubscribeRequest{
-			NodeLayer: "shardnode",
-		},
-	)
-	if err != nil {
-		log.Fatalf("could not connect to the leadernotif service")
-	}
+	timeout := time.After(2 * time.Second)
 	for {
-		leaderChange, err := stream.Recv()
-		if err != nil {
-			log.Fatalf("error in understanding the current leader of the raft cluster")
+		select {
+		case writeResult := <-responseChannel:
+			if writeResult.err == nil {
+				return &pb.WriteReply{Success: true}, nil
+			}
+		case <-timeout:
+			return nil, fmt.Errorf("could not read value from the shardnode")
 		}
-		newLeaderID := leaderChange.LeaderId
-		nodeID := int(leaderChange.Id)
-		fmt.Printf("got new leader id for the raft cluster: %d\n", newLeaderID)
-		r.mu.Lock()
-		r.shardNodeLeaderNodeIDMap[nodeID] = int(newLeaderID)
-		r.mu.Unlock()
 	}
 }
 
@@ -104,14 +94,7 @@ func StartRPCServer(shardNodeRPCClients map[int]ReplicaRPCClientMap, routerID in
 		shardNodeRPCClients: shardNodeRPCClients,
 		routerID:            routerID,
 	}
-	routerServer.shardNodeLeaderNodeIDMap = make(map[int]int)
-	for i := 0; i < len(routerServer.shardNodeRPCClients); i++ {
-		routerServer.shardNodeLeaderNodeIDMap[i] = 0
-		// The initial leader is node zero for all shardnodes
-		// The routers update this if the leader changes for a shardnode.
-		// The routers understand this by subscribing to the leadernotif service
-	}
-	go routerServer.subscribeToShardNodeLeaderChanges()
+
 	pb.RegisterRouterServer(grpcServer, routerServer)
 	grpcServer.Serve(lis)
 }
