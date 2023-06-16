@@ -16,6 +16,8 @@ type oramNodeServer struct {
 	replicaID        int
 }
 
+//TODO: we should answer the request if we are the current leader. Add this after implementing raft for this layer.
+
 func (o *oramNodeServer) ReadPath(context.Context, *pb.ReadPathRequest) (*pb.ReadPathReply, error) {
 	//TODO: implement
 	//TODO: it should return an error if the block does not exist
