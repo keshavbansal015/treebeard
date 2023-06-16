@@ -100,6 +100,9 @@ func (s *shardNodeServer) readPathFromAllOramNodeReplicas(ctx context.Context, o
 }
 
 func (s *shardNodeServer) query(ctx context.Context, op OperationType, block string, value string) (string, error) {
+	if s.raftNode.State() != raft.Leader {
+		return "", fmt.Errorf("not the leader node")
+	}
 	md, _ := metadata.FromIncomingContext(ctx)
 	requestID := md["requestid"][0]
 
