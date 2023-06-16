@@ -26,6 +26,16 @@ type shardNodeServer struct {
 	oramNodeClients   map[int]ReplicaRPCClientMap
 }
 
+func newShardNodeServer(shardNodeServerID int, replicaID int, raftNode *raft.Raft, fsm *shardNodeFSM, oramNodeRPCClients map[int]ReplicaRPCClientMap) *shardNodeServer {
+	return &shardNodeServer{
+		shardNodeServerID: shardNodeServerID,
+		replicaID:         replicaID,
+		raftNode:          raftNode,
+		shardNodeFSM:      fsm,
+		oramNodeClients:   oramNodeRPCClients,
+	}
+}
+
 type OperationType int
 
 const (
@@ -205,13 +215,7 @@ func StartServer(shardNodeServerID int, rpcPort int, replicaID int, raftPort int
 	if err != nil {
 		log.Fatalf("failed to listen: %v", err)
 	}
-	shardnodeServer := &shardNodeServer{
-		shardNodeServerID: shardNodeServerID,
-		replicaID:         replicaID,
-		raftNode:          r,
-		shardNodeFSM:      shardNodeFSM,
-		oramNodeClients:   oramNodeRPCClients,
-	}
+	shardnodeServer := newShardNodeServer(shardNodeServerID, replicaID, r, shardNodeFSM, oramNodeRPCClients)
 	grpcServer := grpc.NewServer()
 	pb.RegisterShardNodeServer(grpcServer, shardnodeServer)
 	grpcServer.Serve(lis)
