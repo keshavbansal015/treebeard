@@ -19,10 +19,11 @@ type routerServer struct {
 	pb.UnimplementedRouterServer
 	shardNodeRPCClients map[int]ReplicaRPCClientMap
 	routerID            int
+	hasher              utils.Hasher
 }
 
 func (r *routerServer) whereToForward(block string) (shardNodeID int) {
-	h := utils.Hash(block)
+	h := r.hasher.Hash(block)
 	return int(math.Mod(float64(h), float64(len(r.shardNodeRPCClients))))
 }
 
@@ -93,6 +94,7 @@ func StartRPCServer(shardNodeRPCClients map[int]ReplicaRPCClientMap, routerID in
 	routerServer := &routerServer{
 		shardNodeRPCClients: shardNodeRPCClients,
 		routerID:            routerID,
+		hasher:              utils.Hasher{KnownHashes: make(map[string]uint32)},
 	}
 
 	pb.RegisterRouterServer(grpcServer, routerServer)

@@ -20,11 +20,13 @@ var hashTestCases = []hashTest{
 	{"2", 923577301},
 	{"3", 906799682},
 	{"4", 822911587},
+	{"a", 3826002220},
 }
 
 func TestHash(t *testing.T) {
+	hasher := utils.Hasher{KnownHashes: make(map[string]uint32)}
 	for _, test := range hashTestCases {
-		output := utils.Hash(test.input)
+		output := hasher.Hash(test.input)
 		if output != test.expectedHash {
 			t.Errorf("Hash output %d is not equal to the expected hash output %d",
 				output, test.expectedHash)

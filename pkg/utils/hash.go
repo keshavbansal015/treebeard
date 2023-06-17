@@ -2,8 +2,17 @@ package utils
 
 import "hash/fnv"
 
-func Hash(s string) uint32 { //TODO: optimize for faster hashing
-	h := fnv.New32a()
-	h.Write([]byte(s))
-	return h.Sum32()
+type Hasher struct {
+	KnownHashes map[string]uint32
+}
+
+func (h *Hasher) Hash(s string) uint32 {
+	if hash, exists := h.KnownHashes[s]; exists {
+		return hash
+	}
+	hash := fnv.New32a()
+	hash.Write([]byte(s))
+	val := hash.Sum32()
+	h.KnownHashes[s] = val
+	return val
 }
