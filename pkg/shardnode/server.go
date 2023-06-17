@@ -118,9 +118,7 @@ func (s *shardNodeServer) query(ctx context.Context, op OperationType, block str
 	if err != nil {
 		return "", fmt.Errorf("could not create request replication command; %s", err)
 	}
-
-	//TODO: make the timeout accurate
-	err = s.raftNode.Apply(requestReplicationCommand, 1*time.Second).Error()
+	err = s.raftNode.Apply(requestReplicationCommand, 2*time.Second).Error()
 	if err != nil {
 		return "", fmt.Errorf("could not apply log to the FSM; %s", err)
 	}
@@ -138,8 +136,7 @@ func (s *shardNodeServer) query(ctx context.Context, op OperationType, block str
 		if err != nil {
 			return "", fmt.Errorf("could not create response replication command; %s", err)
 		}
-		//TODO: make the timeout accurate
-		err = s.raftNode.Apply(responseReplicationCommand, 1*time.Second).Error()
+		err = s.raftNode.Apply(responseReplicationCommand, 2*time.Second).Error()
 		if err != nil {
 			return "", fmt.Errorf("could not apply log to the FSM; %s", err)
 		}
@@ -197,8 +194,7 @@ func (s *shardNodeServer) SendBlocks(ctx context.Context, request *pb.SendBlocks
 	if err != nil {
 		return nil, fmt.Errorf("could not create sent blocks replication command; %s", err)
 	}
-	//TODO: make the timeout accurate
-	err = s.raftNode.Apply(sentBlocksReplicationCommand, 1*time.Second).Error()
+	err = s.raftNode.Apply(sentBlocksReplicationCommand, 2*time.Second).Error()
 	if err != nil {
 		return nil, fmt.Errorf("could not apply log to the FSM; %s", err)
 	}
