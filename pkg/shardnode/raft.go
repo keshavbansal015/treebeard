@@ -11,6 +11,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/hashicorp/raft"
 	raftboltdb "github.com/hashicorp/raft-boltdb/v2"
 	"github.com/vmihailenco/msgpack/v5"
@@ -40,6 +41,9 @@ type shardNodeFSM struct {
 	stashWaitingStatus map[string]bool   //map of block to waiting status
 
 	responseChannel map[string]chan string //map of requestId to their channel for receiving response
+
+	acks  map[string][]string //map of requestID to array of blocks
+	nacks map[string][]string //map of requestID to array of blocks
 }
 
 func newShardNodeFSM() *shardNodeFSM {
@@ -65,7 +69,7 @@ func (fsm *shardNodeFSM) handleReplicateRequestAndPathAndStorage(requestID strin
 
 type localReplicaChangeHandlerFunc func(requestID string, r ReplicateResponsePayload)
 
-func (fsm *shardNodeFSM) handleLocalReplicaChanges(requestID string, r ReplicateResponsePayload) {
+func (fsm *shardNodeFSM) handleLocalResponseReplicationChanges(requestID string, r ReplicateResponsePayload) {
 	fsm.mu.Lock()
 	defer fsm.mu.Unlock()
 	_, exists := fsm.stash[r.RequestedBlock]
@@ -107,19 +111,30 @@ func (fsm *shardNodeFSM) handleReplicateSentBlocks(r ReplicateSentBlocksPayload)
 	}
 }
 
-func (fsm *shardNodeFSM) handleReplicateAcksNacks(r ReplicateAcksNacksPayload) {
+func (fsm *shardNodeFSM) handleLocalAcksNacksReplicationChanges(requestID string) {
 	fsm.mu.Lock()
 	defer fsm.mu.Unlock()
-	for _, block := range r.AckedBlocks {
+	for _, block := range fsm.acks[requestID] {
 		if fsm.stashLogicalTimes[block] == 0 {
 			delete(fsm.stash, block)
 			delete(fsm.stashLogicalTimes, block)
 		}
 		delete(fsm.stashWaitingStatus, block)
 	}
-	for _, block := range r.NackedBlocks {
+	for _, block := range fsm.nacks[requestID] {
 		delete(fsm.stashWaitingStatus, block)
 	}
+}
+
+func (fsm *shardNodeFSM) handleReplicateAcksNacks(r ReplicateAcksNacksPayload) {
+
+	fsm.mu.Lock()
+	defer fsm.mu.Unlock()
+	requestID := uuid.New().String()
+	fsm.acks[requestID] = r.AckedBlocks
+	fsm.nacks[requestID] = r.NackedBlocks
+
+	go fsm.handleLocalAcksNacksReplicationChanges(requestID)
 }
 
 func (fsm *shardNodeFSM) Apply(rLog *raft.Log) interface{} {
@@ -146,7 +161,7 @@ func (fsm *shardNodeFSM) Apply(rLog *raft.Log) interface{} {
 			if err != nil {
 				return fmt.Errorf("could not unmarshall the response replication command; %s", err)
 			}
-			fsm.handleReplicateResponse(requestID, responseReplicationPayload, fsm.handleLocalReplicaChanges)
+			fsm.handleReplicateResponse(requestID, responseReplicationPayload, fsm.handleLocalResponseReplicationChanges)
 		} else if command.Type == ReplicateSentBlocksCommand {
 			log.Println("got replication command for replicate sent blocks")
 			var replicateSentBlocksPayload ReplicateSentBlocksPayload

@@ -126,7 +126,7 @@ func TestHandleLocalReplicaChangesWhenValueInStashReturnsCorrectReadValueToAllWa
 	shardNodeFSM.stash["block"] = "test_value"
 
 	payload := createTestReplicateResponsePayload("block", "response", true, "value", Read)
-	go shardNodeFSM.handleLocalReplicaChanges("request1", payload)
+	go shardNodeFSM.handleLocalResponseReplicationChanges("request1", payload)
 
 	checkWaitingChannelsHelper(t, shardNodeFSM.responseChannel, "test_value")
 }
@@ -140,7 +140,7 @@ func TestHandleLocalReplicaChangesWhenValueInStashReturnsCorrectWriteValueToAllW
 	shardNodeFSM.stash["block"] = "test_value"
 
 	payload := createTestReplicateResponsePayload("block", "response", true, "value_write", Write)
-	go shardNodeFSM.handleLocalReplicaChanges("request1", payload)
+	go shardNodeFSM.handleLocalResponseReplicationChanges("request1", payload)
 
 	checkWaitingChannelsHelper(t, shardNodeFSM.responseChannel, "value_write")
 
@@ -158,7 +158,7 @@ func TestHandleLocalReplicaChangesWhenValueNotInStashReturnsResponseToAllWaiting
 	shardNodeFSM.responseMap["request1"] = "response_from_oramnode"
 
 	payload := createTestReplicateResponsePayload("block", "response", true, "", Read)
-	go shardNodeFSM.handleLocalReplicaChanges("request1", payload)
+	go shardNodeFSM.handleLocalResponseReplicationChanges("request1", payload)
 
 	checkWaitingChannelsHelper(t, shardNodeFSM.responseChannel, "response_from_oramnode")
 
@@ -176,7 +176,7 @@ func TestHandleLocalReplicaChangesWhenValueNotInStashReturnsWriteResponseToAllWa
 	shardNodeFSM.responseMap["request1"] = "response_from_oramnode"
 
 	payload := createTestReplicateResponsePayload("block", "response", true, "write_val", Write)
-	go shardNodeFSM.handleLocalReplicaChanges("request1", payload)
+	go shardNodeFSM.handleLocalResponseReplicationChanges("request1", payload)
 
 	checkWaitingChannelsHelper(t, shardNodeFSM.responseChannel, "write_val")
 
@@ -193,7 +193,7 @@ func TestHandleLocalReplicaChangesWhenNotLeaderDoesNotWriteOnChannels(t *testing
 	shardNodeFSM.stash["block"] = "test_value"
 
 	payload := createTestReplicateResponsePayload("block", "response", false, "", Read)
-	go shardNodeFSM.handleLocalReplicaChanges("request1", payload)
+	go shardNodeFSM.handleLocalResponseReplicationChanges("request1", payload)
 
 	for {
 		select {
