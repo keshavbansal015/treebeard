@@ -6,7 +6,9 @@ package shardnode;
 
 service ShardNode {
     rpc Read (ReadRequest) returns (ReadReply) {}
-    rpc Write (WriteRequest) returns (WriteReply) {}    
+    rpc Write (WriteRequest) returns (WriteReply) {}
+    rpc SendBlocks(SendBlocksRequest) returns (SendBlocksReply) {}
+    rpc AckSentBlocks(AckSentBlocksRequest) returns (AckSentBlocksReply) {}
     rpc JoinRaftVoter (JoinRaftVoterRequest) returns (JoinRaftVoterReply) {}
 }
 
@@ -33,5 +35,34 @@ message JoinRaftVoterRequest {
 }
 
 message JoinRaftVoterReply {
+    bool success = 1;
+}
+
+message SendBlocksRequest {
+    int32 maxBlocks = 1;
+    int32 path = 2;
+    int32 storage_id = 3;
+}
+
+message Block {
+    string block = 1;
+    string value = 2;
+}
+
+message SendBlocksReply {
+    repeated Block blocks = 1;
+}
+
+// it represents both acks and nacks
+message Ack {
+    string block = 1;
+    bool is_ack = 2; //if flase: nack
+}
+
+message AckSentBlocksRequest {
+    repeated Ack acks = 1;
+}
+
+message AckSentBlocksReply {
     bool success = 1;
 }

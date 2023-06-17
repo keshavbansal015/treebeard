@@ -34,8 +34,10 @@ type shardNodeFSM struct {
 
 	responseMap map[string]string //map of requestID to response map[string]string
 
-	stash             map[string]string //map of block to value
-	stashLogicalTimes map[string]int    //map of block to logical time
+	//TODO: i should merge these three to a map[string]struct format
+	stash              map[string]string //map of block to value
+	stashLogicalTimes  map[string]int    //map of block to logical time
+	stashWaitingStatus map[string]bool   //map of block to waiting status
 
 	responseChannel map[string]chan string //map of requestId to their channel for receiving response
 }
@@ -95,6 +97,31 @@ func (fsm *shardNodeFSM) handleReplicateResponse(requestID string, r ReplicateRe
 	go f(requestID, r)
 }
 
+func (fsm *shardNodeFSM) handleReplicateSentBlocks(r ReplicateSentBlocksPayload) {
+	fsm.mu.Lock()
+	defer fsm.mu.Unlock()
+
+	for _, block := range r.SentBlocks {
+		fsm.stashLogicalTimes[block] = 0
+		fsm.stashWaitingStatus[block] = true
+	}
+}
+
+func (fsm *shardNodeFSM) handleReplicateAcksNacks(r ReplicateAcksNacksPayload) {
+	fsm.mu.Lock()
+	defer fsm.mu.Unlock()
+	for _, block := range r.AckedBlocks {
+		if fsm.stashLogicalTimes[block] == 0 {
+			delete(fsm.stash, block)
+			delete(fsm.stashLogicalTimes, block)
+		}
+		delete(fsm.stashWaitingStatus, block)
+	}
+	for _, block := range r.NackedBlocks {
+		delete(fsm.stashWaitingStatus, block)
+	}
+}
+
 func (fsm *shardNodeFSM) Apply(rLog *raft.Log) interface{} {
 	switch rLog.Type {
 	case raft.LogCommand:
@@ -120,6 +147,22 @@ func (fsm *shardNodeFSM) Apply(rLog *raft.Log) interface{} {
 				return fmt.Errorf("could not unmarshall the response replication command; %s", err)
 			}
 			fsm.handleReplicateResponse(requestID, responseReplicationPayload, fsm.handleLocalReplicaChanges)
+		} else if command.Type == ReplicateSentBlocksCommand {
+			log.Println("got replication command for replicate sent blocks")
+			var replicateSentBlocksPayload ReplicateSentBlocksPayload
+			err := msgpack.Unmarshal(command.Payload, &replicateSentBlocksPayload)
+			if err != nil {
+				return fmt.Errorf("could not unmarshall the sent blocks replication command; %s", err)
+			}
+			fsm.handleReplicateSentBlocks(replicateSentBlocksPayload)
+		} else if command.Type == ReplicateAcksNacksCommand {
+			log.Println("got replication command for replicate acks/nacks")
+			var payload ReplicateAcksNacksPayload
+			err := msgpack.Unmarshal(command.Payload, &payload)
+			if err != nil {
+				return fmt.Errorf("could not unmarshall the acks/nacks replication command; %s", err)
+			}
+			fsm.handleReplicateAcksNacks(payload)
 		} else {
 			fmt.Println("wrong command type")
 		}

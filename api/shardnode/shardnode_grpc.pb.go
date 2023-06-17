@@ -24,6 +24,8 @@ const _ = grpc.SupportPackageIsVersion7
 type ShardNodeClient interface {
 	Read(ctx context.Context, in *ReadRequest, opts ...grpc.CallOption) (*ReadReply, error)
 	Write(ctx context.Context, in *WriteRequest, opts ...grpc.CallOption) (*WriteReply, error)
+	SendBlocks(ctx context.Context, in *SendBlocksRequest, opts ...grpc.CallOption) (*SendBlocksReply, error)
+	AckSentBlocks(ctx context.Context, in *AckSentBlocksRequest, opts ...grpc.CallOption) (*AckSentBlocksReply, error)
 	JoinRaftVoter(ctx context.Context, in *JoinRaftVoterRequest, opts ...grpc.CallOption) (*JoinRaftVoterReply, error)
 }
 
@@ -53,6 +55,24 @@ func (c *shardNodeClient) Write(ctx context.Context, in *WriteRequest, opts ...g
 	return out, nil
 }
 
+func (c *shardNodeClient) SendBlocks(ctx context.Context, in *SendBlocksRequest, opts ...grpc.CallOption) (*SendBlocksReply, error) {
+	out := new(SendBlocksReply)
+	err := c.cc.Invoke(ctx, "/shardnode.ShardNode/SendBlocks", in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *shardNodeClient) AckSentBlocks(ctx context.Context, in *AckSentBlocksRequest, opts ...grpc.CallOption) (*AckSentBlocksReply, error) {
+	out := new(AckSentBlocksReply)
+	err := c.cc.Invoke(ctx, "/shardnode.ShardNode/AckSentBlocks", in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 func (c *shardNodeClient) JoinRaftVoter(ctx context.Context, in *JoinRaftVoterRequest, opts ...grpc.CallOption) (*JoinRaftVoterReply, error) {
 	out := new(JoinRaftVoterReply)
 	err := c.cc.Invoke(ctx, "/shardnode.ShardNode/JoinRaftVoter", in, out, opts...)
@@ -68,6 +88,8 @@ func (c *shardNodeClient) JoinRaftVoter(ctx context.Context, in *JoinRaftVoterRe
 type ShardNodeServer interface {
 	Read(context.Context, *ReadRequest) (*ReadReply, error)
 	Write(context.Context, *WriteRequest) (*WriteReply, error)
+	SendBlocks(context.Context, *SendBlocksRequest) (*SendBlocksReply, error)
+	AckSentBlocks(context.Context, *AckSentBlocksRequest) (*AckSentBlocksReply, error)
 	JoinRaftVoter(context.Context, *JoinRaftVoterRequest) (*JoinRaftVoterReply, error)
 	mustEmbedUnimplementedShardNodeServer()
 }
@@ -81,6 +103,12 @@ func (UnimplementedShardNodeServer) Read(context.Context, *ReadRequest) (*ReadRe
 }
 func (UnimplementedShardNodeServer) Write(context.Context, *WriteRequest) (*WriteReply, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method Write not implemented")
+}
+func (UnimplementedShardNodeServer) SendBlocks(context.Context, *SendBlocksRequest) (*SendBlocksReply, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method SendBlocks not implemented")
+}
+func (UnimplementedShardNodeServer) AckSentBlocks(context.Context, *AckSentBlocksRequest) (*AckSentBlocksReply, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method AckSentBlocks not implemented")
 }
 func (UnimplementedShardNodeServer) JoinRaftVoter(context.Context, *JoinRaftVoterRequest) (*JoinRaftVoterReply, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method JoinRaftVoter not implemented")
@@ -134,6 +162,42 @@ func _ShardNode_Write_Handler(srv interface{}, ctx context.Context, dec func(int
 	return interceptor(ctx, in, info, handler)
 }
 
+func _ShardNode_SendBlocks_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(SendBlocksRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(ShardNodeServer).SendBlocks(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: "/shardnode.ShardNode/SendBlocks",
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(ShardNodeServer).SendBlocks(ctx, req.(*SendBlocksRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _ShardNode_AckSentBlocks_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(AckSentBlocksRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(ShardNodeServer).AckSentBlocks(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: "/shardnode.ShardNode/AckSentBlocks",
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(ShardNodeServer).AckSentBlocks(ctx, req.(*AckSentBlocksRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 func _ShardNode_JoinRaftVoter_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(JoinRaftVoterRequest)
 	if err := dec(in); err != nil {
@@ -166,6 +230,14 @@ var ShardNode_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "Write",
 			Handler:    _ShardNode_Write_Handler,
+		},
+		{
+			MethodName: "SendBlocks",
+			Handler:    _ShardNode_SendBlocks_Handler,
+		},
+		{
+			MethodName: "AckSentBlocks",
+			Handler:    _ShardNode_AckSentBlocks_Handler,
 		},
 		{
 			MethodName: "JoinRaftVoter",

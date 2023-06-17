@@ -11,6 +11,8 @@ type CommandType int
 const (
 	ReplicateRequestAndPathAndStorageCommand CommandType = iota
 	ReplicateResponseCommand
+	ReplicateSentBlocksCommand
+	ReplicateAcksNacksCommand
 )
 
 type Command struct {
@@ -80,4 +82,56 @@ func newResponseReplicationCommand(response string, requestID string, block stri
 		return nil, fmt.Errorf("could not marshal the response replication command; %s", err)
 	}
 	return responseReplicationCommand, nil
+}
+
+type ReplicateSentBlocksPayload struct {
+	SentBlocks []string
+}
+
+func newSentBlocksReplicationCommand(sentBlocks []string) ([]byte, error) {
+	payload, err := msgpack.Marshal(
+		&ReplicateSentBlocksPayload{
+			SentBlocks: sentBlocks,
+		},
+	)
+	if err != nil {
+		return nil, fmt.Errorf("could not marshal the sent blocks replication payload; %s", err)
+	}
+	command, err := msgpack.Marshal(
+		&Command{
+			Type:    ReplicateSentBlocksCommand,
+			Payload: payload,
+		},
+	)
+	if err != nil {
+		return nil, fmt.Errorf("could not marshal the sent blocks replication command; %s", err)
+	}
+	return command, nil
+}
+
+type ReplicateAcksNacksPayload struct {
+	AckedBlocks  []string
+	NackedBlocks []string
+}
+
+func newAcksNacksReplicationCommand(ackBlocks []string, nackBlocks []string) ([]byte, error) {
+	payload, err := msgpack.Marshal(
+		&ReplicateAcksNacksPayload{
+			AckedBlocks:  ackBlocks,
+			NackedBlocks: nackBlocks,
+		},
+	)
+	if err != nil {
+		return nil, fmt.Errorf("could not marshal the acks/nacks replication payload; %s", err)
+	}
+	command, err := msgpack.Marshal(
+		&Command{
+			Type:    ReplicateAcksNacksCommand,
+			Payload: payload,
+		},
+	)
+	if err != nil {
+		return nil, fmt.Errorf("could not marshal the sent acks/nacks replication command; %s", err)
+	}
+	return command, nil
 }

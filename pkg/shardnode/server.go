@@ -120,7 +120,6 @@ func (s *shardNodeServer) query(ctx context.Context, op OperationType, block str
 	}
 
 	//TODO: make the timeout accurate
-	//TODO: should i lock the raftNode?
 	err = s.raftNode.Apply(requestReplicationCommand, 1*time.Second).Error()
 	if err != nil {
 		return "", fmt.Errorf("could not apply log to the FSM; %s", err)
@@ -140,7 +139,6 @@ func (s *shardNodeServer) query(ctx context.Context, op OperationType, block str
 			return "", fmt.Errorf("could not create response replication command; %s", err)
 		}
 		//TODO: make the timeout accurate
-		//TODO: should i lock the raftNode?
 		err = s.raftNode.Apply(responseReplicationCommand, 1*time.Second).Error()
 		if err != nil {
 			return "", fmt.Errorf("could not apply log to the FSM; %s", err)
@@ -166,6 +164,70 @@ func (s *shardNodeServer) Write(ctx context.Context, writeRequest *pb.WriteReque
 		return nil, err
 	}
 	return &pb.WriteReply{Success: val == writeRequest.Value}, nil
+}
+
+func (s *shardNodeServer) getBlocksForSend(maxBlocks int) (blocksToReturn []*pb.Block, blocks []string) {
+	s.shardNodeFSM.mu.Lock()
+	defer s.shardNodeFSM.mu.Unlock()
+
+	counter := 0
+	for block, value := range s.shardNodeFSM.stash {
+		//TODO: just return blocks that are for the request.path and request.storageID after adding the positionmap
+
+		//Don't send a stash block that is in the waiting status to another SendBlocks request
+		if s.shardNodeFSM.stashWaitingStatus[block] {
+			continue
+		}
+		if counter == int(maxBlocks) {
+			break
+		}
+		blocksToReturn = append(blocksToReturn, &pb.Block{Block: block, Value: value})
+		blocks = append(blocks, block)
+		counter++
+
+	}
+	return blocksToReturn, blocks
+}
+
+func (s *shardNodeServer) SendBlocks(ctx context.Context, request *pb.SendBlocksRequest) (*pb.SendBlocksReply, error) {
+
+	blocksToReturn, blocks := s.getBlocksForSend(int(request.MaxBlocks))
+
+	sentBlocksReplicationCommand, err := newSentBlocksReplicationCommand(blocks)
+	if err != nil {
+		return nil, fmt.Errorf("could not create sent blocks replication command; %s", err)
+	}
+	//TODO: make the timeout accurate
+	err = s.raftNode.Apply(sentBlocksReplicationCommand, 1*time.Second).Error()
+	if err != nil {
+		return nil, fmt.Errorf("could not apply log to the FSM; %s", err)
+	}
+
+	return &pb.SendBlocksReply{Blocks: blocksToReturn}, nil
+}
+
+func (s *shardNodeServer) AckSentBlocks(ctx context.Context, reply *pb.AckSentBlocksRequest) (*pb.AckSentBlocksReply, error) {
+	var ackedBlocks []string
+	var nackedBlocks []string
+	for _, ack := range reply.Acks {
+		block := ack.Block
+		is_ack := ack.IsAck
+		if is_ack {
+			ackedBlocks = append(ackedBlocks, block)
+		} else {
+			nackedBlocks = append(nackedBlocks, block)
+		}
+	}
+
+	acksNacksReplicationCommand, err := newAcksNacksReplicationCommand(ackedBlocks, nackedBlocks)
+	if err != nil {
+		return nil, fmt.Errorf("could not create acks/nacks replication command")
+	}
+	err = s.raftNode.Apply(acksNacksReplicationCommand, 1*time.Second).Error()
+	if err != nil {
+		return nil, fmt.Errorf("could not apply log to the FSM; %s", err)
+	}
+	return &pb.AckSentBlocksReply{Success: true}, nil
 }
 
 func (s *shardNodeServer) JoinRaftVoter(ctx context.Context, joinRaftVoterRequest *pb.JoinRaftVoterRequest) (*pb.JoinRaftVoterReply, error) {
