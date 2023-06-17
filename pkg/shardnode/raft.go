@@ -48,13 +48,16 @@ type shardNodeFSM struct {
 
 func newShardNodeFSM() *shardNodeFSM {
 	return &shardNodeFSM{
-		requestLog:        make(map[string][]string),
-		pathMap:           make(map[string]int),
-		storageIDMap:      make(map[string]int),
-		responseMap:       make(map[string]string),
-		stash:             make(map[string]string),
-		stashLogicalTimes: make(map[string]int),
-		responseChannel:   make(map[string]chan string),
+		requestLog:         make(map[string][]string),
+		pathMap:            make(map[string]int),
+		storageIDMap:       make(map[string]int),
+		responseMap:        make(map[string]string),
+		stash:              make(map[string]string),
+		stashLogicalTimes:  make(map[string]int),
+		stashWaitingStatus: make(map[string]bool),
+		responseChannel:    make(map[string]chan string),
+		acks:               make(map[string][]string),
+		nacks:              make(map[string][]string),
 	}
 }
 
