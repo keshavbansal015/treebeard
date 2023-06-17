@@ -77,8 +77,8 @@ func (fsm *shardNodeFSM) handleLocalResponseReplicationChanges(requestID string,
 	defer fsm.mu.Unlock()
 	_, exists := fsm.stash[r.RequestedBlock]
 	if exists {
-		fsm.stashLogicalTimes[r.RequestedBlock]++
 		if r.OpType == Write {
+			fsm.stashLogicalTimes[r.RequestedBlock]++
 			fsm.stash[r.RequestedBlock] = r.NewValue
 		}
 	} else {
@@ -93,6 +93,7 @@ func (fsm *shardNodeFSM) handleLocalResponseReplicationChanges(requestID string,
 		for _, waitingRequestID := range fsm.requestLog[r.RequestedBlock] {
 			fsm.responseChannel[waitingRequestID] <- fsm.stash[r.RequestedBlock]
 		}
+		delete(fsm.requestLog, r.RequestedBlock)
 	}
 }
 
