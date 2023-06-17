@@ -1,7 +1,7 @@
 package config
 
 import (
-	"io/ioutil" //TODO: fix this it's deprecated
+	"os"
 
 	yaml "gopkg.in/yaml.v3"
 )
@@ -40,7 +40,7 @@ type OramNodeConfig struct {
 
 // TODO: Refactor to remove duplication between the following functions
 func ReadRouterEndpoints(path string) ([]RouterEndpoint, error) {
-	yamlFile, err := ioutil.ReadFile(path)
+	yamlFile, err := os.ReadFile(path)
 	if err != nil {
 		return nil, err
 	}
@@ -54,7 +54,7 @@ func ReadRouterEndpoints(path string) ([]RouterEndpoint, error) {
 }
 
 func ReadShardNodeEndpoints(path string) ([]ShardNodeEndpoint, error) {
-	yamlFile, err := ioutil.ReadFile(path)
+	yamlFile, err := os.ReadFile(path)
 	if err != nil {
 		return nil, err
 	}
@@ -68,7 +68,7 @@ func ReadShardNodeEndpoints(path string) ([]ShardNodeEndpoint, error) {
 }
 
 func ReadOramNodeEndpoints(path string) ([]OramNodeEndpoint, error) {
-	yamlFile, err := ioutil.ReadFile(path)
+	yamlFile, err := os.ReadFile(path)
 	if err != nil {
 		return nil, err
 	}
