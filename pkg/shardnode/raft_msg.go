@@ -66,6 +66,8 @@ func newResponseReplicationCommand(response string, requestID string, block stri
 			Response:       response,
 			IsLeader:       isLeader,
 			RequestedBlock: block,
+			NewValue:       newValue,
+			OpType:         opType,
 		},
 	)
 	if err != nil {
