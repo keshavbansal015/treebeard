@@ -5,14 +5,13 @@ import (
 )
 
 type whereToForwardTest struct {
-	r                     *routerServer
+	r                     routerServer
 	block                 string
 	expectedShardNodeDest int
 }
 
-func createTestRouterServer(shardNodeRPCClientsCount int) (r *routerServer) {
-	r = &routerServer{}
-	r.shardNodeRPCClients = make(map[int]ReplicaRPCClientMap)
+func createTestRouterServer(shardNodeRPCClientsCount int) (r routerServer) {
+	r = newRouterServer(make(map[int]ReplicaRPCClientMap), 0)
 	for i := 0; i < shardNodeRPCClientsCount; i++ {
 		r.shardNodeRPCClients[i] = make(ReplicaRPCClientMap)
 	}

@@ -22,6 +22,14 @@ type routerServer struct {
 	hasher              utils.Hasher
 }
 
+func newRouterServer(shardNodeRPCClients map[int]ReplicaRPCClientMap, routerID int) routerServer {
+	return routerServer{
+		shardNodeRPCClients: shardNodeRPCClients,
+		routerID:            routerID,
+		hasher:              utils.Hasher{KnownHashes: make(map[string]uint32)},
+	}
+}
+
 func (r *routerServer) whereToForward(block string) (shardNodeID int) {
 	h := r.hasher.Hash(block)
 	return int(math.Mod(float64(h), float64(len(r.shardNodeRPCClients))))
@@ -91,12 +99,8 @@ func StartRPCServer(shardNodeRPCClients map[int]ReplicaRPCClientMap, routerID in
 		log.Fatalf("failed to listen: %v", err)
 	}
 	grpcServer := grpc.NewServer(grpc.UnaryInterceptor(rpc.ContextPropagationUnaryServerInterceptor()))
-	routerServer := &routerServer{
-		shardNodeRPCClients: shardNodeRPCClients,
-		routerID:            routerID,
-		hasher:              utils.Hasher{KnownHashes: make(map[string]uint32)},
-	}
 
-	pb.RegisterRouterServer(grpcServer, routerServer)
+	routerServer := newRouterServer(shardNodeRPCClients, routerID)
+	pb.RegisterRouterServer(grpcServer, &routerServer)
 	grpcServer.Serve(lis)
 }
