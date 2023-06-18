@@ -168,17 +168,17 @@ func (s *shardNodeServer) getBlocksForSend(maxBlocks int) (blocksToReturn []*pb.
 	defer s.shardNodeFSM.mu.Unlock()
 
 	counter := 0
-	for block, value := range s.shardNodeFSM.stash {
+	for block, stashState := range s.shardNodeFSM.stash {
 		//TODO: just return blocks that are for the request.path and request.storageID after adding the positionmap
 
 		//Don't send a stash block that is in the waiting status to another SendBlocks request
-		if s.shardNodeFSM.stashWaitingStatus[block] {
+		if stashState.waitingStatus {
 			continue
 		}
 		if counter == int(maxBlocks) {
 			break
 		}
-		blocksToReturn = append(blocksToReturn, &pb.Block{Block: block, Value: value})
+		blocksToReturn = append(blocksToReturn, &pb.Block{Block: block, Value: stashState.value})
 		blocks = append(blocks, block)
 		counter++
 

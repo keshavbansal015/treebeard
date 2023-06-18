@@ -139,7 +139,7 @@ func TestHandleLocalReplicaChangesWhenValueInStashReturnsCorrectReadValueToAllWa
 	shardNodeFSM.responseChannel["request1"] = make(chan string)
 	shardNodeFSM.responseChannel["request2"] = make(chan string)
 	shardNodeFSM.responseChannel["request3"] = make(chan string)
-	shardNodeFSM.stash["block"] = "test_value"
+	shardNodeFSM.stash["block"] = stashState{value: "test_value"}
 
 	payload := createTestReplicateResponsePayload("block", "response", "value", Read)
 	go shardNodeFSM.handleLocalResponseReplicationChanges("request1", payload)
@@ -154,15 +154,15 @@ func TestHandleLocalReplicaChangesWhenValueInStashReturnsCorrectWriteValueToAllW
 	shardNodeFSM.responseChannel["request1"] = make(chan string)
 	shardNodeFSM.responseChannel["request2"] = make(chan string)
 	shardNodeFSM.responseChannel["request3"] = make(chan string)
-	shardNodeFSM.stash["block"] = "test_value"
+	shardNodeFSM.stash["block"] = stashState{value: "test_value"}
 
 	payload := createTestReplicateResponsePayload("block", "response", "value_write", Write)
 	go shardNodeFSM.handleLocalResponseReplicationChanges("request1", payload)
 
 	checkWaitingChannelsHelper(t, shardNodeFSM.responseChannel, "value_write")
 
-	if shardNodeFSM.stash["block"] != "value_write" {
-		t.Errorf("The stash value should be equal to \"value_write\" after Write request, but it's equal to %s", shardNodeFSM.stash["block"])
+	if shardNodeFSM.stash["block"].value != "value_write" {
+		t.Errorf("The stash value should be equal to \"value_write\" after Write request, but it's equal to %s", shardNodeFSM.stash["block"].value)
 	}
 }
 
@@ -180,8 +180,8 @@ func TestHandleLocalReplicaChangesWhenValueNotInStashReturnsResponseToAllWaiting
 
 	checkWaitingChannelsHelper(t, shardNodeFSM.responseChannel, "response_from_oramnode")
 
-	if shardNodeFSM.stash["block"] != "response_from_oramnode" {
-		t.Errorf("The stash value should be equal to \"response_from_oramnode\" after Write request, but it's equal to %s", shardNodeFSM.stash["block"])
+	if shardNodeFSM.stash["block"].value != "response_from_oramnode" {
+		t.Errorf("The stash value should be equal to \"response_from_oramnode\" after Write request, but it's equal to %s", shardNodeFSM.stash["block"].value)
 	}
 }
 
@@ -199,8 +199,8 @@ func TestHandleLocalReplicaChangesWhenValueNotInStashReturnsWriteResponseToAllWa
 
 	checkWaitingChannelsHelper(t, shardNodeFSM.responseChannel, "write_val")
 
-	if shardNodeFSM.stash["block"] != "write_val" {
-		t.Errorf("The stash value should be equal to \"write_val\" after Write request, but it's equal to %s", shardNodeFSM.stash["block"])
+	if shardNodeFSM.stash["block"].value != "write_val" {
+		t.Errorf("The stash value should be equal to \"write_val\" after Write request, but it's equal to %s", shardNodeFSM.stash["block"].value)
 	}
 }
 
@@ -210,7 +210,7 @@ func TestHandleLocalReplicaChangesWhenNotLeaderDoesNotWriteOnChannels(t *testing
 	shardNodeFSM.requestLog["block"] = []string{"request1", "request2"}
 	shardNodeFSM.responseChannel["request1"] = make(chan string)
 	shardNodeFSM.responseChannel["request2"] = make(chan string)
-	shardNodeFSM.stash["block"] = "test_value"
+	shardNodeFSM.stash["block"] = stashState{value: "test_value"}
 
 	payload := createTestReplicateResponsePayload("block", "response", "", Read)
 	go shardNodeFSM.handleLocalResponseReplicationChanges("request1", payload)

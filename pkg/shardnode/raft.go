@@ -21,6 +21,12 @@ type RaftNodeWIthState interface {
 	State() raft.RaftState
 }
 
+type stashState struct {
+	value         string
+	logicalTime   int
+	waitingStatus bool
+}
+
 type shardNodeFSM struct {
 	//TODO note
 	//I'm starting with simple maps and one mutex to handle race conditions.
@@ -39,10 +45,7 @@ type shardNodeFSM struct {
 
 	responseMap map[string]string //map of requestID to response map[string]string
 
-	//TODO: i should merge these three to a map[string]struct format
-	stash              map[string]string //map of block to value
-	stashLogicalTimes  map[string]int    //map of block to logical time
-	stashWaitingStatus map[string]bool   //map of block to waiting status
+	stash map[string]stashState //map of block to stashState
 
 	responseChannel map[string]chan string //map of requestId to their channel for receiving response
 
@@ -54,16 +57,14 @@ type shardNodeFSM struct {
 
 func newShardNodeFSM() *shardNodeFSM {
 	return &shardNodeFSM{
-		requestLog:         make(map[string][]string),
-		pathMap:            make(map[string]int),
-		storageIDMap:       make(map[string]int),
-		responseMap:        make(map[string]string),
-		stash:              make(map[string]string),
-		stashLogicalTimes:  make(map[string]int),
-		stashWaitingStatus: make(map[string]bool),
-		responseChannel:    make(map[string]chan string),
-		acks:               make(map[string][]string),
-		nacks:              make(map[string][]string),
+		requestLog:      make(map[string][]string),
+		pathMap:         make(map[string]int),
+		storageIDMap:    make(map[string]int),
+		responseMap:     make(map[string]string),
+		stash:           make(map[string]stashState),
+		responseChannel: make(map[string]chan string),
+		acks:            make(map[string][]string),
+		nacks:           make(map[string][]string),
 	}
 }
 
@@ -77,7 +78,6 @@ func (fsm *shardNodeFSM) String() string {
 	out = out + fmt.Sprintf("storageIDMap: %v\n", fsm.storageIDMap)
 	out = out + fmt.Sprintf("responseMap: %v\n", fsm.responseMap)
 	out = out + fmt.Sprintf("stash: %v\n", fsm.stash)
-	out = out + fmt.Sprintf("stashLogicalTimes: %v\n", fsm.stashLogicalTimes)
 	out = out + fmt.Sprintf("responseChannel: %v\n", fsm.responseChannel)
 	out = out + fmt.Sprintf("acks: %v\n", fsm.acks)
 	out = out + fmt.Sprintf("nacks: %v\n", fsm.nacks)
@@ -98,23 +98,27 @@ type localReplicaChangeHandlerFunc func(requestID string, r ReplicateResponsePay
 func (fsm *shardNodeFSM) handleLocalResponseReplicationChanges(requestID string, r ReplicateResponsePayload) {
 	fsm.mu.Lock()
 	defer fsm.mu.Unlock()
-	_, exists := fsm.stash[r.RequestedBlock]
+	stashState, exists := fsm.stash[r.RequestedBlock]
 	if exists {
 		if r.OpType == Write {
-			fsm.stashLogicalTimes[r.RequestedBlock]++
-			fsm.stash[r.RequestedBlock] = r.NewValue
+			stashState.logicalTime++
+			stashState.value = r.NewValue
+			fsm.stash[r.RequestedBlock] = stashState
 		}
 	} else {
 		response := fsm.responseMap[requestID]
+		stashState := fsm.stash[r.RequestedBlock]
 		if r.OpType == Read {
-			fsm.stash[r.RequestedBlock] = response
+			stashState.value = response
+			fsm.stash[r.RequestedBlock] = stashState
 		} else if r.OpType == Write {
-			fsm.stash[r.RequestedBlock] = r.NewValue
+			stashState.value = r.NewValue
+			fsm.stash[r.RequestedBlock] = stashState
 		}
 	}
 	if fsm.raftNode.State() == raft.Leader {
 		for _, waitingRequestID := range fsm.requestLog[r.RequestedBlock] {
-			fsm.responseChannel[waitingRequestID] <- fsm.stash[r.RequestedBlock]
+			fsm.responseChannel[waitingRequestID] <- fsm.stash[r.RequestedBlock].value
 		}
 	}
 	delete(fsm.requestLog, r.RequestedBlock)
@@ -137,8 +141,10 @@ func (fsm *shardNodeFSM) handleReplicateSentBlocks(r ReplicateSentBlocksPayload)
 	defer fsm.mu.Unlock()
 
 	for _, block := range r.SentBlocks {
-		fsm.stashLogicalTimes[block] = 0
-		fsm.stashWaitingStatus[block] = true
+		stashState := fsm.stash[block]
+		stashState.logicalTime = 0
+		stashState.waitingStatus = true
+		fsm.stash[block] = stashState
 	}
 }
 
@@ -146,14 +152,17 @@ func (fsm *shardNodeFSM) handleLocalAcksNacksReplicationChanges(requestID string
 	fsm.mu.Lock()
 	defer fsm.mu.Unlock()
 	for _, block := range fsm.acks[requestID] {
-		if fsm.stashLogicalTimes[block] == 0 {
+		stashState := fsm.stash[block]
+		if stashState.logicalTime == 0 {
 			delete(fsm.stash, block)
-			delete(fsm.stashLogicalTimes, block)
 		}
-		delete(fsm.stashWaitingStatus, block)
+		stashState.waitingStatus = false
+		fsm.stash[block] = stashState
 	}
 	for _, block := range fsm.nacks[requestID] {
-		delete(fsm.stashWaitingStatus, block)
+		stashState := fsm.stash[block]
+		stashState.waitingStatus = false
+		fsm.stash[block] = stashState
 	}
 }
 
@@ -239,17 +248,9 @@ func (fsm *shardNodeFSM) Snapshot() (raft.FSMSnapshot, error) {
 	for requestID, response := range fsm.responseMap {
 		shardNodeSnapshot.ResponseMap[requestID] = response
 	}
-	shardNodeSnapshot.Stash = make(map[string]string)
+	shardNodeSnapshot.Stash = make(map[string]stashState)
 	for block, value := range fsm.stash {
 		shardNodeSnapshot.Stash[block] = value
-	}
-	shardNodeSnapshot.StashLogicalTimes = make(map[string]int)
-	for block, logicalTime := range fsm.stashLogicalTimes {
-		shardNodeSnapshot.StashLogicalTimes[block] = logicalTime
-	}
-	shardNodeSnapshot.StashWaitingStatus = make(map[string]bool)
-	for block, waiting := range fsm.stashWaitingStatus {
-		shardNodeSnapshot.StashWaitingStatus[block] = waiting
 	}
 
 	shardNodeSnapshot.Acks = make(map[string][]string)
@@ -293,17 +294,9 @@ func (fsm *shardNodeFSM) Restore(rc io.ReadCloser) error {
 	for requestID, response := range snapshot.ResponseMap {
 		fsm.responseMap[requestID] = response
 	}
-	fsm.stash = make(map[string]string)
+	fsm.stash = make(map[string]stashState)
 	for block, value := range snapshot.Stash {
 		fsm.stash[block] = value
-	}
-	fsm.stashLogicalTimes = make(map[string]int)
-	for block, logicalTime := range snapshot.StashLogicalTimes {
-		fsm.stashLogicalTimes[block] = logicalTime
-	}
-	fsm.stashWaitingStatus = make(map[string]bool)
-	for block, waiting := range snapshot.StashWaitingStatus {
-		fsm.stashWaitingStatus[block] = waiting
 	}
 
 	fsm.acks = make(map[string][]string)
@@ -318,15 +311,13 @@ func (fsm *shardNodeFSM) Restore(rc io.ReadCloser) error {
 }
 
 type shardNodeSnapshot struct {
-	RequestLog         map[string][]string
-	PathMap            map[string]int
-	StorageIDMap       map[string]int
-	ResponseMap        map[string]string
-	Stash              map[string]string
-	StashLogicalTimes  map[string]int
-	StashWaitingStatus map[string]bool
-	Acks               map[string][]string
-	Nacks              map[string][]string
+	RequestLog   map[string][]string
+	PathMap      map[string]int
+	StorageIDMap map[string]int
+	ResponseMap  map[string]string
+	Stash        map[string]stashState
+	Acks         map[string][]string
+	Nacks        map[string][]string
 }
 
 func (sn shardNodeSnapshot) Persist(sink raft.SnapshotSink) error {
