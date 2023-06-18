@@ -17,6 +17,10 @@ import (
 	"github.com/vmihailenco/msgpack/v5"
 )
 
+type RaftNodeWIthState interface {
+	State() raft.RaftState
+}
+
 type shardNodeFSM struct {
 	//TODO note
 	//I'm starting with simple maps and one mutex to handle race conditions.
@@ -44,6 +48,8 @@ type shardNodeFSM struct {
 
 	acks  map[string][]string //map of requestID to array of blocks
 	nacks map[string][]string //map of requestID to array of blocks
+
+	raftNode RaftNodeWIthState
 }
 
 func newShardNodeFSM() *shardNodeFSM {
@@ -89,12 +95,12 @@ func (fsm *shardNodeFSM) handleLocalResponseReplicationChanges(requestID string,
 			fsm.stash[r.RequestedBlock] = r.NewValue
 		}
 	}
-	if r.IsLeader {
+	if fsm.raftNode.State() == raft.Leader {
 		for _, waitingRequestID := range fsm.requestLog[r.RequestedBlock] {
 			fsm.responseChannel[waitingRequestID] <- fsm.stash[r.RequestedBlock]
 		}
-		delete(fsm.requestLog, r.RequestedBlock)
 	}
+	delete(fsm.requestLog, r.RequestedBlock)
 }
 
 func (fsm *shardNodeFSM) handleReplicateResponse(requestID string, r ReplicateResponsePayload, f localReplicaChangeHandlerFunc) {

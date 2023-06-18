@@ -55,16 +55,14 @@ func newRequestReplicationCommand(block string, requestID string) ([]byte, error
 type ReplicateResponsePayload struct {
 	RequestedBlock string
 	Response       string
-	IsLeader       bool
 	NewValue       string
 	OpType         OperationType
 }
 
-func newResponseReplicationCommand(response string, requestID string, block string, newValue string, opType OperationType, isLeader bool) ([]byte, error) {
+func newResponseReplicationCommand(response string, requestID string, block string, newValue string, opType OperationType) ([]byte, error) {
 	responseReplicationPayload, err := msgpack.Marshal(
 		&ReplicateResponsePayload{
 			Response:       response,
-			IsLeader:       isLeader,
 			RequestedBlock: block,
 			NewValue:       newValue,
 			OpType:         opType,

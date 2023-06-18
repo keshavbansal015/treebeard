@@ -132,7 +132,7 @@ func (s *shardNodeServer) query(ctx context.Context, op OperationType, block str
 	}
 	responseChannel := s.createResponseChannelForRequestID(requestID)
 	if s.isInitialRequest(block, requestID) {
-		responseReplicationCommand, err := newResponseReplicationCommand(reply.Value, requestID, block, value, op, s.raftNode.State() == raft.Leader)
+		responseReplicationCommand, err := newResponseReplicationCommand(reply.Value, requestID, block, value, op)
 		if err != nil {
 			return "", fmt.Errorf("could not create response replication command; %s", err)
 		}
@@ -250,6 +250,7 @@ func StartServer(shardNodeServerID int, rpcPort int, replicaID int, raftPort int
 	if err != nil {
 		log.Fatalf("The raft node creation did not succeed; %s", err)
 	}
+	shardNodeFSM.raftNode = r
 
 	if !isFirst {
 		conn, err := grpc.Dial(joinAddr, grpc.WithTransportCredentials(insecure.NewCredentials()))
