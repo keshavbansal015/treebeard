@@ -118,6 +118,10 @@ func (fsm *shardNodeFSM) handleLocalResponseReplicationChanges(requestID string,
 		}
 	}
 	delete(fsm.requestLog, r.RequestedBlock)
+	delete(fsm.pathMap, requestID)
+	delete(fsm.storageIDMap, requestID)
+	delete(fsm.responseMap, requestID)
+	delete(fsm.responseChannel, requestID)
 }
 
 func (fsm *shardNodeFSM) handleReplicateResponse(requestID string, r ReplicateResponsePayload, f localReplicaChangeHandlerFunc) {
