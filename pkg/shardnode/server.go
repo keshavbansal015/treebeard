@@ -252,6 +252,13 @@ func StartServer(shardNodeServerID int, rpcPort int, replicaID int, raftPort int
 	}
 	shardNodeFSM.raftNode = r
 
+	go func() {
+		for {
+			time.Sleep(5 * time.Second)
+			fmt.Println(shardNodeFSM)
+		}
+	}()
+
 	if !isFirst {
 		conn, err := grpc.Dial(joinAddr, grpc.WithTransportCredentials(insecure.NewCredentials()))
 		if err != nil {
@@ -278,4 +285,5 @@ func StartServer(shardNodeServerID int, rpcPort int, replicaID int, raftPort int
 	grpcServer := grpc.NewServer()
 	pb.RegisterShardNodeServer(grpcServer, shardnodeServer)
 	grpcServer.Serve(lis)
+
 }

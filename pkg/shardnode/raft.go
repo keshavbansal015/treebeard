@@ -67,6 +67,23 @@ func newShardNodeFSM() *shardNodeFSM {
 	}
 }
 
+func (fsm *shardNodeFSM) String() string {
+	fsm.mu.Lock()
+	defer fsm.mu.Unlock()
+
+	out := fmt.Sprintln("ShardNodeFSM")
+	out = out + fmt.Sprintf("requestLog: %v\n", fsm.requestLog)
+	out = out + fmt.Sprintf("pathMap: %v\n", fsm.pathMap)
+	out = out + fmt.Sprintf("storageIDMap: %v\n", fsm.storageIDMap)
+	out = out + fmt.Sprintf("responseMap: %v\n", fsm.responseMap)
+	out = out + fmt.Sprintf("stash: %v\n", fsm.stash)
+	out = out + fmt.Sprintf("stashLogicalTimes: %v\n", fsm.stashLogicalTimes)
+	out = out + fmt.Sprintf("responseChannel: %v\n", fsm.responseChannel)
+	out = out + fmt.Sprintf("acks: %v\n", fsm.acks)
+	out = out + fmt.Sprintf("nacks: %v\n", fsm.nacks)
+	return out
+}
+
 func (fsm *shardNodeFSM) handleReplicateRequestAndPathAndStorage(requestID string, r ReplicateRequestAndPathAndStoragePayload) {
 	fsm.mu.Lock()
 	defer fsm.mu.Unlock()
