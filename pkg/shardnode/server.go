@@ -250,7 +250,9 @@ func StartServer(shardNodeServerID int, rpcPort int, replicaID int, raftPort int
 	if err != nil {
 		log.Fatalf("The raft node creation did not succeed; %s", err)
 	}
+	shardNodeFSM.mu.Lock()
 	shardNodeFSM.raftNode = r
+	shardNodeFSM.mu.Unlock()
 
 	go func() {
 		for {
