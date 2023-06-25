@@ -6,12 +6,14 @@ import (
 	"log"
 	"net"
 	"strconv"
+	"time"
 
 	pb "github.com/dsg-uwaterloo/oblishard/api/oramnode"
 	"github.com/dsg-uwaterloo/oblishard/pkg/storage"
 	"github.com/hashicorp/raft"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
+	"google.golang.org/grpc/metadata"
 )
 
 type oramNodeServer struct {
@@ -37,6 +39,10 @@ func (o *oramNodeServer) ReadPath(ctx context.Context, request *pb.ReadPathReque
 	if o.raftNode.State() != raft.Leader {
 		return nil, fmt.Errorf("not the leader node")
 	}
+
+	md, _ := metadata.FromIncomingContext(ctx)
+	requestID := md["requestid"][0]
+
 	var offsetList []int
 	for level := 0; level < storage.LevelCount; level++ {
 		offset, err := storage.GetBlockOffset(level, int(request.Path), request.Block)
@@ -45,7 +51,14 @@ func (o *oramNodeServer) ReadPath(ctx context.Context, request *pb.ReadPathReque
 		}
 		offsetList = append(offsetList, offset)
 	}
-	//replicate offsetList
+	replicateOffsetAndBeginReadPathCommand, err := newReplicateOffsetListCommand(requestID, offsetList)
+	if err != nil {
+		return nil, fmt.Errorf("could not create offsetList replication command; %s", err)
+	}
+	err = o.raftNode.Apply(replicateOffsetAndBeginReadPathCommand, 2*time.Second).Error()
+	if err != nil {
+		return nil, fmt.Errorf("could not apply log to the FSM; %s", err)
+	}
 
 	return &pb.ReadPathReply{Value: "test_val_from_oram_node"}, nil
 }

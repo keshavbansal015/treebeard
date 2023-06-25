@@ -3,25 +3,59 @@ package oramnode
 import (
 	"fmt"
 	"io"
+	"log"
 	"net"
 	"os"
 	"path"
 	"strconv"
+	"sync"
 	"time"
 
 	"github.com/hashicorp/raft"
 	raftboltdb "github.com/hashicorp/raft-boltdb/v2"
+	"github.com/vmihailenco/msgpack/v5"
 )
 
 type oramNodeFSM struct {
+	mu sync.Mutex
+
+	offsetListMap map[string][]int //map of request id to offsetList
 }
 
 func newOramNodeFSM() *oramNodeFSM {
-	return &oramNodeFSM{}
+	return &oramNodeFSM{offsetListMap: make(map[string][]int)}
+}
+
+func (fsm *oramNodeFSM) handleOffsetListReplicationCommand(requestID string, offsetList []int) {
+	fsm.mu.Lock()
+	defer fsm.mu.Unlock()
+
+	fsm.offsetListMap[requestID] = offsetList
 }
 
 func (fsm *oramNodeFSM) Apply(rLog *raft.Log) interface{} {
-	//TODO: implement
+	switch rLog.Type {
+	case raft.LogCommand:
+		var command Command
+		err := msgpack.Unmarshal(rLog.Data, &command)
+		if err != nil {
+			return fmt.Errorf("could not unmarshall the command; %s", err)
+		}
+		requestID := command.RequestID
+		if command.Type == ReplicateOffsetList {
+			log.Println("got replication command for replicate offsetList and beginReadPath")
+			var payload ReplicateOffsetListPayload
+			err := msgpack.Unmarshal(command.Payload, &payload)
+			if err != nil {
+				return fmt.Errorf("could not unmarshall the offsetList replication command; %s", err)
+			}
+			fsm.handleOffsetListReplicationCommand(requestID, payload.OffsetList)
+		} else {
+			fmt.Println("wrong command type")
+		}
+	default:
+		return fmt.Errorf("unknown raft log type: %s", rLog.Type)
+	}
 	return nil
 }
 
