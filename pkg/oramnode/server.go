@@ -8,6 +8,7 @@ import (
 	"strconv"
 
 	pb "github.com/dsg-uwaterloo/oblishard/api/oramnode"
+	"github.com/dsg-uwaterloo/oblishard/pkg/storage"
 	"github.com/hashicorp/raft"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
@@ -32,9 +33,20 @@ func newOramNodeServer(oramNodeServerID int, replicaID int, raftNode *raft.Raft,
 
 //TODO: we should answer the request if we are the current leader. Add this after implementing raft for this layer.
 
-func (o *oramNodeServer) ReadPath(context.Context, *pb.ReadPathRequest) (*pb.ReadPathReply, error) {
-	//TODO: implement
-	//TODO: it should return an error if the block does not exist
+func (o *oramNodeServer) ReadPath(ctx context.Context, request *pb.ReadPathRequest) (*pb.ReadPathReply, error) {
+	if o.raftNode.State() != raft.Leader {
+		return nil, fmt.Errorf("not the leader node")
+	}
+	var offsetList []int
+	for level := 0; level < storage.LevelCount; level++ {
+		offset, err := storage.GetBlockOffset(level, int(request.Path), request.Block)
+		if err != nil {
+			return nil, fmt.Errorf("could not get offset from storage")
+		}
+		offsetList = append(offsetList, offset)
+	}
+	//replicate offsetList
+
 	return &pb.ReadPathReply{Value: "test_val_from_oram_node"}, nil
 }
 
