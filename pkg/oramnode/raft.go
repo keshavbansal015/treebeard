@@ -22,6 +22,15 @@ type oramNodeFSM struct {
 	offsetListMap map[string][]int //map of request id to offsetList
 }
 
+func (fsm *oramNodeFSM) String() string {
+	fsm.mu.Lock()
+	defer fsm.mu.Unlock()
+
+	out := fmt.Sprintln("oramNodeFSM")
+	out = out + fmt.Sprintf("offsetListMap: %v\n", fsm.offsetListMap)
+	return out
+}
+
 func newOramNodeFSM() *oramNodeFSM {
 	return &oramNodeFSM{offsetListMap: make(map[string][]int)}
 }

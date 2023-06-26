@@ -11,6 +11,7 @@ import (
 
 	oramnodepb "github.com/dsg-uwaterloo/oblishard/api/oramnode"
 	pb "github.com/dsg-uwaterloo/oblishard/api/shardnode"
+	"github.com/dsg-uwaterloo/oblishard/pkg/rpc"
 	"github.com/hashicorp/raft"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
@@ -284,7 +285,7 @@ func StartServer(shardNodeServerID int, rpcPort int, replicaID int, raftPort int
 		log.Fatalf("failed to listen: %v", err)
 	}
 	shardnodeServer := newShardNodeServer(shardNodeServerID, replicaID, r, shardNodeFSM, oramNodeRPCClients)
-	grpcServer := grpc.NewServer()
+	grpcServer := grpc.NewServer(grpc.UnaryInterceptor(rpc.ContextPropagationUnaryServerInterceptor()))
 	pb.RegisterShardNodeServer(grpcServer, shardnodeServer)
 	grpcServer.Serve(lis)
 

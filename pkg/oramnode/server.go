@@ -9,6 +9,7 @@ import (
 	"time"
 
 	pb "github.com/dsg-uwaterloo/oblishard/api/oramnode"
+	"github.com/dsg-uwaterloo/oblishard/pkg/rpc"
 	"github.com/dsg-uwaterloo/oblishard/pkg/storage"
 	"github.com/hashicorp/raft"
 	"google.golang.org/grpc"
@@ -60,6 +61,10 @@ func (o *oramNodeServer) ReadPath(ctx context.Context, request *pb.ReadPathReque
 		return nil, fmt.Errorf("could not apply log to the FSM; %s", err)
 	}
 
+	for level := 0; level < storage.LevelCount; level++ {
+
+	}
+
 	return &pb.ReadPathReply{Value: "test_val_from_oram_node"}, nil
 }
 
@@ -88,6 +93,13 @@ func StartServer(oramNodeServerID int, rpcPort int, replicaID int, raftPort int,
 		log.Fatalf("The raft node creation did not succeed; %s", err)
 	}
 
+	go func() {
+		for {
+			time.Sleep(5 * time.Second)
+			fmt.Println(oramNodeFSM)
+		}
+	}()
+
 	if !isFirst {
 		conn, err := grpc.Dial(joinAddr, grpc.WithTransportCredentials(insecure.NewCredentials()))
 		if err != nil {
@@ -113,7 +125,7 @@ func StartServer(oramNodeServerID int, rpcPort int, replicaID int, raftPort int,
 		log.Fatalf("failed to listen: %v", err)
 	}
 	oramNodeServer := newOramNodeServer(oramNodeServerID, replicaID, r, oramNodeFSM)
-	grpcServer := grpc.NewServer()
+	grpcServer := grpc.NewServer(grpc.UnaryInterceptor(rpc.ContextPropagationUnaryServerInterceptor()))
 	pb.RegisterOramNodeServer(grpcServer, oramNodeServer)
 	grpcServer.Serve(lis)
 }
