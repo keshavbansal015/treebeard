@@ -61,11 +61,24 @@ func (o *oramNodeServer) ReadPath(ctx context.Context, request *pb.ReadPathReque
 		return nil, fmt.Errorf("could not apply log to the FSM; %s", err)
 	}
 
+	var returnValue string
 	for level := 0; level < storage.LevelCount; level++ {
-
+		value, err := storage.ReadBlock(level, int(request.Path), offsetList[level])
+		if err == nil {
+			returnValue = value
+		}
 	}
 
-	return &pb.ReadPathReply{Value: "test_val_from_oram_node"}, nil
+	replicateDeleteOffsetListCommand, err := newReplicateDeleteOffsetListCommand(requestID)
+	if err != nil {
+		return nil, fmt.Errorf("could not create delete offsetList replication command; %s", err)
+	}
+	err = o.raftNode.Apply(replicateDeleteOffsetListCommand, 2*time.Second).Error()
+	if err != nil {
+		return nil, fmt.Errorf("could not apply log to the FSM; %s", err)
+	}
+
+	return &pb.ReadPathReply{Value: returnValue}, nil
 }
 
 func (o *oramNodeServer) JoinRaftVoter(ctx context.Context, joinRaftVoterRequest *pb.JoinRaftVoterRequest) (*pb.JoinRaftVoterReply, error) {

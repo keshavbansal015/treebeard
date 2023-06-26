@@ -10,6 +10,7 @@ type CommandType int
 
 const (
 	ReplicateOffsetList CommandType = iota
+	ReplicateDeleteOffsetList
 )
 
 type Command struct {
@@ -29,7 +30,7 @@ func newReplicateOffsetListCommand(requestID string, offsetList []int) ([]byte, 
 		},
 	)
 	if err != nil {
-		return nil, fmt.Errorf("could not marshal the offsetList and beginReadPath replication payload %s", err)
+		return nil, fmt.Errorf("could not marshal the offsetList replication payload %s", err)
 	}
 	command, err := msgpack.Marshal(
 		&Command{
@@ -39,7 +40,21 @@ func newReplicateOffsetListCommand(requestID string, offsetList []int) ([]byte, 
 		},
 	)
 	if err != nil {
-		return nil, fmt.Errorf("could not marshal the the offsetList and beginReadPath replication command %s", err)
+		return nil, fmt.Errorf("could not marshal the offsetList replication command %s", err)
+	}
+	return command, nil
+}
+
+func newReplicateDeleteOffsetListCommand(requestID string) ([]byte, error) {
+	command, err := msgpack.Marshal(
+		&Command{
+			Type:      ReplicateDeleteOffsetList,
+			RequestID: requestID,
+			Payload:   []byte{},
+		},
+	)
+	if err != nil {
+		return nil, fmt.Errorf("could not marshal the delete offsetList command%s", err)
 	}
 	return command, nil
 }

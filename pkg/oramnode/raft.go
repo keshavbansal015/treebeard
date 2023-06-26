@@ -42,6 +42,13 @@ func (fsm *oramNodeFSM) handleOffsetListReplicationCommand(requestID string, off
 	fsm.offsetListMap[requestID] = offsetList
 }
 
+func (fsm *oramNodeFSM) handleDeleteOffsetListReplicationCommand(requestID string) {
+	fsm.mu.Lock()
+	defer fsm.mu.Unlock()
+
+	delete(fsm.offsetListMap, requestID)
+}
+
 func (fsm *oramNodeFSM) Apply(rLog *raft.Log) interface{} {
 	switch rLog.Type {
 	case raft.LogCommand:
@@ -52,13 +59,16 @@ func (fsm *oramNodeFSM) Apply(rLog *raft.Log) interface{} {
 		}
 		requestID := command.RequestID
 		if command.Type == ReplicateOffsetList {
-			log.Println("got replication command for replicate offsetList and beginReadPath")
+			log.Println("got replication command for replicate offsetList")
 			var payload ReplicateOffsetListPayload
 			err := msgpack.Unmarshal(command.Payload, &payload)
 			if err != nil {
 				return fmt.Errorf("could not unmarshall the offsetList replication command; %s", err)
 			}
 			fsm.handleOffsetListReplicationCommand(requestID, payload.OffsetList)
+		} else if command.Type == ReplicateDeleteOffsetList {
+			log.Println("got replication command for replicate delete offsetList")
+			fsm.handleDeleteOffsetListReplicationCommand(requestID)
 		} else {
 			fmt.Println("wrong command type")
 		}

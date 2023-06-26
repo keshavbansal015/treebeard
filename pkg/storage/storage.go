@@ -26,3 +26,10 @@ func WriteBucket(level int, path int, stash map[string]string) (writtenBlocks []
 	}
 	return writtenBlocks, nil
 }
+
+func ReadBlock(level int, path int, offset int) (value string, err error) {
+	// TODO: implement
+	// TODO: it should invalidate and increase counter
+	value = "test_read_block_from_storage"
+	return value, nil
+}
