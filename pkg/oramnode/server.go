@@ -34,8 +34,6 @@ func newOramNodeServer(oramNodeServerID int, replicaID int, raftNode *raft.Raft,
 	}
 }
 
-//TODO: we should answer the request if we are the current leader. Add this after implementing raft for this layer.
-
 func (o *oramNodeServer) ReadPath(ctx context.Context, request *pb.ReadPathRequest) (*pb.ReadPathReply, error) {
 	if o.raftNode.State() != raft.Leader {
 		return nil, fmt.Errorf("not the leader node")
