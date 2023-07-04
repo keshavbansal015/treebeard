@@ -94,7 +94,7 @@ func (o *oramNodeServer) ReadPath(ctx context.Context, request *pb.ReadPathReque
 	}
 
 	err = o.earlyReshuffle(int(request.Path), int(request.StorageId))
-	if err != nil {
+	if err != nil { //TODO: should we delete offsetList in case of an earlyReshuffle error?
 		return nil, fmt.Errorf("early reshuffle failed;%s", err)
 	}
 
