@@ -34,6 +34,32 @@ func newOramNodeServer(oramNodeServerID int, replicaID int, raftNode *raft.Raft,
 	}
 }
 
+func (o *oramNodeServer) earlyReshuffle(path int, storageID int) error {
+	for level := 0; level < storage.LevelCount; level++ {
+		accessCount, err := storage.GetAccessCount(level, path, storageID)
+		if err != nil {
+			return fmt.Errorf("unable to get access count from the server; %s", err)
+		}
+		if accessCount < storage.MaxAccessCount {
+			continue
+		}
+		localStash, err := storage.ReadBucket(level, path, storageID)
+		if err != nil {
+			return fmt.Errorf("unable to read bucket from the server; %s", err)
+		}
+		writtenBlocks, err := storage.WriteBucket(level, path, storageID, localStash)
+		if err != nil {
+			return fmt.Errorf("unable to write bucket from the server; %s", err)
+		}
+		for block := range localStash {
+			if _, exists := writtenBlocks[block]; !exists {
+				return fmt.Errorf("unable to write all blocks to the bucket")
+			}
+		}
+	}
+	return nil
+}
+
 func (o *oramNodeServer) ReadPath(ctx context.Context, request *pb.ReadPathRequest) (*pb.ReadPathReply, error) {
 	if o.raftNode.State() != raft.Leader {
 		return nil, fmt.Errorf("not the leader node")
@@ -44,7 +70,7 @@ func (o *oramNodeServer) ReadPath(ctx context.Context, request *pb.ReadPathReque
 
 	var offsetList []int
 	for level := 0; level < storage.LevelCount; level++ {
-		offset, err := storage.GetBlockOffset(level, int(request.Path), request.Block)
+		offset, err := storage.GetBlockOffset(level, int(request.Path), int(request.StorageId), request.Block)
 		if err != nil {
 			return nil, fmt.Errorf("could not get offset from storage")
 		}
@@ -61,10 +87,15 @@ func (o *oramNodeServer) ReadPath(ctx context.Context, request *pb.ReadPathReque
 
 	var returnValue string
 	for level := 0; level < storage.LevelCount; level++ {
-		value, err := storage.ReadBlock(level, int(request.Path), offsetList[level])
+		value, err := storage.ReadBlock(level, int(request.Path), offsetList[level], int(request.StorageId))
 		if err == nil {
 			returnValue = value
 		}
+	}
+
+	err = o.earlyReshuffle(int(request.Path), int(request.StorageId))
+	if err != nil {
+		return nil, fmt.Errorf("early reshuffle failed;%s", err)
 	}
 
 	replicateDeleteOffsetListCommand, err := newReplicateDeleteOffsetListCommand(requestID)
