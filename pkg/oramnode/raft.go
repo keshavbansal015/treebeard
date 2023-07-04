@@ -16,10 +16,16 @@ import (
 	"github.com/vmihailenco/msgpack/v5"
 )
 
+type beginEvictionData struct {
+	path      int
+	storageID int
+}
+
 type oramNodeFSM struct {
 	mu sync.Mutex
 
-	offsetListMap map[string][]int //map of request id to offsetList
+	offsetListMap       map[string][]int    //map of request id to offsetList
+	unfinishedEvictions []beginEvictionData //list of unfinished evictions
 }
 
 func (fsm *oramNodeFSM) String() string {
@@ -28,6 +34,7 @@ func (fsm *oramNodeFSM) String() string {
 
 	out := fmt.Sprintln("oramNodeFSM")
 	out = out + fmt.Sprintf("offsetListMap: %v\n", fsm.offsetListMap)
+	out = out + fmt.Sprintf("unfinishedEvictions: %v\n", fsm.unfinishedEvictions)
 	return out
 }
 
@@ -47,6 +54,13 @@ func (fsm *oramNodeFSM) handleDeleteOffsetListReplicationCommand(requestID strin
 	defer fsm.mu.Unlock()
 
 	delete(fsm.offsetListMap, requestID)
+}
+
+func (fsm *oramNodeFSM) handleBeginEvictionCommand(path int, storageID int) {
+	fsm.mu.Lock()
+	defer fsm.mu.Unlock()
+
+	fsm.unfinishedEvictions = append(fsm.unfinishedEvictions, beginEvictionData{path, storageID})
 }
 
 func (fsm *oramNodeFSM) Apply(rLog *raft.Log) interface{} {
@@ -69,6 +83,14 @@ func (fsm *oramNodeFSM) Apply(rLog *raft.Log) interface{} {
 		} else if command.Type == ReplicateDeleteOffsetList {
 			log.Println("got replication command for replicate delete offsetList")
 			fsm.handleDeleteOffsetListReplicationCommand(requestID)
+		} else if command.Type == ReplicateBeginEviction {
+			log.Println("got replication command for replicate begin eviction")
+			var payload ReplicateBeginEvictionPayload
+			err := msgpack.Unmarshal(command.Payload, &payload)
+			if err != nil {
+				return fmt.Errorf("could not unmarshall the offsetList replication command; %s", err)
+			}
+			fsm.handleBeginEvictionCommand(payload.Path, payload.StorageID)
 		} else {
 			fmt.Println("wrong command type")
 		}

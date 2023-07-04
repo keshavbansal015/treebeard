@@ -60,6 +60,19 @@ func (o *oramNodeServer) earlyReshuffle(path int, storageID int) error {
 	return nil
 }
 
+func (o *oramNodeServer) evict(path int, storageID int) error {
+	beginEvictionCommand, err := newReplicateBeginEvictionCommand(path, storageID)
+	if err != nil {
+		return fmt.Errorf("unable to marshal begin eviction command; %s", err)
+	}
+	err = o.raftNode.Apply(beginEvictionCommand, 2*time.Second).Error()
+	if err != nil {
+		return fmt.Errorf("could not apply log to the FSM; %s", err)
+	}
+
+	return nil
+}
+
 func (o *oramNodeServer) ReadPath(ctx context.Context, request *pb.ReadPathRequest) (*pb.ReadPathReply, error) {
 	if o.raftNode.State() != raft.Leader {
 		return nil, fmt.Errorf("not the leader node")
