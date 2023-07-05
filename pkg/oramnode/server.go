@@ -6,6 +6,7 @@ import (
 	"log"
 	"net"
 	"strconv"
+	"sync"
 	"time"
 
 	pb "github.com/dsg-uwaterloo/oblishard/api/oramnode"
@@ -18,6 +19,9 @@ import (
 	"google.golang.org/grpc/metadata"
 )
 
+// How many ReadPath operations before eviction
+const EvictionRate int = 4
+
 type oramNodeServer struct {
 	pb.UnimplementedOramNodeServer
 	oramNodeServerID    int
@@ -25,6 +29,8 @@ type oramNodeServer struct {
 	raftNode            *raft.Raft
 	oramNodeFSM         *oramNodeFSM
 	shardNodeRPCClients map[int]ReplicaRPCClientMap
+	readPathCounter     int
+	readPathCounterMu   sync.Mutex
 }
 
 func newOramNodeServer(oramNodeServerID int, replicaID int, raftNode *raft.Raft, oramNodeFSM *oramNodeFSM, shardNodeRPCClients map[int]ReplicaRPCClientMap) *oramNodeServer {
@@ -34,6 +40,7 @@ func newOramNodeServer(oramNodeServerID int, replicaID int, raftNode *raft.Raft,
 		raftNode:            raftNode,
 		oramNodeFSM:         oramNodeFSM,
 		shardNodeRPCClients: shardNodeRPCClients,
+		readPathCounter:     0,
 	}
 }
 
@@ -181,6 +188,10 @@ func (o *oramNodeServer) evict(path int, storageID int) error {
 		return fmt.Errorf("could not apply log to the FSM; %s", err)
 	}
 
+	o.readPathCounterMu.Lock()
+	o.readPathCounter = 0
+	o.readPathCounterMu.Unlock()
+
 	return nil
 }
 
@@ -230,6 +241,10 @@ func (o *oramNodeServer) ReadPath(ctx context.Context, request *pb.ReadPathReque
 	if err != nil {
 		return nil, fmt.Errorf("could not apply log to the FSM; %s", err)
 	}
+
+	o.readPathCounterMu.Lock()
+	o.readPathCounter++
+	o.readPathCounterMu.Unlock()
 
 	return &pb.ReadPathReply{Value: returnValue}, nil
 }
@@ -285,12 +300,24 @@ func StartServer(oramNodeServerID int, rpcPort int, replicaID int, raftPort int,
 		}
 	}
 
-	//TODO: init raft node and join on joinAddr
 	lis, err := net.Listen("tcp", fmt.Sprintf("localhost:%d", rpcPort))
 	if err != nil {
 		log.Fatalf("failed to listen: %v", err)
 	}
 	oramNodeServer := newOramNodeServer(oramNodeServerID, replicaID, r, oramNodeFSM, shardNodeRPCClients)
+	go func() {
+		for {
+			needEviction := false
+			oramNodeServer.readPathCounterMu.Lock()
+			if oramNodeServer.readPathCounter >= EvictionRate {
+				needEviction = true
+			}
+			oramNodeServer.readPathCounterMu.Unlock()
+			if needEviction {
+				oramNodeServer.evict(0, 0) //TODO: make it lexicographic
+			}
+		}
+	}()
 	grpcServer := grpc.NewServer(grpc.UnaryInterceptor(rpc.ContextPropagationUnaryServerInterceptor()))
 	pb.RegisterOramNodeServer(grpcServer, oramNodeServer)
 	grpcServer.Serve(lis)

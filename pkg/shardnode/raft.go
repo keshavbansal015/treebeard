@@ -98,6 +98,7 @@ type localReplicaChangeHandlerFunc func(requestID string, r ReplicateResponsePay
 func (fsm *shardNodeFSM) handleLocalResponseReplicationChanges(requestID string, r ReplicateResponsePayload) {
 	fsm.mu.Lock()
 	defer fsm.mu.Unlock()
+
 	stashState, exists := fsm.stash[r.RequestedBlock]
 	if exists {
 		if r.OpType == Write {
@@ -151,23 +152,23 @@ func (fsm *shardNodeFSM) handleReplicateSentBlocks(r ReplicateSentBlocksPayload)
 func (fsm *shardNodeFSM) handleLocalAcksNacksReplicationChanges(requestID string) {
 	fsm.mu.Lock()
 	defer fsm.mu.Unlock()
+
 	for _, block := range fsm.acks[requestID] {
 		stashState := fsm.stash[block]
 		if stashState.logicalTime == 0 {
 			delete(fsm.stash, block)
 		}
-		stashState.waitingStatus = false
-		fsm.stash[block] = stashState
 	}
 	for _, block := range fsm.nacks[requestID] {
 		stashState := fsm.stash[block]
 		stashState.waitingStatus = false
 		fsm.stash[block] = stashState
 	}
+	delete(fsm.acks, requestID)
+	delete(fsm.nacks, requestID)
 }
 
 func (fsm *shardNodeFSM) handleReplicateAcksNacks(r ReplicateAcksNacksPayload) {
-
 	fsm.mu.Lock()
 	defer fsm.mu.Unlock()
 	requestID := uuid.New().String()
