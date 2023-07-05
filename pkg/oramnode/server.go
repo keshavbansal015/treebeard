@@ -307,6 +307,7 @@ func StartServer(oramNodeServerID int, rpcPort int, replicaID int, raftPort int,
 	oramNodeServer := newOramNodeServer(oramNodeServerID, replicaID, r, oramNodeFSM, shardNodeRPCClients)
 	go func() {
 		for {
+			time.Sleep(200 * time.Millisecond)
 			needEviction := false
 			oramNodeServer.readPathCounterMu.Lock()
 			if oramNodeServer.readPathCounter >= EvictionRate {
