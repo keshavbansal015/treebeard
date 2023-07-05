@@ -63,6 +63,33 @@ func (o *oramNodeServer) earlyReshuffle(path int, storageID int) error {
 	return nil
 }
 
+func (o *oramNodeServer) sendAcksToShardNode(replicas ReplicaRPCClientMap, acks []*shardnodepb.Ack) error {
+
+	var replicaFuncs []rpc.CallFunc
+	var clients []interface{}
+	for _, c := range replicas {
+		replicaFuncs = append(replicaFuncs,
+			func(ctx context.Context, client interface{}, request interface{}, opts ...grpc.CallOption) (interface{}, error) {
+				return client.(ShardNodeRPCClient).ClientAPI.AckSentBlocks(ctx, request.(*shardnodepb.AckSentBlocksRequest), opts...)
+			},
+		)
+		clients = append(clients, c)
+	}
+
+	_, err := rpc.CallAllReplicas(
+		context.Background(),
+		clients,
+		replicaFuncs,
+		&shardnodepb.AckSentBlocksRequest{
+			Acks: acks,
+		},
+	)
+	if err != nil {
+		return fmt.Errorf("could not read blocks from the shardnode; %s", err)
+	}
+	return nil
+}
+
 func (o *oramNodeServer) getBlocksFromShardNode(replicas ReplicaRPCClientMap, path int, storageID int) ([]*shardnodepb.Block, error) {
 
 	var replicaFuncs []rpc.CallFunc
@@ -93,6 +120,14 @@ func (o *oramNodeServer) getBlocksFromShardNode(replicas ReplicaRPCClientMap, pa
 	return shardNodeReply.Blocks, nil
 }
 
+func (o *oramNodeServer) sendBackAcksNacks(recievedBlocksStatus map[string]bool, shardNode ReplicaRPCClientMap) {
+	var acks []*shardnodepb.Ack
+	for block, status := range recievedBlocksStatus {
+		acks = append(acks, &shardnodepb.Ack{Block: block, IsAck: status})
+	}
+	o.sendAcksToShardNode(shardNode, acks)
+}
+
 func (o *oramNodeServer) evict(path int, storageID int) error {
 	beginEvictionCommand, err := newReplicateBeginEvictionCommand(path, storageID)
 	if err != nil {
@@ -105,6 +140,7 @@ func (o *oramNodeServer) evict(path int, storageID int) error {
 
 	aggStash := make(map[string]string)
 	randomShardNode := o.shardNodeRPCClients[0]
+	recievedBlocksStatus := make(map[string]bool) //map of blocks to isWritten
 	for level := 0; level < storage.LevelCount; level++ {
 		blocks, err := storage.ReadBucket(level, path, storageID)
 		if err != nil {
@@ -120,6 +156,7 @@ func (o *oramNodeServer) evict(path int, storageID int) error {
 		}
 		for _, block := range shardNodeBlocks {
 			aggStash[block.Block] = block.Value
+			recievedBlocksStatus[block.Block] = false
 		}
 	}
 
@@ -130,10 +167,11 @@ func (o *oramNodeServer) evict(path int, storageID int) error {
 		}
 		for block := range writtenBlocks {
 			delete(aggStash, block)
+			recievedBlocksStatus[block] = true
 		}
 	}
+	o.sendBackAcksNacks(recievedBlocksStatus, randomShardNode)
 
-	//TODO: send back acks and nacks
 	endEvictionCommand, err := newReplicateEndEvictionCommand()
 	if err != nil {
 		return fmt.Errorf("unable to marshal end eviction command; %s", err)
