@@ -35,6 +35,16 @@ func WriteBucket(level int, path int, storageID int, stash map[string]string) (w
 	return writtenBlocks, nil
 }
 
+func AtomicWriteBucket(level int, path int, storageID int, stash map[string]string) (writtenBlocks map[string]string, err error) {
+	// TODO: implement
+	// TODO: It should make the counter zero
+	writtenBlocks = make(map[string]string)
+	for block, value := range stash {
+		writtenBlocks[block] = value
+	}
+	return writtenBlocks, nil
+}
+
 func ReadBlock(level int, path int, storageID int, offset int) (value string, err error) {
 	// TODO: implement
 	// TODO: it should invalidate and increase counter

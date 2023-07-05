@@ -9,6 +9,7 @@ import (
 	"time"
 
 	pb "github.com/dsg-uwaterloo/oblishard/api/oramnode"
+	shardnodepb "github.com/dsg-uwaterloo/oblishard/api/shardnode"
 	"github.com/dsg-uwaterloo/oblishard/pkg/rpc"
 	"github.com/dsg-uwaterloo/oblishard/pkg/storage"
 	"github.com/hashicorp/raft"
@@ -19,18 +20,20 @@ import (
 
 type oramNodeServer struct {
 	pb.UnimplementedOramNodeServer
-	oramNodeServerID int
-	replicaID        int
-	raftNode         *raft.Raft
-	oramNodeFSM      *oramNodeFSM
+	oramNodeServerID    int
+	replicaID           int
+	raftNode            *raft.Raft
+	oramNodeFSM         *oramNodeFSM
+	shardNodeRPCClients map[int]ReplicaRPCClientMap
 }
 
-func newOramNodeServer(oramNodeServerID int, replicaID int, raftNode *raft.Raft, oramNodeFSM *oramNodeFSM) *oramNodeServer {
+func newOramNodeServer(oramNodeServerID int, replicaID int, raftNode *raft.Raft, oramNodeFSM *oramNodeFSM, shardNodeRPCClients map[int]ReplicaRPCClientMap) *oramNodeServer {
 	return &oramNodeServer{
-		oramNodeServerID: oramNodeServerID,
-		replicaID:        replicaID,
-		raftNode:         raftNode,
-		oramNodeFSM:      oramNodeFSM,
+		oramNodeServerID:    oramNodeServerID,
+		replicaID:           replicaID,
+		raftNode:            raftNode,
+		oramNodeFSM:         oramNodeFSM,
+		shardNodeRPCClients: shardNodeRPCClients,
 	}
 }
 
@@ -60,6 +63,40 @@ func (o *oramNodeServer) earlyReshuffle(path int, storageID int) error {
 	return nil
 }
 
+func (o *oramNodeServer) getBlocksFromShardNode(replicas ReplicaRPCClientMap, path int, storageID int) ([]*shardnodepb.Block, error) {
+
+	type sendBlocksResult struct {
+		reply *shardnodepb.SendBlocksReply
+		err   error
+	}
+	responseChannel := make(chan sendBlocksResult)
+	for _, client := range replicas {
+		go func(client ShardNodeRPCClient) {
+			reply, err := client.ClientAPI.SendBlocks(
+				context.Background(),
+				&shardnodepb.SendBlocksRequest{
+					MaxBlocks: 5, //TODO: read as a config variable
+					Path:      int32(path),
+					StorageId: int32(storageID),
+				},
+			)
+			responseChannel <- sendBlocksResult{reply: reply, err: err}
+		}(client)
+	}
+
+	timeout := time.After(2 * time.Second)
+	for {
+		select {
+		case sendBlocksResult := <-responseChannel:
+			if sendBlocksResult.err == nil {
+				return sendBlocksResult.reply.Blocks, nil
+			}
+		case <-timeout:
+			return nil, fmt.Errorf("could not read blocks from the shardnode")
+		}
+	}
+}
+
 func (o *oramNodeServer) evict(path int, storageID int) error {
 	beginEvictionCommand, err := newReplicateBeginEvictionCommand(path, storageID)
 	if err != nil {
@@ -69,6 +106,39 @@ func (o *oramNodeServer) evict(path int, storageID int) error {
 	if err != nil {
 		return fmt.Errorf("could not apply log to the FSM; %s", err)
 	}
+
+	aggStash := make(map[string]string)
+	for level := 0; level < storage.LevelCount; level++ {
+		blocks, err := storage.ReadBucket(level, path, storageID)
+		if err != nil {
+			return fmt.Errorf("unable to read bucket; %s", err)
+		}
+		for block, value := range blocks {
+			aggStash[block] = value
+		}
+		//TODO: get blocks from multiple random shard nodes
+		randomShardNode := o.shardNodeRPCClients[0]
+		shardNodeBlocks, err := o.getBlocksFromShardNode(randomShardNode, path, storageID)
+		if err != nil {
+			return fmt.Errorf("unable to get blocks from shard node; %s", err)
+		}
+		for _, block := range shardNodeBlocks {
+			aggStash[block.Block] = block.Value
+		}
+	}
+
+	for level := storage.LevelCount - 1; level >= 0; level-- {
+		writtenBlocks, err := storage.AtomicWriteBucket(level, path, storageID, aggStash)
+		if err != nil {
+			return fmt.Errorf("unable to atomic write bucket; %s", err)
+		}
+		for block := range writtenBlocks {
+			delete(aggStash, block)
+		}
+	}
+
+	//TODO: send back acks and nacks
+	//TODO: replicate end eviction
 
 	return nil
 }
@@ -140,7 +210,7 @@ func (o *oramNodeServer) JoinRaftVoter(ctx context.Context, joinRaftVoterRequest
 	return &pb.JoinRaftVoterReply{Success: true}, nil
 }
 
-func StartServer(oramNodeServerID int, rpcPort int, replicaID int, raftPort int, joinAddr string) {
+func StartServer(oramNodeServerID int, rpcPort int, replicaID int, raftPort int, joinAddr string, shardNodeRPCClients map[int]ReplicaRPCClientMap) {
 	isFirst := joinAddr == ""
 	oramNodeFSM := newOramNodeFSM()
 	r, err := startRaftServer(isFirst, replicaID, raftPort, oramNodeFSM)
@@ -179,7 +249,7 @@ func StartServer(oramNodeServerID int, rpcPort int, replicaID int, raftPort int,
 	if err != nil {
 		log.Fatalf("failed to listen: %v", err)
 	}
-	oramNodeServer := newOramNodeServer(oramNodeServerID, replicaID, r, oramNodeFSM)
+	oramNodeServer := newOramNodeServer(oramNodeServerID, replicaID, r, oramNodeFSM, shardNodeRPCClients)
 	grpcServer := grpc.NewServer(grpc.UnaryInterceptor(rpc.ContextPropagationUnaryServerInterceptor()))
 	pb.RegisterOramNodeServer(grpcServer, oramNodeServer)
 	grpcServer.Serve(lis)
