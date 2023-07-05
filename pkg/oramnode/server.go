@@ -65,36 +65,32 @@ func (o *oramNodeServer) earlyReshuffle(path int, storageID int) error {
 
 func (o *oramNodeServer) getBlocksFromShardNode(replicas ReplicaRPCClientMap, path int, storageID int) ([]*shardnodepb.Block, error) {
 
-	type sendBlocksResult struct {
-		reply *shardnodepb.SendBlocksReply
-		err   error
-	}
-	responseChannel := make(chan sendBlocksResult)
-	for _, client := range replicas {
-		go func(client ShardNodeRPCClient) {
-			reply, err := client.ClientAPI.SendBlocks(
-				context.Background(),
-				&shardnodepb.SendBlocksRequest{
-					MaxBlocks: 5, //TODO: read as a config variable
-					Path:      int32(path),
-					StorageId: int32(storageID),
-				},
-			)
-			responseChannel <- sendBlocksResult{reply: reply, err: err}
-		}(client)
+	var replicaFuncs []rpc.CallFunc
+	var clients []interface{}
+	for _, c := range replicas {
+		replicaFuncs = append(replicaFuncs,
+			func(ctx context.Context, client interface{}, request interface{}, opts ...grpc.CallOption) (interface{}, error) {
+				return client.(ShardNodeRPCClient).ClientAPI.SendBlocks(ctx, request.(*shardnodepb.SendBlocksRequest), opts...)
+			},
+		)
+		clients = append(clients, c)
 	}
 
-	timeout := time.After(2 * time.Second)
-	for {
-		select {
-		case sendBlocksResult := <-responseChannel:
-			if sendBlocksResult.err == nil {
-				return sendBlocksResult.reply.Blocks, nil
-			}
-		case <-timeout:
-			return nil, fmt.Errorf("could not read blocks from the shardnode")
-		}
+	reply, err := rpc.CallAllReplicas(
+		context.Background(),
+		clients,
+		replicaFuncs,
+		&shardnodepb.SendBlocksRequest{
+			MaxBlocks: 5, //TODO: read as a config variable
+			Path:      int32(path),
+			StorageId: int32(storageID),
+		},
+	)
+	if err != nil {
+		return nil, fmt.Errorf("could not read blocks from the shardnode; %s", err)
 	}
+	shardNodeReply := reply.(*shardnodepb.SendBlocksReply)
+	return shardNodeReply.Blocks, nil
 }
 
 func (o *oramNodeServer) evict(path int, storageID int) error {
@@ -108,6 +104,7 @@ func (o *oramNodeServer) evict(path int, storageID int) error {
 	}
 
 	aggStash := make(map[string]string)
+	randomShardNode := o.shardNodeRPCClients[0]
 	for level := 0; level < storage.LevelCount; level++ {
 		blocks, err := storage.ReadBucket(level, path, storageID)
 		if err != nil {
@@ -117,7 +114,6 @@ func (o *oramNodeServer) evict(path int, storageID int) error {
 			aggStash[block] = value
 		}
 		//TODO: get blocks from multiple random shard nodes
-		randomShardNode := o.shardNodeRPCClients[0]
 		shardNodeBlocks, err := o.getBlocksFromShardNode(randomShardNode, path, storageID)
 		if err != nil {
 			return fmt.Errorf("unable to get blocks from shard node; %s", err)

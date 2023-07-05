@@ -74,38 +74,33 @@ func (s *shardNodeServer) createResponseChannelForRequestID(requestID string) ch
 }
 
 func (s *shardNodeServer) readPathFromAllOramNodeReplicas(ctx context.Context, oramNodeReplicaMap ReplicaRPCClientMap, block string, path int, storageID int, isReal bool) (*oramnodepb.ReadPathReply, error) {
-	type readPathResult struct {
-		reply *oramnodepb.ReadPathReply
-		err   error
-	}
-	responseChannel := make(chan readPathResult)
-	for _, client := range oramNodeReplicaMap {
-		go func(client oramNodeRPCClient) {
-
-			reply, err := client.ClientAPI.ReadPath(
-				ctx,
-				&oramnodepb.ReadPathRequest{
-					Block:     block,
-					Path:      int32(path),
-					StorageId: int32(storageID),
-					IsReal:    isReal,
-				},
-			)
-			responseChannel <- readPathResult{reply: reply, err: err}
-		}(client)
+	var replicaFuncs []rpc.CallFunc
+	var clients []interface{}
+	for _, c := range oramNodeReplicaMap {
+		replicaFuncs = append(replicaFuncs,
+			func(ctx context.Context, client interface{}, request interface{}, opts ...grpc.CallOption) (interface{}, error) {
+				return client.(oramNodeRPCClient).ClientAPI.ReadPath(ctx, request.(*oramnodepb.ReadPathRequest), opts...)
+			},
+		)
+		clients = append(clients, c)
 	}
 
-	timeout := time.After(2 * time.Second)
-	for {
-		select {
-		case readPathResult := <-responseChannel:
-			if readPathResult.err == nil {
-				return readPathResult.reply, nil
-			}
-		case <-timeout:
-			return nil, fmt.Errorf("could not read value from the shardnode")
-		}
+	reply, err := rpc.CallAllReplicas(
+		ctx,
+		clients,
+		replicaFuncs,
+		&oramnodepb.ReadPathRequest{
+			Block:     block,
+			Path:      int32(path),
+			StorageId: int32(storageID),
+			IsReal:    isReal,
+		},
+	)
+	if err != nil {
+		return nil, fmt.Errorf("could not get value from the oramnode; %s", err)
 	}
+	oramNodeReply := reply.(*oramnodepb.ReadPathReply)
+	return oramNodeReply, nil
 }
 
 func (s *shardNodeServer) query(ctx context.Context, op OperationType, block string, value string) (string, error) {
