@@ -24,8 +24,8 @@ type beginEvictionData struct {
 type oramNodeFSM struct {
 	mu sync.Mutex
 
-	offsetListMap       map[string][]int    //map of request id to offsetList
-	unfinishedEvictions []beginEvictionData //list of unfinished evictions
+	offsetListMap      map[string][]int   //map of request id to offsetList
+	unfinishedEviction *beginEvictionData //unfinished eviction
 }
 
 func (fsm *oramNodeFSM) String() string {
@@ -34,7 +34,7 @@ func (fsm *oramNodeFSM) String() string {
 
 	out := fmt.Sprintln("oramNodeFSM")
 	out = out + fmt.Sprintf("offsetListMap: %v\n", fsm.offsetListMap)
-	out = out + fmt.Sprintf("unfinishedEvictions: %v\n", fsm.unfinishedEvictions)
+	out = out + fmt.Sprintf("unfinishedEviction: %v\n", fsm.unfinishedEviction)
 	return out
 }
 
@@ -60,7 +60,13 @@ func (fsm *oramNodeFSM) handleBeginEvictionCommand(path int, storageID int) {
 	fsm.mu.Lock()
 	defer fsm.mu.Unlock()
 
-	fsm.unfinishedEvictions = append(fsm.unfinishedEvictions, beginEvictionData{path, storageID})
+	fsm.unfinishedEviction = &beginEvictionData{path, storageID}
+}
+
+func (fsm *oramNodeFSM) handleEndEvictionCommand() {
+	fsm.mu.Lock()
+	defer fsm.mu.Unlock()
+	fsm.unfinishedEviction = nil
 }
 
 func (fsm *oramNodeFSM) Apply(rLog *raft.Log) interface{} {
@@ -91,6 +97,9 @@ func (fsm *oramNodeFSM) Apply(rLog *raft.Log) interface{} {
 				return fmt.Errorf("could not unmarshall the offsetList replication command; %s", err)
 			}
 			fsm.handleBeginEvictionCommand(payload.Path, payload.StorageID)
+		} else if command.Type == ReplicateEndEviction {
+			log.Println("got replication command for replicate end eviction")
+			fsm.handleEndEvictionCommand()
 		} else {
 			fmt.Println("wrong command type")
 		}

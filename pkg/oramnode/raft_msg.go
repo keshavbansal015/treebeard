@@ -12,6 +12,7 @@ const (
 	ReplicateOffsetList CommandType = iota
 	ReplicateDeleteOffsetList
 	ReplicateBeginEviction
+	ReplicateEndEviction
 )
 
 type Command struct {
@@ -85,6 +86,20 @@ func newReplicateBeginEvictionCommand(path int, storageID int) ([]byte, error) {
 	)
 	if err != nil {
 		return nil, fmt.Errorf("could not marshal the begin eviction command; %s", err)
+	}
+	return command, nil
+}
+
+func newReplicateEndEvictionCommand() ([]byte, error) {
+	command, err := msgpack.Marshal(
+		&Command{
+			Type:      ReplicateEndEviction,
+			RequestID: "",
+			Payload:   []byte{},
+		},
+	)
+	if err != nil {
+		return nil, fmt.Errorf("could not marshal the end eviction command; %s", err)
 	}
 	return command, nil
 }

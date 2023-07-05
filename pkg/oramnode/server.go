@@ -138,7 +138,14 @@ func (o *oramNodeServer) evict(path int, storageID int) error {
 	}
 
 	//TODO: send back acks and nacks
-	//TODO: replicate end eviction
+	endEvictionCommand, err := newReplicateEndEvictionCommand()
+	if err != nil {
+		return fmt.Errorf("unable to marshal end eviction command; %s", err)
+	}
+	err = o.raftNode.Apply(endEvictionCommand, 2*time.Second).Error()
+	if err != nil {
+		return fmt.Errorf("could not apply log to the FSM; %s", err)
+	}
 
 	return nil
 }
