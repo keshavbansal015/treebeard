@@ -1,15 +1,13 @@
 package client
 
 import (
-	"context"
 	"fmt"
 
 	routerpb "github.com/dsg-uwaterloo/oblishard/api/router"
 	"github.com/dsg-uwaterloo/oblishard/pkg/config"
-	"github.com/google/uuid"
+	"github.com/dsg-uwaterloo/oblishard/pkg/rpc"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
-	"google.golang.org/grpc/metadata"
 )
 
 type RouterRPCClient struct {
@@ -17,15 +15,8 @@ type RouterRPCClient struct {
 	Conn      *grpc.ClientConn
 }
 
-func getContextWithRequestID() context.Context {
-	requestID := uuid.New().String()
-	ctx := context.Background()
-	ctx = metadata.NewOutgoingContext(ctx, metadata.Pairs("requestid", requestID))
-	return ctx
-}
-
 func (c *RouterRPCClient) Read(block string) (value string, err error) {
-	reply, err := c.ClientAPI.Read(getContextWithRequestID(),
+	reply, err := c.ClientAPI.Read(rpc.GetContextWithRequestID(),
 		&routerpb.ReadRequest{Block: block})
 	if err != nil {
 		return "", err
@@ -34,7 +25,7 @@ func (c *RouterRPCClient) Read(block string) (value string, err error) {
 }
 
 func (c *RouterRPCClient) Write(block string, value string) (success bool, err error) {
-	reply, err := c.ClientAPI.Write(getContextWithRequestID(),
+	reply, err := c.ClientAPI.Write(rpc.GetContextWithRequestID(),
 		&routerpb.WriteRequest{Block: block, Value: value})
 	if err != nil {
 		return false, err
