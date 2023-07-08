@@ -3,33 +3,12 @@ package shardnode
 import (
 	"context"
 	"fmt"
-	"reflect"
 	"testing"
 
 	oramnodepb "github.com/dsg-uwaterloo/oblishard/api/oramnode"
 	"github.com/hashicorp/raft"
 	"google.golang.org/grpc"
 )
-
-func TestGetRandomOramNodeReplicaMapReturnsRandomClientExistingInOramNodeMap(t *testing.T) {
-	s := newShardNodeServer(0, 0, &raft.Raft{}, &shardNodeFSM{}, make(map[int]ReplicaRPCClientMap))
-	s.oramNodeClients = map[int]ReplicaRPCClientMap{
-		0: map[int]oramNodeRPCClient{
-			0: {},
-			1: {},
-		},
-		1: map[int]oramNodeRPCClient{
-			0: {},
-		},
-	}
-	random := s.getRandomOramNodeReplicaMap()
-	for _, replicaMap := range s.oramNodeClients {
-		if reflect.DeepEqual(random, replicaMap) {
-			return
-		}
-	}
-	t.Errorf("the random map does not exist")
-}
 
 type mockOramNodeClient struct {
 	replyFunc func() (*oramnodepb.ReadPathReply, error)

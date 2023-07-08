@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"log"
-	"math/rand"
 	"net"
 	"strconv"
 	"time"
@@ -24,10 +23,10 @@ type shardNodeServer struct {
 	replicaID         int
 	raftNode          *raft.Raft
 	shardNodeFSM      *shardNodeFSM
-	oramNodeClients   map[int]ReplicaRPCClientMap
+	oramNodeClients   RPCClientMap
 }
 
-func newShardNodeServer(shardNodeServerID int, replicaID int, raftNode *raft.Raft, fsm *shardNodeFSM, oramNodeRPCClients map[int]ReplicaRPCClientMap) *shardNodeServer {
+func newShardNodeServer(shardNodeServerID int, replicaID int, raftNode *raft.Raft, fsm *shardNodeFSM, oramNodeRPCClients RPCClientMap) *shardNodeServer {
 	return &shardNodeServer{
 		shardNodeServerID: shardNodeServerID,
 		replicaID:         replicaID,
@@ -43,13 +42,6 @@ const (
 	Read = iota
 	Write
 )
-
-func (s *shardNodeServer) getRandomOramNodeReplicaMap() ReplicaRPCClientMap {
-	oramNodesLen := len(s.oramNodeClients)
-	randomOramNodeIndex := rand.Intn(oramNodesLen)
-	randomOramNode := s.oramNodeClients[randomOramNodeIndex]
-	return randomOramNode
-}
 
 func (s *shardNodeServer) isInitialRequest(block string, requestID string) bool {
 	s.shardNodeFSM.mu.Lock()
@@ -120,7 +112,7 @@ func (s *shardNodeServer) query(ctx context.Context, op OperationType, block str
 	}
 
 	path, storageID := s.getPathAndStorageBasedOnRequest(block, requestID)
-	oramNodeReplicaMap := s.getRandomOramNodeReplicaMap()
+	oramNodeReplicaMap := s.oramNodeClients.getRandomOramNodeReplicaMap()
 	reply, err := s.readPathFromAllOramNodeReplicas(ctx, oramNodeReplicaMap, block, path, storageID, s.isInitialRequest(block, requestID))
 
 	if err != nil {

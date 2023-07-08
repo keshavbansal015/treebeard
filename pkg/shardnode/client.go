@@ -2,6 +2,7 @@ package shardnode
 
 import (
 	"fmt"
+	"math/rand"
 
 	oramnodepb "github.com/dsg-uwaterloo/oblishard/api/oramnode"
 	"github.com/dsg-uwaterloo/oblishard/pkg/config"
@@ -15,6 +16,15 @@ type oramNodeRPCClient struct {
 }
 
 type ReplicaRPCClientMap map[int]oramNodeRPCClient
+
+type RPCClientMap map[int]ReplicaRPCClientMap
+
+func (r RPCClientMap) getRandomOramNodeReplicaMap() ReplicaRPCClientMap {
+	oramNodesLen := len(r)
+	randomOramNodeIndex := rand.Intn(oramNodesLen)
+	randomOramNode := r[randomOramNodeIndex]
+	return randomOramNode
+}
 
 func StartOramNodeRPCClients(endpoints []config.OramNodeEndpoint) (map[int]ReplicaRPCClientMap, error) {
 	clients := make(map[int]ReplicaRPCClientMap)
