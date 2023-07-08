@@ -43,14 +43,8 @@ const (
 	Write
 )
 
-func (s *shardNodeServer) isInitialRequest(block string, requestID string) bool {
-	s.shardNodeFSM.mu.Lock()
-	defer s.shardNodeFSM.mu.Unlock()
-	return s.shardNodeFSM.requestLog[block][0] == requestID
-}
-
 func (s *shardNodeServer) getPathAndStorageBasedOnRequest(block string, requestID string) (path int, storageID int) {
-	if !s.isInitialRequest(block, requestID) {
+	if !s.shardNodeFSM.isInitialRequest(block, requestID) {
 		return 0, 0 // TODO: change to a random path and storage after adding the tree logic
 	} else {
 		return 0, 0 // TODO: change to a real path and storage from position map after adding the tree logic
@@ -113,13 +107,13 @@ func (s *shardNodeServer) query(ctx context.Context, op OperationType, block str
 
 	path, storageID := s.getPathAndStorageBasedOnRequest(block, requestID)
 	oramNodeReplicaMap := s.oramNodeClients.getRandomOramNodeReplicaMap()
-	reply, err := s.readPathFromAllOramNodeReplicas(ctx, oramNodeReplicaMap, block, path, storageID, s.isInitialRequest(block, requestID))
+	reply, err := s.readPathFromAllOramNodeReplicas(ctx, oramNodeReplicaMap, block, path, storageID, s.shardNodeFSM.isInitialRequest(block, requestID))
 
 	if err != nil {
 		return "", fmt.Errorf("could not call the ReadPath RPC on the oram node. %s", err)
 	}
 	responseChannel := s.createResponseChannelForRequestID(requestID)
-	if s.isInitialRequest(block, requestID) {
+	if s.shardNodeFSM.isInitialRequest(block, requestID) {
 		responseReplicationCommand, err := newResponseReplicationCommand(reply.Value, requestID, block, value, op)
 		if err != nil {
 			return "", fmt.Errorf("could not create response replication command; %s", err)

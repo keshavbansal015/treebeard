@@ -84,6 +84,13 @@ func (fsm *shardNodeFSM) String() string {
 	return out
 }
 
+func (fsm *shardNodeFSM) isInitialRequest(block string, requestID string) bool {
+	fsm.mu.Lock()
+	defer fsm.mu.Unlock()
+
+	return fsm.requestLog[block][0] == requestID
+}
+
 func (fsm *shardNodeFSM) handleReplicateRequestAndPathAndStorage(requestID string, r ReplicateRequestAndPathAndStoragePayload) {
 	fsm.mu.Lock()
 	defer fsm.mu.Unlock()
