@@ -8,7 +8,6 @@ import (
 	"strconv"
 	"time"
 
-	oramnodepb "github.com/dsg-uwaterloo/oblishard/api/oramnode"
 	pb "github.com/dsg-uwaterloo/oblishard/api/shardnode"
 	"github.com/dsg-uwaterloo/oblishard/pkg/rpc"
 	"github.com/hashicorp/raft"
@@ -59,36 +58,6 @@ func (s *shardNodeServer) createResponseChannelForRequestID(requestID string) ch
 	return ch
 }
 
-func (s *shardNodeServer) readPathFromAllOramNodeReplicas(ctx context.Context, oramNodeReplicaMap ReplicaRPCClientMap, block string, path int, storageID int, isReal bool) (*oramnodepb.ReadPathReply, error) {
-	var replicaFuncs []rpc.CallFunc
-	var clients []interface{}
-	for _, c := range oramNodeReplicaMap {
-		replicaFuncs = append(replicaFuncs,
-			func(ctx context.Context, client interface{}, request interface{}, opts ...grpc.CallOption) (interface{}, error) {
-				return client.(oramNodeRPCClient).ClientAPI.ReadPath(ctx, request.(*oramnodepb.ReadPathRequest), opts...)
-			},
-		)
-		clients = append(clients, c)
-	}
-
-	reply, err := rpc.CallAllReplicas(
-		ctx,
-		clients,
-		replicaFuncs,
-		&oramnodepb.ReadPathRequest{
-			Block:     block,
-			Path:      int32(path),
-			StorageId: int32(storageID),
-			IsReal:    isReal,
-		},
-	)
-	if err != nil {
-		return nil, fmt.Errorf("could not get value from the oramnode; %s", err)
-	}
-	oramNodeReply := reply.(*oramnodepb.ReadPathReply)
-	return oramNodeReply, nil
-}
-
 func (s *shardNodeServer) query(ctx context.Context, op OperationType, block string, value string) (string, error) {
 	if s.raftNode.State() != raft.Leader {
 		return "", fmt.Errorf("not the leader node")
@@ -107,7 +76,7 @@ func (s *shardNodeServer) query(ctx context.Context, op OperationType, block str
 
 	path, storageID := s.getPathAndStorageBasedOnRequest(block, requestID)
 	oramNodeReplicaMap := s.oramNodeClients.getRandomOramNodeReplicaMap()
-	reply, err := s.readPathFromAllOramNodeReplicas(ctx, oramNodeReplicaMap, block, path, storageID, s.shardNodeFSM.isInitialRequest(block, requestID))
+	reply, err := oramNodeReplicaMap.readPathFromAllOramNodeReplicas(ctx, block, path, storageID, s.shardNodeFSM.isInitialRequest(block, requestID))
 
 	if err != nil {
 		return "", fmt.Errorf("could not call the ReadPath RPC on the oram node. %s", err)
