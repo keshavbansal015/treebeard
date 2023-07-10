@@ -5,12 +5,12 @@ const LevelCount int = 32
 const MaxAccessCount int = 8
 
 func GetBlockOffset(level int, path int, storageID int, block string) (offset int, err error) {
-	//TODO: implement
+	// TODO: implement
 	return 0, nil
 }
 
 func GetAccessCount(level int, path int, storageID int) (count int, err error) {
-	//TODO: implement
+	// TODO: implement
 	return 0, nil
 }
 
@@ -18,7 +18,7 @@ func GetAccessCount(level int, path int, storageID int) (count int, err error) {
 // It reads all the valid real blocks and random vaid dummy blocks if the bucket contains less than Z valid real blocks.
 // blocks is a map of key to block values.
 func ReadBucket(level int, path int, storageID int) (blocks map[string]string, err error) {
-	//TODO: implement
+	// TODO: implement
 	return map[string]string{
 		"a": "storage_value_a",
 		"b": "storage_value_b",

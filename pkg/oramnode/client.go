@@ -63,7 +63,7 @@ func (r *ReplicaRPCClientMap) getBlocksFromShardNode(path int, storageID int) ([
 		clients,
 		replicaFuncs,
 		&shardnodepb.SendBlocksRequest{
-			MaxBlocks: 5, //TODO: read as a config variable
+			MaxBlocks: 5, // TODO: read as a config variable
 			Path:      int32(path),
 			StorageId: int32(storageID),
 		},

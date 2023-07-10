@@ -31,8 +31,8 @@ func newRequestReplicationCommand(block string, requestID string) ([]byte, error
 	requestReplicationPayload, err := msgpack.Marshal(
 		&ReplicateRequestAndPathAndStoragePayload{
 			RequestedBlock: block,
-			Path:           0, //TODO: update to use a real path
-			StorageID:      0, //TODO: update to use a real storage id
+			Path:           0, // TODO: update to use a real path
+			StorageID:      0, // TODO: update to use a real storage id
 		},
 	)
 	if err != nil {

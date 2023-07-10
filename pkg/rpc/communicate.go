@@ -15,6 +15,7 @@ type result struct {
 
 type CallFunc func(ctx context.Context, client interface{}, request interface{}, opts ...grpc.CallOption) (interface{}, error)
 
+// TODO: move previous tests for calling all replicas to this package
 func CallAllReplicas(ctx context.Context, clients []interface{}, replicaFuncs []CallFunc, request interface{}) (reply interface{}, err error) {
 	responseChannel := make(chan result)
 	for i, clientFunc := range replicaFuncs {

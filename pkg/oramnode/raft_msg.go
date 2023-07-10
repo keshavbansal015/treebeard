@@ -80,7 +80,7 @@ func newReplicateBeginEvictionCommand(path int, storageID int) ([]byte, error) {
 	command, err := msgpack.Marshal(
 		&Command{
 			Type:      ReplicateBeginEviction,
-			RequestID: "", //I should move requestID from the command to the payload
+			RequestID: "", // I should move requestID from the command to the payload
 			Payload:   payload,
 		},
 	)

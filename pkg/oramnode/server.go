@@ -81,7 +81,7 @@ func (o *oramNodeServer) evict(path int, storageID int) error {
 
 	aggStash := make(map[string]string)
 	randomShardNode := o.shardNodeRPCClients[0]
-	recievedBlocksStatus := make(map[string]bool) //map of blocks to isWritten
+	recievedBlocksStatus := make(map[string]bool) // map of blocks to isWritten
 	for level := 0; level < storage.LevelCount; level++ {
 		blocks, err := storage.ReadBucket(level, path, storageID)
 		if err != nil {
@@ -90,7 +90,7 @@ func (o *oramNodeServer) evict(path int, storageID int) error {
 		for block, value := range blocks {
 			aggStash[block] = value
 		}
-		//TODO: get blocks from multiple random shard nodes
+		// TODO: get blocks from multiple random shard nodes
 		shardNodeBlocks, err := randomShardNode.getBlocksFromShardNode(path, storageID)
 		if err != nil {
 			return fmt.Errorf("unable to get blocks from shard node; %s", err)
@@ -163,7 +163,7 @@ func (o *oramNodeServer) ReadPath(ctx context.Context, request *pb.ReadPathReque
 	}
 
 	err = o.earlyReshuffle(int(request.Path), int(request.StorageId))
-	if err != nil { //TODO: should we delete offsetList in case of an earlyReshuffle error?
+	if err != nil { // TODO: should we delete offsetList in case of an earlyReshuffle error?
 		return nil, fmt.Errorf("early reshuffle failed;%s", err)
 	}
 
@@ -249,7 +249,7 @@ func StartServer(oramNodeServerID int, rpcPort int, replicaID int, raftPort int,
 			}
 			oramNodeServer.readPathCounterMu.Unlock()
 			if needEviction {
-				oramNodeServer.evict(0, 0) //TODO: make it lexicographic
+				oramNodeServer.evict(0, 0) // TODO: make it lexicographic
 			}
 		}
 	}()

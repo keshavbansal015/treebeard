@@ -120,9 +120,9 @@ func (s *shardNodeServer) getBlocksForSend(maxBlocks int) (blocksToReturn []*pb.
 
 	counter := 0
 	for block, stashState := range s.shardNodeFSM.stash {
-		//TODO: just return blocks that are for the request.path and request.storageID after adding the positionmap
+		// TODO: just return blocks that are for the request.path and request.storageID after adding the positionmap
 
-		//Don't send a stash block that is in the waiting status to another SendBlocks request
+		// Don't send a stash block that is in the waiting status to another SendBlocks request
 		if stashState.waitingStatus {
 			continue
 		}

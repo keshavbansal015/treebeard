@@ -115,12 +115,12 @@ func (sn snapshotNoop) Persist(_ raft.SnapshotSink) error { return nil }
 func (sn snapshotNoop) Release()                          {}
 
 func (fsm *oramNodeFSM) Snapshot() (raft.FSMSnapshot, error) {
-	//TODO: implement
+	// TODO: implement
 	return snapshotNoop{}, nil
 }
 
 func (fsm *oramNodeFSM) Restore(rc io.ReadCloser) error {
-	//TODO: implement
+	// TODO: implement
 	return fmt.Errorf("not implemented yet") //TODO: implement
 }
 
@@ -163,7 +163,7 @@ func startRaftServer(isFirst bool, replicaID int, raftPort int, oramNodeFSM *ora
 		return nil, fmt.Errorf("could not create raft instance; %s", err)
 	}
 
-	//This node becomes the cluster bootstraper if it is the first node and no joinAddr is specified
+	// This node becomes the cluster bootstraper if it is the first node and no joinAddr is specified
 	if isFirst {
 		configuration := raft.Configuration{
 			Servers: []raft.Server{
