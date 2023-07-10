@@ -27,6 +27,11 @@ type stashState struct {
 	waitingStatus bool
 }
 
+type positionState struct {
+	path      int
+	storageID int
+}
+
 type shardNodeFSM struct {
 	// TODO note
 	// I'm starting with simple maps and one mutex to handle race conditions.
@@ -52,6 +57,8 @@ type shardNodeFSM struct {
 	acks  map[string][]string // map of requestID to array of blocks
 	nacks map[string][]string // map of requestID to array of blocks
 
+	positionMap map[string]positionState
+
 	raftNode RaftNodeWIthState
 }
 
@@ -65,6 +72,7 @@ func newShardNodeFSM() *shardNodeFSM {
 		responseChannel: make(map[string]chan string),
 		acks:            make(map[string][]string),
 		nacks:           make(map[string][]string),
+		positionMap:     make(map[string]positionState),
 	}
 }
 
@@ -81,6 +89,7 @@ func (fsm *shardNodeFSM) String() string {
 	out = out + fmt.Sprintf("responseChannel: %v\n", fsm.responseChannel)
 	out = out + fmt.Sprintf("acks: %v\n", fsm.acks)
 	out = out + fmt.Sprintf("nacks: %v\n", fsm.nacks)
+	out = out + fmt.Sprintf("position map: %v\n", fsm.positionMap)
 	return out
 }
 
@@ -129,6 +138,7 @@ func (fsm *shardNodeFSM) handleLocalResponseReplicationChanges(requestID string,
 			fsm.responseChannel[waitingRequestID] <- fsm.stash[r.RequestedBlock].value
 		}
 	}
+	fsm.positionMap[r.RequestedBlock] = positionState{path: fsm.pathMap[requestID], storageID: fsm.storageIDMap[requestID]}
 	delete(fsm.requestLog, r.RequestedBlock)
 	delete(fsm.pathMap, requestID)
 	delete(fsm.storageIDMap, requestID)
@@ -270,6 +280,11 @@ func (fsm *shardNodeFSM) Snapshot() (raft.FSMSnapshot, error) {
 		shardNodeSnapshot.Nacks[requestID] = append(shardNodeSnapshot.Nacks[requestID], blocks...)
 	}
 
+	shardNodeSnapshot.PositionMap = make(map[string]positionState)
+	for block, pos := range fsm.positionMap {
+		shardNodeSnapshot.PositionMap[block] = pos
+	}
+
 	return shardNodeSnapshot, nil
 }
 
@@ -315,6 +330,12 @@ func (fsm *shardNodeFSM) Restore(rc io.ReadCloser) error {
 	for requestID, blocks := range snapshot.Nacks {
 		fsm.nacks[requestID] = append(fsm.nacks[requestID], blocks...)
 	}
+
+	fsm.positionMap = make(map[string]positionState)
+	for block, pos := range snapshot.PositionMap {
+		fsm.positionMap[block] = pos
+	}
+
 	return nil
 }
 
@@ -326,6 +347,7 @@ type shardNodeSnapshot struct {
 	Stash        map[string]stashState
 	Acks         map[string][]string
 	Nacks        map[string][]string
+	PositionMap  map[string]positionState
 }
 
 func (sn shardNodeSnapshot) Persist(sink raft.SnapshotSink) error {

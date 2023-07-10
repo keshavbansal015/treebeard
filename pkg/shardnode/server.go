@@ -10,6 +10,7 @@ import (
 
 	pb "github.com/dsg-uwaterloo/oblishard/api/shardnode"
 	"github.com/dsg-uwaterloo/oblishard/pkg/rpc"
+	"github.com/dsg-uwaterloo/oblishard/pkg/storage"
 	"github.com/hashicorp/raft"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
@@ -44,9 +45,11 @@ const (
 
 func (s *shardNodeServer) getPathAndStorageBasedOnRequest(block string, requestID string) (path int, storageID int) {
 	if !s.shardNodeFSM.isInitialRequest(block, requestID) {
-		return 0, 0 // TODO: change to a random path and storage after adding the tree logic
+		return storage.GetRandomPathAndStorageID()
 	} else {
-		return 0, 0 // TODO: change to a real path and storage from position map after adding the tree logic
+		s.shardNodeFSM.mu.Lock()
+		defer s.shardNodeFSM.mu.Unlock()
+		return s.shardNodeFSM.positionMap[block].path, s.shardNodeFSM.positionMap[block].storageID
 	}
 }
 
@@ -65,7 +68,8 @@ func (s *shardNodeServer) query(ctx context.Context, op OperationType, block str
 	md, _ := metadata.FromIncomingContext(ctx)
 	requestID := md["requestid"][0]
 
-	requestReplicationCommand, err := newRequestReplicationCommand(block, requestID)
+	newPath, newStorageID := storage.GetRandomPathAndStorageID()
+	requestReplicationCommand, err := newRequestReplicationCommand(block, requestID, newPath, newStorageID)
 	if err != nil {
 		return "", fmt.Errorf("could not create request replication command; %s", err)
 	}
@@ -114,13 +118,15 @@ func (s *shardNodeServer) Write(ctx context.Context, writeRequest *pb.WriteReque
 	return &pb.WriteReply{Success: val == writeRequest.Value}, nil
 }
 
-func (s *shardNodeServer) getBlocksForSend(maxBlocks int) (blocksToReturn []*pb.Block, blocks []string) {
+func (s *shardNodeServer) getBlocksForSend(maxBlocks int, path int, storageID int) (blocksToReturn []*pb.Block, blocks []string) {
 	s.shardNodeFSM.mu.Lock()
 	defer s.shardNodeFSM.mu.Unlock()
 
 	counter := 0
 	for block, stashState := range s.shardNodeFSM.stash {
-		// TODO: just return blocks that are for the request.path and request.storageID after adding the positionmap
+		if (s.shardNodeFSM.positionMap[block].path != path) || (s.shardNodeFSM.positionMap[block].storageID != storageID) {
+			continue
+		}
 
 		// Don't send a stash block that is in the waiting status to another SendBlocks request
 		if stashState.waitingStatus {
@@ -139,7 +145,7 @@ func (s *shardNodeServer) getBlocksForSend(maxBlocks int) (blocksToReturn []*pb.
 
 func (s *shardNodeServer) SendBlocks(ctx context.Context, request *pb.SendBlocksRequest) (*pb.SendBlocksReply, error) {
 
-	blocksToReturn, blocks := s.getBlocksForSend(int(request.MaxBlocks))
+	blocksToReturn, blocks := s.getBlocksForSend(int(request.MaxBlocks), int(request.Path), int(request.StorageId))
 
 	sentBlocksReplicationCommand, err := newSentBlocksReplicationCommand(blocks)
 	if err != nil {

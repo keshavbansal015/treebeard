@@ -4,6 +4,11 @@ package storage
 const LevelCount int = 32
 const MaxAccessCount int = 8
 
+func GetRandomPathAndStorageID() (path int, storageID int) {
+	// TODO: implement
+	return 0, 0
+}
+
 func GetBlockOffset(level int, path int, storageID int, block string) (offset int, err error) {
 	// TODO: implement
 	return 0, nil

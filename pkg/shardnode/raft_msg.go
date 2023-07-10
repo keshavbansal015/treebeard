@@ -27,12 +27,12 @@ type ReplicateRequestAndPathAndStoragePayload struct {
 	StorageID      int
 }
 
-func newRequestReplicationCommand(block string, requestID string) ([]byte, error) {
+func newRequestReplicationCommand(block string, requestID string, path int, storageID int) ([]byte, error) {
 	requestReplicationPayload, err := msgpack.Marshal(
 		&ReplicateRequestAndPathAndStoragePayload{
 			RequestedBlock: block,
-			Path:           0, // TODO: update to use a real path
-			StorageID:      0, // TODO: update to use a real storage id
+			Path:           path,
+			StorageID:      storageID,
 		},
 	)
 	if err != nil {
