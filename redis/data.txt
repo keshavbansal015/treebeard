@@ -1,0 +1,12 @@
+b0v0
+b0v1
+b0v2
+b0v3
+b1v0
+b1v1
+b1v2
+b1v3
+b2v0
+b2v1
+b2v2
+b2v3
