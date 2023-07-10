@@ -10,7 +10,6 @@ import (
 	"time"
 
 	pb "github.com/dsg-uwaterloo/oblishard/api/oramnode"
-	shardnodepb "github.com/dsg-uwaterloo/oblishard/api/shardnode"
 	"github.com/dsg-uwaterloo/oblishard/pkg/rpc"
 	"github.com/dsg-uwaterloo/oblishard/pkg/storage"
 	"github.com/hashicorp/raft"
@@ -70,71 +69,6 @@ func (o *oramNodeServer) earlyReshuffle(path int, storageID int) error {
 	return nil
 }
 
-func (o *oramNodeServer) sendAcksToShardNode(replicas ReplicaRPCClientMap, acks []*shardnodepb.Ack) error {
-
-	var replicaFuncs []rpc.CallFunc
-	var clients []interface{}
-	for _, c := range replicas {
-		replicaFuncs = append(replicaFuncs,
-			func(ctx context.Context, client interface{}, request interface{}, opts ...grpc.CallOption) (interface{}, error) {
-				return client.(ShardNodeRPCClient).ClientAPI.AckSentBlocks(ctx, request.(*shardnodepb.AckSentBlocksRequest), opts...)
-			},
-		)
-		clients = append(clients, c)
-	}
-
-	_, err := rpc.CallAllReplicas(
-		context.Background(),
-		clients,
-		replicaFuncs,
-		&shardnodepb.AckSentBlocksRequest{
-			Acks: acks,
-		},
-	)
-	if err != nil {
-		return fmt.Errorf("could not read blocks from the shardnode; %s", err)
-	}
-	return nil
-}
-
-func (o *oramNodeServer) getBlocksFromShardNode(replicas ReplicaRPCClientMap, path int, storageID int) ([]*shardnodepb.Block, error) {
-
-	var replicaFuncs []rpc.CallFunc
-	var clients []interface{}
-	for _, c := range replicas {
-		replicaFuncs = append(replicaFuncs,
-			func(ctx context.Context, client interface{}, request interface{}, opts ...grpc.CallOption) (interface{}, error) {
-				return client.(ShardNodeRPCClient).ClientAPI.SendBlocks(ctx, request.(*shardnodepb.SendBlocksRequest), opts...)
-			},
-		)
-		clients = append(clients, c)
-	}
-
-	reply, err := rpc.CallAllReplicas(
-		context.Background(),
-		clients,
-		replicaFuncs,
-		&shardnodepb.SendBlocksRequest{
-			MaxBlocks: 5, //TODO: read as a config variable
-			Path:      int32(path),
-			StorageId: int32(storageID),
-		},
-	)
-	if err != nil {
-		return nil, fmt.Errorf("could not read blocks from the shardnode; %s", err)
-	}
-	shardNodeReply := reply.(*shardnodepb.SendBlocksReply)
-	return shardNodeReply.Blocks, nil
-}
-
-func (o *oramNodeServer) sendBackAcksNacks(recievedBlocksStatus map[string]bool, shardNode ReplicaRPCClientMap) {
-	var acks []*shardnodepb.Ack
-	for block, status := range recievedBlocksStatus {
-		acks = append(acks, &shardnodepb.Ack{Block: block, IsAck: status})
-	}
-	o.sendAcksToShardNode(shardNode, acks)
-}
-
 func (o *oramNodeServer) evict(path int, storageID int) error {
 	beginEvictionCommand, err := newReplicateBeginEvictionCommand(path, storageID)
 	if err != nil {
@@ -157,7 +91,7 @@ func (o *oramNodeServer) evict(path int, storageID int) error {
 			aggStash[block] = value
 		}
 		//TODO: get blocks from multiple random shard nodes
-		shardNodeBlocks, err := o.getBlocksFromShardNode(randomShardNode, path, storageID)
+		shardNodeBlocks, err := randomShardNode.getBlocksFromShardNode(path, storageID)
 		if err != nil {
 			return fmt.Errorf("unable to get blocks from shard node; %s", err)
 		}
@@ -177,7 +111,7 @@ func (o *oramNodeServer) evict(path int, storageID int) error {
 			recievedBlocksStatus[block] = true
 		}
 	}
-	o.sendBackAcksNacks(recievedBlocksStatus, randomShardNode)
+	randomShardNode.sendBackAcksNacks(recievedBlocksStatus)
 
 	endEvictionCommand, err := newReplicateEndEvictionCommand()
 	if err != nil {
