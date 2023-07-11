@@ -135,7 +135,13 @@ func (fsm *shardNodeFSM) handleLocalResponseReplicationChanges(requestID string,
 	}
 	if fsm.raftNode.State() == raft.Leader {
 		for _, waitingRequestID := range fsm.requestLog[r.RequestedBlock] {
-			fsm.responseChannel[waitingRequestID] <- fsm.stash[r.RequestedBlock].value
+			timout := time.After(1 * time.Second)
+			select {
+			case <-timout:
+				continue
+			case fsm.responseChannel[waitingRequestID] <- fsm.stash[r.RequestedBlock].value:
+				continue
+			}
 		}
 	}
 	fsm.positionMap[r.RequestedBlock] = positionState{path: fsm.pathMap[requestID], storageID: fsm.storageIDMap[requestID]}

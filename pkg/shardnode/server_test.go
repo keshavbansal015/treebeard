@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"testing"
+	"time"
 
 	oramnodepb "github.com/dsg-uwaterloo/oblishard/api/oramnode"
 	"github.com/hashicorp/raft"
@@ -83,8 +84,7 @@ func startLeaderRaftNodeServer(t *testing.T) *shardNodeServer {
 	fsm.raftNode = r
 	fsm.mu.Unlock()
 	<-r.LeaderCh() // wait to become the leader
-	s := newShardNodeServer(0, 0, r, fsm, getMockOramNodeClients())
-	return s
+	return newShardNodeServer(0, 0, r, fsm, getMockOramNodeClients())
 }
 
 func TestQueryReturnsResponseRecievedFromOramNode(t *testing.T) {
@@ -165,5 +165,30 @@ func TestQueryUpdatesPositionMap(t *testing.T) {
 	defer s.shardNodeFSM.mu.Unlock()
 	if s.shardNodeFSM.positionMap["block1"].path == 13423432 || s.shardNodeFSM.positionMap["block1"].storageID == 3223113 {
 		t.Errorf("position map should get updated after request")
+	}
+}
+
+func TestQueryReturnsResponseToAllWaitingRequests(t *testing.T) {
+	s := startLeaderRaftNodeServer(t)
+	responseChannel := make(chan string)
+	for i := 0; i < 3; i++ {
+		go func(idx int) {
+			ctx := metadata.NewIncomingContext(context.Background(), metadata.Pairs("requestid", fmt.Sprintf("request%d", idx)))
+			response, _ := s.query(ctx, Read, "block1", "")
+			responseChannel <- response
+		}(i)
+	}
+	responseCount := 0
+	timout := time.After(10 * time.Second)
+	for {
+		if responseCount == 2 {
+			break
+		}
+		select {
+		case <-responseChannel:
+			responseCount++
+		case <-timout:
+			t.Errorf("timeout before receiving all responses")
+		}
 	}
 }
