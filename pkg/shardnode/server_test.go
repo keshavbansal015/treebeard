@@ -8,7 +8,7 @@ import (
 	"time"
 
 	oramnodepb "github.com/dsg-uwaterloo/oblishard/api/oramnode"
-	"github.com/dsg-uwaterloo/oblishard/api/shardnode"
+	shardnodepb "github.com/dsg-uwaterloo/oblishard/api/shardnode"
 	"github.com/hashicorp/raft"
 	"github.com/phayes/freeport"
 	"google.golang.org/grpc/metadata"
@@ -266,7 +266,7 @@ func TestSendBlocksReturnsStashBlocks(t *testing.T) {
 	s.shardNodeFSM.positionMap["block2"] = positionState{path: 0, storageID: 0}
 	s.shardNodeFSM.positionMap["block3"] = positionState{path: 0, storageID: 0}
 
-	blocks, err := s.SendBlocks(context.Background(), &shardnode.SendBlocksRequest{MaxBlocks: 3, Path: 0, StorageId: 0})
+	blocks, err := s.SendBlocks(context.Background(), &shardnodepb.SendBlocksRequest{MaxBlocks: 3, Path: 0, StorageId: 0})
 	if err != nil {
 		t.Errorf("Expected successful execution of SendBlocks")
 	}
@@ -286,7 +286,7 @@ func TestSendBlocksMarksSentBlocksAsWaitingAndZeroLogicalTime(t *testing.T) {
 	s.shardNodeFSM.positionMap["block2"] = positionState{path: 0, storageID: 0}
 	s.shardNodeFSM.positionMap["block3"] = positionState{path: 0, storageID: 0}
 
-	blocks, _ := s.SendBlocks(context.Background(), &shardnode.SendBlocksRequest{MaxBlocks: 3, Path: 0, StorageId: 0})
+	blocks, _ := s.SendBlocks(context.Background(), &shardnodepb.SendBlocksRequest{MaxBlocks: 3, Path: 0, StorageId: 0})
 	s.shardNodeFSM.mu.Lock()
 	for _, block := range blocks.Blocks {
 		if s.shardNodeFSM.stash[block.Block].waitingStatus == false {
@@ -297,4 +297,57 @@ func TestSendBlocksMarksSentBlocksAsWaitingAndZeroLogicalTime(t *testing.T) {
 		}
 	}
 	s.shardNodeFSM.mu.Unlock()
+}
+
+func TestAckSentBlocksRemovesAckedBlocksFromStash(t *testing.T) {
+	s := startLeaderRaftNodeServer(t)
+	s.shardNodeFSM.stash = map[string]stashState{
+		"block1": {value: "block1", logicalTime: 0, waitingStatus: true},
+		"block2": {value: "block2", logicalTime: 0, waitingStatus: true},
+		"block3": {value: "block3", logicalTime: 0, waitingStatus: true},
+	}
+	s.AckSentBlocks(
+		context.Background(),
+		&shardnodepb.AckSentBlocksRequest{
+			Acks: []*shardnodepb.Ack{
+				{Block: "block1", IsAck: true},
+				{Block: "block2", IsAck: true},
+				{Block: "block3", IsAck: true},
+			},
+		},
+	)
+	time.Sleep(500 * time.Millisecond) // wait for handleLocalAcksNacksReplicationChanges goroutine to finish
+	s.shardNodeFSM.mu.Lock()
+	defer s.shardNodeFSM.mu.Unlock()
+	if len(s.shardNodeFSM.stash) != 0 {
+		t.Errorf("AckSentBlocks should remove all acked blocks from the stash but the stash is: %v", s.shardNodeFSM.stash)
+	}
+}
+
+func TestAckSentBlocksKeepsNAckedBlocksInStashAndRemovesWaiting(t *testing.T) {
+	s := startLeaderRaftNodeServer(t)
+	s.shardNodeFSM.stash = map[string]stashState{
+		"block1": {value: "block1", logicalTime: 0, waitingStatus: true},
+		"block2": {value: "block2", logicalTime: 0, waitingStatus: true},
+		"block3": {value: "block3", logicalTime: 0, waitingStatus: true},
+	}
+	nackedBlocks := []*shardnodepb.Ack{
+		{Block: "block1", IsAck: false},
+		{Block: "block2", IsAck: false},
+		{Block: "block3", IsAck: false},
+	}
+	s.AckSentBlocks(
+		context.Background(),
+		&shardnodepb.AckSentBlocksRequest{
+			Acks: nackedBlocks,
+		},
+	)
+	time.Sleep(500 * time.Millisecond) // wait for handleLocalAcksNacksReplicationChanges goroutine to finish
+	s.shardNodeFSM.mu.Lock()
+	defer s.shardNodeFSM.mu.Unlock()
+	for _, block := range nackedBlocks {
+		if s.shardNodeFSM.stash[block.Block].waitingStatus == true {
+			t.Errorf("AckSentBlocks should remove waiting flag from nacked blocks")
+		}
+	}
 }
