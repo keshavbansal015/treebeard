@@ -57,7 +57,7 @@ type shardNodeFSM struct {
 	acks  map[string][]string // map of requestID to array of blocks
 	nacks map[string][]string // map of requestID to array of blocks
 
-	positionMap map[string]positionState
+	positionMap map[string]positionState // map of block to positionState
 
 	raftNode RaftNodeWIthState
 }
