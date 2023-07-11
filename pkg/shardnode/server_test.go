@@ -8,6 +8,7 @@ import (
 	"time"
 
 	oramnodepb "github.com/dsg-uwaterloo/oblishard/api/oramnode"
+	"github.com/dsg-uwaterloo/oblishard/api/shardnode"
 	"github.com/hashicorp/raft"
 	"github.com/phayes/freeport"
 	"google.golang.org/grpc/metadata"
@@ -252,4 +253,48 @@ func TestGetBlocksForSendDoesNotReturnsWaitingBlocks(t *testing.T) {
 			t.Errorf("getBlocks should only return blocks with the waitingStatus equal to false")
 		}
 	}
+}
+
+func TestSendBlocksReturnsStashBlocks(t *testing.T) {
+	s := startLeaderRaftNodeServer(t)
+	s.shardNodeFSM.stash = map[string]stashState{
+		"block1": {value: "block1", logicalTime: 0, waitingStatus: false},
+		"block2": {value: "block2", logicalTime: 0, waitingStatus: false},
+		"block3": {value: "block3", logicalTime: 0, waitingStatus: false},
+	}
+	s.shardNodeFSM.positionMap["block1"] = positionState{path: 0, storageID: 0}
+	s.shardNodeFSM.positionMap["block2"] = positionState{path: 0, storageID: 0}
+	s.shardNodeFSM.positionMap["block3"] = positionState{path: 0, storageID: 0}
+
+	blocks, err := s.SendBlocks(context.Background(), &shardnode.SendBlocksRequest{MaxBlocks: 3, Path: 0, StorageId: 0})
+	if err != nil {
+		t.Errorf("Expected successful execution of SendBlocks")
+	}
+	if len(blocks.Blocks) != 3 {
+		t.Errorf("Expected all values from the stash to return")
+	}
+}
+
+func TestSendBlocksMarksSentBlocksAsWaitingAndZeroLogicalTime(t *testing.T) {
+	s := startLeaderRaftNodeServer(t)
+	s.shardNodeFSM.stash = map[string]stashState{
+		"block1": {value: "block1", logicalTime: 0, waitingStatus: false},
+		"block2": {value: "block2", logicalTime: 0, waitingStatus: false},
+		"block3": {value: "block3", logicalTime: 0, waitingStatus: false},
+	}
+	s.shardNodeFSM.positionMap["block1"] = positionState{path: 0, storageID: 0}
+	s.shardNodeFSM.positionMap["block2"] = positionState{path: 0, storageID: 0}
+	s.shardNodeFSM.positionMap["block3"] = positionState{path: 0, storageID: 0}
+
+	blocks, _ := s.SendBlocks(context.Background(), &shardnode.SendBlocksRequest{MaxBlocks: 3, Path: 0, StorageId: 0})
+	s.shardNodeFSM.mu.Lock()
+	for _, block := range blocks.Blocks {
+		if s.shardNodeFSM.stash[block.Block].waitingStatus == false {
+			t.Errorf("sent blocks should get marked as waiting")
+		}
+		if s.shardNodeFSM.stash[block.Block].logicalTime != 0 {
+			t.Errorf("sent blocks should have logicalTime zero")
+		}
+	}
+	s.shardNodeFSM.mu.Unlock()
 }
