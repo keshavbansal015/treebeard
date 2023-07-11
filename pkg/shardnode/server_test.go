@@ -192,3 +192,64 @@ func TestQueryReturnsResponseToAllWaitingRequests(t *testing.T) {
 		}
 	}
 }
+
+func TestGetBlocksForSendReturnsAtMostMaxBlocksFromTheStash(t *testing.T) {
+	s := newShardNodeServer(0, 0, &raft.Raft{}, newShardNodeFSM(), make(RPCClientMap))
+	s.shardNodeFSM.stash = map[string]stashState{
+		"block1": {value: "block1", logicalTime: 0, waitingStatus: false},
+		"block2": {value: "block2", logicalTime: 0, waitingStatus: false},
+		"block3": {value: "block3", logicalTime: 0, waitingStatus: false},
+		"block4": {value: "block4", logicalTime: 0, waitingStatus: false},
+		"block5": {value: "block5", logicalTime: 0, waitingStatus: false},
+		"block6": {value: "block6", logicalTime: 0, waitingStatus: false},
+	}
+	s.shardNodeFSM.positionMap["block1"] = positionState{path: 0, storageID: 0}
+	s.shardNodeFSM.positionMap["block2"] = positionState{path: 0, storageID: 0}
+	s.shardNodeFSM.positionMap["block3"] = positionState{path: 0, storageID: 0}
+	s.shardNodeFSM.positionMap["block4"] = positionState{path: 0, storageID: 0}
+	s.shardNodeFSM.positionMap["block5"] = positionState{path: 0, storageID: 0}
+	s.shardNodeFSM.positionMap["block6"] = positionState{path: 0, storageID: 0}
+
+	_, blocks := s.getBlocksForSend(4, 0, 0)
+	if len(blocks) != 4 {
+		t.Errorf("expected 4 blocks but got: %d blocks", len(blocks))
+	}
+}
+
+func TestGetBlocksForSendReturnsOnlyBlocksForPathAndStorageID(t *testing.T) {
+	s := newShardNodeServer(0, 0, &raft.Raft{}, newShardNodeFSM(), make(RPCClientMap))
+	s.shardNodeFSM.stash = map[string]stashState{
+		"block1": {value: "block1", logicalTime: 0, waitingStatus: false},
+		"block2": {value: "block2", logicalTime: 0, waitingStatus: false},
+		"block3": {value: "block3", logicalTime: 0, waitingStatus: false},
+	}
+	s.shardNodeFSM.positionMap["block1"] = positionState{path: 0, storageID: 0}
+	s.shardNodeFSM.positionMap["block2"] = positionState{path: 1, storageID: 2}
+	s.shardNodeFSM.positionMap["block3"] = positionState{path: 0, storageID: 0}
+
+	_, blocks := s.getBlocksForSend(4, 0, 0)
+	for _, block := range blocks {
+		if block == "block2" {
+			t.Errorf("getBlocks should only return blocks for the path and storageID")
+		}
+	}
+}
+
+func TestGetBlocksForSendDoesNotReturnsWaitingBlocks(t *testing.T) {
+	s := newShardNodeServer(0, 0, &raft.Raft{}, newShardNodeFSM(), make(RPCClientMap))
+	s.shardNodeFSM.stash = map[string]stashState{
+		"block1": {value: "block1", logicalTime: 0, waitingStatus: true},
+		"block2": {value: "block2", logicalTime: 0, waitingStatus: false},
+		"block3": {value: "block3", logicalTime: 0, waitingStatus: false},
+	}
+	s.shardNodeFSM.positionMap["block1"] = positionState{path: 0, storageID: 0}
+	s.shardNodeFSM.positionMap["block2"] = positionState{path: 0, storageID: 0}
+	s.shardNodeFSM.positionMap["block3"] = positionState{path: 0, storageID: 0}
+
+	_, blocks := s.getBlocksForSend(4, 0, 0)
+	for _, block := range blocks {
+		if block == "block1" {
+			t.Errorf("getBlocks should only return blocks with the waitingStatus equal to false")
+		}
+	}
+}
