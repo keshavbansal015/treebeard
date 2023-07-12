@@ -1,5 +1,7 @@
 package storage
 
+import "fmt"
+
 // How many levels exist in the storage tree
 const LevelCount int = 32
 const MaxAccessCount int = 8
@@ -55,4 +57,30 @@ func ReadBlock(level int, path int, storageID int, offset int) (value string, er
 	// TODO: it should invalidate and increase counter
 	value = "test_read_block_from_storage"
 	return value, nil
+}
+
+func EarlyReshuffle(path int, storageID int) error {
+	for level := 0; level < LevelCount; level++ {
+		accessCount, err := GetAccessCount(level, path, storageID)
+		if err != nil {
+			return fmt.Errorf("unable to get access count from the server; %s", err)
+		}
+		if accessCount < MaxAccessCount {
+			continue
+		}
+		localStash, err := ReadBucket(level, path, storageID)
+		if err != nil {
+			return fmt.Errorf("unable to read bucket from the server; %s", err)
+		}
+		writtenBlocks, err := WriteBucket(level, path, storageID, localStash)
+		if err != nil {
+			return fmt.Errorf("unable to write bucket from the server; %s", err)
+		}
+		for block := range localStash {
+			if _, exists := writtenBlocks[block]; !exists {
+				return fmt.Errorf("unable to write all blocks to the bucket")
+			}
+		}
+	}
+	return nil
 }

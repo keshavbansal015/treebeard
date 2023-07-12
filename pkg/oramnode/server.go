@@ -43,32 +43,6 @@ func newOramNodeServer(oramNodeServerID int, replicaID int, raftNode *raft.Raft,
 	}
 }
 
-func (o *oramNodeServer) earlyReshuffle(path int, storageID int) error {
-	for level := 0; level < storage.LevelCount; level++ {
-		accessCount, err := storage.GetAccessCount(level, path, storageID)
-		if err != nil {
-			return fmt.Errorf("unable to get access count from the server; %s", err)
-		}
-		if accessCount < storage.MaxAccessCount {
-			continue
-		}
-		localStash, err := storage.ReadBucket(level, path, storageID)
-		if err != nil {
-			return fmt.Errorf("unable to read bucket from the server; %s", err)
-		}
-		writtenBlocks, err := storage.WriteBucket(level, path, storageID, localStash)
-		if err != nil {
-			return fmt.Errorf("unable to write bucket from the server; %s", err)
-		}
-		for block := range localStash {
-			if _, exists := writtenBlocks[block]; !exists {
-				return fmt.Errorf("unable to write all blocks to the bucket")
-			}
-		}
-	}
-	return nil
-}
-
 func (o *oramNodeServer) evict(path int, storageID int) error {
 	beginEvictionCommand, err := newReplicateBeginEvictionCommand(path, storageID)
 	if err != nil {
@@ -162,7 +136,7 @@ func (o *oramNodeServer) ReadPath(ctx context.Context, request *pb.ReadPathReque
 		}
 	}
 
-	err = o.earlyReshuffle(int(request.Path), int(request.StorageId))
+	err = storage.EarlyReshuffle(int(request.Path), int(request.StorageId))
 	if err != nil { // TODO: should we delete offsetList in case of an earlyReshuffle error?
 		return nil, fmt.Errorf("early reshuffle failed;%s", err)
 	}
