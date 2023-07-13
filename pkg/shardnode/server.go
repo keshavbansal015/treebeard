@@ -4,13 +4,13 @@ import (
 	"context"
 	"fmt"
 	"log"
-	"math/rand"
 	"net"
 	"strconv"
 	"time"
 
-	oramnodepb "github.com/dsg-uwaterloo/oblishard/api/oramnode"
 	pb "github.com/dsg-uwaterloo/oblishard/api/shardnode"
+	"github.com/dsg-uwaterloo/oblishard/pkg/rpc"
+	"github.com/dsg-uwaterloo/oblishard/pkg/storage"
 	"github.com/hashicorp/raft"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
@@ -23,10 +23,10 @@ type shardNodeServer struct {
 	replicaID         int
 	raftNode          *raft.Raft
 	shardNodeFSM      *shardNodeFSM
-	oramNodeClients   map[int]ReplicaRPCClientMap
+	oramNodeClients   RPCClientMap
 }
 
-func newShardNodeServer(shardNodeServerID int, replicaID int, raftNode *raft.Raft, fsm *shardNodeFSM, oramNodeRPCClients map[int]ReplicaRPCClientMap) *shardNodeServer {
+func newShardNodeServer(shardNodeServerID int, replicaID int, raftNode *raft.Raft, fsm *shardNodeFSM, oramNodeRPCClients RPCClientMap) *shardNodeServer {
 	return &shardNodeServer{
 		shardNodeServerID: shardNodeServerID,
 		replicaID:         replicaID,
@@ -43,24 +43,13 @@ const (
 	Write
 )
 
-func (s *shardNodeServer) getRandomOramNodeReplicaMap() ReplicaRPCClientMap {
-	oramNodesLen := len(s.oramNodeClients)
-	randomOramNodeIndex := rand.Intn(oramNodesLen)
-	randomOramNode := s.oramNodeClients[randomOramNodeIndex]
-	return randomOramNode
-}
-
-func (s *shardNodeServer) isInitialRequest(block string, requestID string) bool {
-	s.shardNodeFSM.mu.Lock()
-	defer s.shardNodeFSM.mu.Unlock()
-	return s.shardNodeFSM.requestLog[block][0] == requestID
-}
-
 func (s *shardNodeServer) getPathAndStorageBasedOnRequest(block string, requestID string) (path int, storageID int) {
-	if !s.isInitialRequest(block, requestID) {
-		return 0, 0 // TODO: change to a random path and storage after adding the tree logic
+	if !s.shardNodeFSM.isInitialRequest(block, requestID) {
+		return storage.GetRandomPathAndStorageID()
 	} else {
-		return 0, 0 // TODO: change to a real path and storage from position map after adding the tree logic
+		s.shardNodeFSM.mu.Lock()
+		defer s.shardNodeFSM.mu.Unlock()
+		return s.shardNodeFSM.positionMap[block].path, s.shardNodeFSM.positionMap[block].storageID
 	}
 }
 
@@ -72,41 +61,6 @@ func (s *shardNodeServer) createResponseChannelForRequestID(requestID string) ch
 	return ch
 }
 
-func (s *shardNodeServer) readPathFromAllOramNodeReplicas(ctx context.Context, oramNodeReplicaMap ReplicaRPCClientMap, block string, path int, storageID int, isReal bool) (*oramnodepb.ReadPathReply, error) {
-	type readPathResult struct {
-		reply *oramnodepb.ReadPathReply
-		err   error
-	}
-	responseChannel := make(chan readPathResult)
-	for _, client := range oramNodeReplicaMap {
-		go func(client oramNodeRPCClient) {
-
-			reply, err := client.ClientAPI.ReadPath(
-				ctx,
-				&oramnodepb.ReadPathRequest{
-					Block:     block,
-					Path:      int32(path),
-					StorageId: int32(storageID),
-					IsReal:    isReal,
-				},
-			)
-			responseChannel <- readPathResult{reply: reply, err: err}
-		}(client)
-	}
-
-	timeout := time.After(2 * time.Second)
-	for {
-		select {
-		case readPathResult := <-responseChannel:
-			if readPathResult.err == nil {
-				return readPathResult.reply, nil
-			}
-		case <-timeout:
-			return nil, fmt.Errorf("could not read value from the shardnode")
-		}
-	}
-}
-
 func (s *shardNodeServer) query(ctx context.Context, op OperationType, block string, value string) (string, error) {
 	if s.raftNode.State() != raft.Leader {
 		return "", fmt.Errorf("not the leader node")
@@ -114,7 +68,8 @@ func (s *shardNodeServer) query(ctx context.Context, op OperationType, block str
 	md, _ := metadata.FromIncomingContext(ctx)
 	requestID := md["requestid"][0]
 
-	requestReplicationCommand, err := newRequestReplicationCommand(block, requestID)
+	newPath, newStorageID := storage.GetRandomPathAndStorageID()
+	requestReplicationCommand, err := newRequestReplicationCommand(block, requestID, newPath, newStorageID)
 	if err != nil {
 		return "", fmt.Errorf("could not create request replication command; %s", err)
 	}
@@ -124,14 +79,14 @@ func (s *shardNodeServer) query(ctx context.Context, op OperationType, block str
 	}
 
 	path, storageID := s.getPathAndStorageBasedOnRequest(block, requestID)
-	oramNodeReplicaMap := s.getRandomOramNodeReplicaMap()
-	reply, err := s.readPathFromAllOramNodeReplicas(ctx, oramNodeReplicaMap, block, path, storageID, s.isInitialRequest(block, requestID))
+	oramNodeReplicaMap := s.oramNodeClients.getRandomOramNodeReplicaMap()
+	reply, err := oramNodeReplicaMap.readPathFromAllOramNodeReplicas(ctx, block, path, storageID, s.shardNodeFSM.isInitialRequest(block, requestID))
 
 	if err != nil {
 		return "", fmt.Errorf("could not call the ReadPath RPC on the oram node. %s", err)
 	}
 	responseChannel := s.createResponseChannelForRequestID(requestID)
-	if s.isInitialRequest(block, requestID) {
+	if s.shardNodeFSM.isInitialRequest(block, requestID) {
 		responseReplicationCommand, err := newResponseReplicationCommand(reply.Value, requestID, block, value, op)
 		if err != nil {
 			return "", fmt.Errorf("could not create response replication command; %s", err)
@@ -163,15 +118,17 @@ func (s *shardNodeServer) Write(ctx context.Context, writeRequest *pb.WriteReque
 	return &pb.WriteReply{Success: val == writeRequest.Value}, nil
 }
 
-func (s *shardNodeServer) getBlocksForSend(maxBlocks int) (blocksToReturn []*pb.Block, blocks []string) {
+func (s *shardNodeServer) getBlocksForSend(maxBlocks int, path int, storageID int) (blocksToReturn []*pb.Block, blocks []string) {
 	s.shardNodeFSM.mu.Lock()
 	defer s.shardNodeFSM.mu.Unlock()
 
 	counter := 0
 	for block, stashState := range s.shardNodeFSM.stash {
-		//TODO: just return blocks that are for the request.path and request.storageID after adding the positionmap
+		if (s.shardNodeFSM.positionMap[block].path != path) || (s.shardNodeFSM.positionMap[block].storageID != storageID) {
+			continue
+		}
 
-		//Don't send a stash block that is in the waiting status to another SendBlocks request
+		// Don't send a stash block that is in the waiting status to another SendBlocks request
 		if stashState.waitingStatus {
 			continue
 		}
@@ -188,7 +145,7 @@ func (s *shardNodeServer) getBlocksForSend(maxBlocks int) (blocksToReturn []*pb.
 
 func (s *shardNodeServer) SendBlocks(ctx context.Context, request *pb.SendBlocksRequest) (*pb.SendBlocksReply, error) {
 
-	blocksToReturn, blocks := s.getBlocksForSend(int(request.MaxBlocks))
+	blocksToReturn, blocks := s.getBlocksForSend(int(request.MaxBlocks), int(request.Path), int(request.StorageId))
 
 	sentBlocksReplicationCommand, err := newSentBlocksReplicationCommand(blocks)
 	if err != nil {
@@ -284,7 +241,7 @@ func StartServer(shardNodeServerID int, rpcPort int, replicaID int, raftPort int
 		log.Fatalf("failed to listen: %v", err)
 	}
 	shardnodeServer := newShardNodeServer(shardNodeServerID, replicaID, r, shardNodeFSM, oramNodeRPCClients)
-	grpcServer := grpc.NewServer()
+	grpcServer := grpc.NewServer(grpc.UnaryInterceptor(rpc.ContextPropagationUnaryServerInterceptor()))
 	pb.RegisterShardNodeServer(grpcServer, shardnodeServer)
 	grpcServer.Serve(lis)
 

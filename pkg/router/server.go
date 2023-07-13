@@ -6,7 +6,6 @@ import (
 	"log"
 	"math"
 	"net"
-	"time"
 
 	pb "github.com/dsg-uwaterloo/oblishard/api/router"
 	shardnodepb "github.com/dsg-uwaterloo/oblishard/api/shardnode"
@@ -39,58 +38,45 @@ func (r *routerServer) Read(ctx context.Context, readRequest *pb.ReadRequest) (*
 	whereToForward := r.whereToForward(readRequest.Block)
 	shardNodeRPCClient := r.shardNodeRPCClients[whereToForward]
 
-	type readResult struct {
-		reply *shardnodepb.ReadReply
-		err   error
+	var replicaFuncs []rpc.CallFunc
+	var clients []interface{}
+	for _, c := range shardNodeRPCClient {
+		replicaFuncs = append(replicaFuncs,
+			func(ctx context.Context, client interface{}, request interface{}, opts ...grpc.CallOption) (interface{}, error) {
+				return client.(ShardNodeRPCClient).ClientAPI.Read(ctx, request.(*shardnodepb.ReadRequest), opts...)
+			},
+		)
+		clients = append(clients, c)
 	}
-	responseChannel := make(chan readResult)
-	for _, client := range shardNodeRPCClient {
-		go func(client ShardNodeRPCClient) {
-			reply, err := client.ClientAPI.Read(ctx, &shardnodepb.ReadRequest{Block: readRequest.Block})
-			responseChannel <- readResult{reply: reply, err: err}
-		}(client)
+	reply, err := rpc.CallAllReplicas(ctx, clients, replicaFuncs, &shardnodepb.ReadRequest{Block: readRequest.Block})
+	if err != nil {
+		return nil, fmt.Errorf("could not read value from the shardnode; %s", err)
 	}
-
-	timeout := time.After(2 * time.Second)
-	for {
-		select {
-		case readResult := <-responseChannel:
-			if readResult.err == nil {
-				return &pb.ReadReply{Value: readResult.reply.Value}, nil
-			}
-		case <-timeout:
-			return nil, fmt.Errorf("could not read value from the shardnode")
-		}
-	}
+	shardNodeReply := reply.(*shardnodepb.ReadReply)
+	return &pb.ReadReply{Value: shardNodeReply.Value}, nil
 }
 
 func (r *routerServer) Write(ctx context.Context, writeRequest *pb.WriteRequest) (*pb.WriteReply, error) {
 	whereToForward := r.whereToForward(writeRequest.Block)
 	shardNodeRPCClient := r.shardNodeRPCClients[whereToForward]
 
-	type writeResult struct {
-		reply *shardnodepb.WriteReply
-		err   error
-	}
-	responseChannel := make(chan writeResult)
-	for _, client := range shardNodeRPCClient {
-		go func(client ShardNodeRPCClient) {
-			reply, err := client.ClientAPI.Write(ctx, &shardnodepb.WriteRequest{Block: writeRequest.Block, Value: writeRequest.Value})
-			responseChannel <- writeResult{reply: reply, err: err}
-		}(client)
+	var replicaFuncs []rpc.CallFunc
+	var clients []interface{}
+	for _, c := range shardNodeRPCClient {
+		replicaFuncs = append(replicaFuncs,
+			func(ctx context.Context, client interface{}, request interface{}, opts ...grpc.CallOption) (interface{}, error) {
+				return client.(ShardNodeRPCClient).ClientAPI.Write(ctx, request.(*shardnodepb.WriteRequest), opts...)
+			},
+		)
+		clients = append(clients, c)
 	}
 
-	timeout := time.After(2 * time.Second)
-	for {
-		select {
-		case writeResult := <-responseChannel:
-			if writeResult.err == nil {
-				return &pb.WriteReply{Success: true}, nil
-			}
-		case <-timeout:
-			return nil, fmt.Errorf("could not read value from the shardnode")
-		}
+	reply, err := rpc.CallAllReplicas(ctx, clients, replicaFuncs, &shardnodepb.WriteRequest{Block: writeRequest.Block, Value: writeRequest.Value})
+	if err != nil {
+		return nil, fmt.Errorf("could not write value to the shardnode; %s", err)
 	}
+	shardNodeReply := reply.(*shardnodepb.WriteReply)
+	return &pb.WriteReply{Success: shardNodeReply.Success}, nil
 }
 
 func StartRPCServer(shardNodeRPCClients map[int]ReplicaRPCClientMap, routerID int, port int) {

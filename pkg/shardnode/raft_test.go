@@ -90,7 +90,7 @@ type responseMessage struct {
 // It waits for all channels to recieve the determined response.
 // It will timeout if at least one channel doesn't recieve the response.
 func checkWaitingChannelsHelper(t *testing.T, waitChannels map[string]chan string, expectedResponse string) {
-	waitingSet := make(map[string]bool) //keeps the request in the set until a response for request is recieved from channel
+	waitingSet := make(map[string]bool) // keeps the request in the set until a response for request is recieved from channel
 	agg := make(chan responseMessage)
 	for id, ch := range waitChannels {
 		waitingSet[id] = true

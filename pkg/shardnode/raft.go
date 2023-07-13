@@ -27,30 +27,37 @@ type stashState struct {
 	waitingStatus bool
 }
 
+type positionState struct {
+	path      int
+	storageID int
+}
+
 type shardNodeFSM struct {
-	//TODO note
-	//I'm starting with simple maps and one mutex to handle race conditions.
-	//However, there are other ways to design this that might be better regarding performance:
-	//    1. using different mutexes for different maps so that we just block the exact map that is having multiple access.
-	//    2. using sync.Map. This takes away type safety but might have better performance.
-	//       * https://medium.com/@deckarep/the-new-kid-in-town-gos-sync-map-de24a6bf7c2c
-	//       * https://www.youtube.com/watch?v=C1EtfDnsdDs
-	//       * https://pkg.go.dev/sync
+	// TODO note
+	// I'm starting with simple maps and one mutex to handle race conditions.
+	// However, there are other ways to design this that might be better regarding performance:
+	//     1. using different mutexes for different maps so that we just block the exact map that is having multiple access.
+	//     2. using sync.Map. This takes away type safety but might have better performance.
+	//        * https://medium.com/@deckarep/the-new-kid-in-town-gos-sync-map-de24a6bf7c2c
+	//        * https://www.youtube.com/watch?v=C1EtfDnsdDs
+	//        * https://pkg.go.dev/sync
 
 	mu         sync.Mutex
-	requestLog map[string][]string //map of block to requesting requestIDs
+	requestLog map[string][]string // map of block to requesting requestIDs
 
-	pathMap      map[string]int //map of requestID to new path
-	storageIDMap map[string]int //map of requestID to new storageID
+	pathMap      map[string]int // map of requestID to new path
+	storageIDMap map[string]int // map of requestID to new storageID
 
-	responseMap map[string]string //map of requestID to response map[string]string
+	responseMap map[string]string // map of requestID to response map[string]string
 
-	stash map[string]stashState //map of block to stashState
+	stash map[string]stashState // map of block to stashState
 
-	responseChannel map[string]chan string //map of requestId to their channel for receiving response
+	responseChannel map[string]chan string // map of requestId to their channel for receiving response
 
-	acks  map[string][]string //map of requestID to array of blocks
-	nacks map[string][]string //map of requestID to array of blocks
+	acks  map[string][]string // map of requestID to array of blocks
+	nacks map[string][]string // map of requestID to array of blocks
+
+	positionMap map[string]positionState // map of block to positionState
 
 	raftNode RaftNodeWIthState
 }
@@ -65,6 +72,7 @@ func newShardNodeFSM() *shardNodeFSM {
 		responseChannel: make(map[string]chan string),
 		acks:            make(map[string][]string),
 		nacks:           make(map[string][]string),
+		positionMap:     make(map[string]positionState),
 	}
 }
 
@@ -81,7 +89,15 @@ func (fsm *shardNodeFSM) String() string {
 	out = out + fmt.Sprintf("responseChannel: %v\n", fsm.responseChannel)
 	out = out + fmt.Sprintf("acks: %v\n", fsm.acks)
 	out = out + fmt.Sprintf("nacks: %v\n", fsm.nacks)
+	out = out + fmt.Sprintf("position map: %v\n", fsm.positionMap)
 	return out
+}
+
+func (fsm *shardNodeFSM) isInitialRequest(block string, requestID string) bool {
+	fsm.mu.Lock()
+	defer fsm.mu.Unlock()
+
+	return fsm.requestLog[block][0] == requestID
 }
 
 func (fsm *shardNodeFSM) handleReplicateRequestAndPathAndStorage(requestID string, r ReplicateRequestAndPathAndStoragePayload) {
@@ -98,6 +114,7 @@ type localReplicaChangeHandlerFunc func(requestID string, r ReplicateResponsePay
 func (fsm *shardNodeFSM) handleLocalResponseReplicationChanges(requestID string, r ReplicateResponsePayload) {
 	fsm.mu.Lock()
 	defer fsm.mu.Unlock()
+
 	stashState, exists := fsm.stash[r.RequestedBlock]
 	if exists {
 		if r.OpType == Write {
@@ -118,9 +135,16 @@ func (fsm *shardNodeFSM) handleLocalResponseReplicationChanges(requestID string,
 	}
 	if fsm.raftNode.State() == raft.Leader {
 		for _, waitingRequestID := range fsm.requestLog[r.RequestedBlock] {
-			fsm.responseChannel[waitingRequestID] <- fsm.stash[r.RequestedBlock].value
+			timout := time.After(1 * time.Second)
+			select {
+			case <-timout:
+				continue
+			case fsm.responseChannel[waitingRequestID] <- fsm.stash[r.RequestedBlock].value:
+				continue
+			}
 		}
 	}
+	fsm.positionMap[r.RequestedBlock] = positionState{path: fsm.pathMap[requestID], storageID: fsm.storageIDMap[requestID]}
 	delete(fsm.requestLog, r.RequestedBlock)
 	delete(fsm.pathMap, requestID)
 	delete(fsm.storageIDMap, requestID)
@@ -151,23 +175,23 @@ func (fsm *shardNodeFSM) handleReplicateSentBlocks(r ReplicateSentBlocksPayload)
 func (fsm *shardNodeFSM) handleLocalAcksNacksReplicationChanges(requestID string) {
 	fsm.mu.Lock()
 	defer fsm.mu.Unlock()
+
 	for _, block := range fsm.acks[requestID] {
 		stashState := fsm.stash[block]
 		if stashState.logicalTime == 0 {
 			delete(fsm.stash, block)
 		}
-		stashState.waitingStatus = false
-		fsm.stash[block] = stashState
 	}
 	for _, block := range fsm.nacks[requestID] {
 		stashState := fsm.stash[block]
 		stashState.waitingStatus = false
 		fsm.stash[block] = stashState
 	}
+	delete(fsm.acks, requestID)
+	delete(fsm.nacks, requestID)
 }
 
 func (fsm *shardNodeFSM) handleReplicateAcksNacks(r ReplicateAcksNacksPayload) {
-
 	fsm.mu.Lock()
 	defer fsm.mu.Unlock()
 	requestID := uuid.New().String()
@@ -262,6 +286,11 @@ func (fsm *shardNodeFSM) Snapshot() (raft.FSMSnapshot, error) {
 		shardNodeSnapshot.Nacks[requestID] = append(shardNodeSnapshot.Nacks[requestID], blocks...)
 	}
 
+	shardNodeSnapshot.PositionMap = make(map[string]positionState)
+	for block, pos := range fsm.positionMap {
+		shardNodeSnapshot.PositionMap[block] = pos
+	}
+
 	return shardNodeSnapshot, nil
 }
 
@@ -307,6 +336,12 @@ func (fsm *shardNodeFSM) Restore(rc io.ReadCloser) error {
 	for requestID, blocks := range snapshot.Nacks {
 		fsm.nacks[requestID] = append(fsm.nacks[requestID], blocks...)
 	}
+
+	fsm.positionMap = make(map[string]positionState)
+	for block, pos := range snapshot.PositionMap {
+		fsm.positionMap[block] = pos
+	}
+
 	return nil
 }
 
@@ -318,6 +353,7 @@ type shardNodeSnapshot struct {
 	Stash        map[string]stashState
 	Acks         map[string][]string
 	Nacks        map[string][]string
+	PositionMap  map[string]positionState
 }
 
 func (sn shardNodeSnapshot) Persist(sink raft.SnapshotSink) error {
@@ -369,7 +405,7 @@ func startRaftServer(isFirst bool, replicaID int, raftPort int, shardshardNodeFS
 		return nil, fmt.Errorf("could not create raft instance; %s", err)
 	}
 
-	//This node becomes the cluster bootstraper if it is the first node and no joinAddr is specified
+	// This node becomes the cluster bootstraper if it is the first node and no joinAddr is specified
 	if isFirst {
 		configuration := raft.Configuration{
 			Servers: []raft.Server{

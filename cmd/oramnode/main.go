@@ -4,6 +4,7 @@ import (
 	"flag"
 	"log"
 
+	"github.com/dsg-uwaterloo/oblishard/pkg/config"
 	oramnode "github.com/dsg-uwaterloo/oblishard/pkg/oramnode"
 )
 
@@ -22,5 +23,14 @@ func main() {
 		log.Fatalf("The raft port should be provided with the -raftport flag")
 	}
 
-	oramnode.StartServer(*oramNodeID, *rpcPort, *replicaID, *raftPort, *joinAddr)
+	shardNodeEndpoints, err := config.ReadShardNodeEndpoints("../../configs/shardnode_endpoints.yaml")
+	if err != nil {
+		log.Fatalf("Cannot read shard node endpoints from yaml file; %v", err)
+	}
+	rpcClients, err := oramnode.StartShardNodeRPCClients(shardNodeEndpoints)
+	if err != nil {
+		log.Fatalf("Failed to create client connections with shard node servers; %v", err)
+	}
+
+	oramnode.StartServer(*oramNodeID, *rpcPort, *replicaID, *raftPort, *joinAddr, rpcClients)
 }

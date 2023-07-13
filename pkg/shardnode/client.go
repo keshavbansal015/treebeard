@@ -1,10 +1,13 @@
 package shardnode
 
 import (
+	"context"
 	"fmt"
+	"math/rand"
 
 	oramnodepb "github.com/dsg-uwaterloo/oblishard/api/oramnode"
 	"github.com/dsg-uwaterloo/oblishard/pkg/config"
+	"github.com/dsg-uwaterloo/oblishard/pkg/rpc"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 )
@@ -15,6 +18,45 @@ type oramNodeRPCClient struct {
 }
 
 type ReplicaRPCClientMap map[int]oramNodeRPCClient
+
+type RPCClientMap map[int]ReplicaRPCClientMap
+
+func (r RPCClientMap) getRandomOramNodeReplicaMap() ReplicaRPCClientMap {
+	oramNodesLen := len(r)
+	randomOramNodeIndex := rand.Intn(oramNodesLen)
+	randomOramNode := r[randomOramNodeIndex]
+	return randomOramNode
+}
+
+func (r *ReplicaRPCClientMap) readPathFromAllOramNodeReplicas(ctx context.Context, block string, path int, storageID int, isReal bool) (*oramnodepb.ReadPathReply, error) {
+	var replicaFuncs []rpc.CallFunc
+	var clients []interface{}
+	for _, c := range *r {
+		replicaFuncs = append(replicaFuncs,
+			func(ctx context.Context, client interface{}, request interface{}, opts ...grpc.CallOption) (interface{}, error) {
+				return client.(oramNodeRPCClient).ClientAPI.ReadPath(ctx, request.(*oramnodepb.ReadPathRequest), opts...)
+			},
+		)
+		clients = append(clients, c)
+	}
+
+	reply, err := rpc.CallAllReplicas(
+		ctx,
+		clients,
+		replicaFuncs,
+		&oramnodepb.ReadPathRequest{
+			Block:     block,
+			Path:      int32(path),
+			StorageId: int32(storageID),
+			IsReal:    isReal,
+		},
+	)
+	if err != nil {
+		return nil, fmt.Errorf("could not get value from the oramnode; %s", err)
+	}
+	oramNodeReply := reply.(*oramnodepb.ReadPathReply)
+	return oramNodeReply, nil
+}
 
 func StartOramNodeRPCClients(endpoints []config.OramNodeEndpoint) (map[int]ReplicaRPCClientMap, error) {
 	clients := make(map[int]ReplicaRPCClientMap)

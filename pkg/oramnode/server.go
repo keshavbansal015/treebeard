@@ -6,36 +6,155 @@ import (
 	"log"
 	"net"
 	"strconv"
+	"sync"
+	"time"
 
 	pb "github.com/dsg-uwaterloo/oblishard/api/oramnode"
+	"github.com/dsg-uwaterloo/oblishard/pkg/rpc"
+	"github.com/dsg-uwaterloo/oblishard/pkg/storage"
 	"github.com/hashicorp/raft"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
+	"google.golang.org/grpc/metadata"
 )
+
+// How many ReadPath operations before eviction
+const EvictionRate int = 4
 
 type oramNodeServer struct {
 	pb.UnimplementedOramNodeServer
-	oramNodeServerID int
-	replicaID        int
-	raftNode         *raft.Raft
-	oramNodeFSM      *oramNodeFSM
+	oramNodeServerID    int
+	replicaID           int
+	raftNode            *raft.Raft
+	oramNodeFSM         *oramNodeFSM
+	shardNodeRPCClients map[int]ReplicaRPCClientMap
+	readPathCounter     int
+	readPathCounterMu   sync.Mutex
 }
 
-func newOramNodeServer(oramNodeServerID int, replicaID int, raftNode *raft.Raft, oramNodeFSM *oramNodeFSM) *oramNodeServer {
+func newOramNodeServer(oramNodeServerID int, replicaID int, raftNode *raft.Raft, oramNodeFSM *oramNodeFSM, shardNodeRPCClients map[int]ReplicaRPCClientMap) *oramNodeServer {
 	return &oramNodeServer{
-		oramNodeServerID: oramNodeServerID,
-		replicaID:        replicaID,
-		raftNode:         raftNode,
-		oramNodeFSM:      oramNodeFSM,
+		oramNodeServerID:    oramNodeServerID,
+		replicaID:           replicaID,
+		raftNode:            raftNode,
+		oramNodeFSM:         oramNodeFSM,
+		shardNodeRPCClients: shardNodeRPCClients,
+		readPathCounter:     0,
 	}
 }
 
-//TODO: we should answer the request if we are the current leader. Add this after implementing raft for this layer.
+func (o *oramNodeServer) evict(path int, storageID int) error {
+	beginEvictionCommand, err := newReplicateBeginEvictionCommand(path, storageID)
+	if err != nil {
+		return fmt.Errorf("unable to marshal begin eviction command; %s", err)
+	}
+	err = o.raftNode.Apply(beginEvictionCommand, 2*time.Second).Error()
+	if err != nil {
+		return fmt.Errorf("could not apply log to the FSM; %s", err)
+	}
 
-func (o *oramNodeServer) ReadPath(context.Context, *pb.ReadPathRequest) (*pb.ReadPathReply, error) {
-	//TODO: implement
-	//TODO: it should return an error if the block does not exist
-	return &pb.ReadPathReply{Value: "test_val_from_oram_node"}, nil
+	aggStash := make(map[string]string)
+	randomShardNode := o.shardNodeRPCClients[0]
+	recievedBlocksStatus := make(map[string]bool) // map of blocks to isWritten
+	for level := 0; level < storage.LevelCount; level++ {
+		blocks, err := storage.ReadBucket(level, path, storageID)
+		if err != nil {
+			return fmt.Errorf("unable to read bucket; %s", err)
+		}
+		for block, value := range blocks {
+			aggStash[block] = value
+		}
+		// TODO: get blocks from multiple random shard nodes
+		shardNodeBlocks, err := randomShardNode.getBlocksFromShardNode(path, storageID)
+		if err != nil {
+			return fmt.Errorf("unable to get blocks from shard node; %s", err)
+		}
+		for _, block := range shardNodeBlocks {
+			aggStash[block.Block] = block.Value
+			recievedBlocksStatus[block.Block] = false
+		}
+	}
+
+	for level := storage.LevelCount - 1; level >= 0; level-- {
+		writtenBlocks, err := storage.AtomicWriteBucket(level, path, storageID, aggStash)
+		if err != nil {
+			return fmt.Errorf("unable to atomic write bucket; %s", err)
+		}
+		for block := range writtenBlocks {
+			delete(aggStash, block)
+			recievedBlocksStatus[block] = true
+		}
+	}
+	randomShardNode.sendBackAcksNacks(recievedBlocksStatus)
+
+	endEvictionCommand, err := newReplicateEndEvictionCommand()
+	if err != nil {
+		return fmt.Errorf("unable to marshal end eviction command; %s", err)
+	}
+	err = o.raftNode.Apply(endEvictionCommand, 2*time.Second).Error()
+	if err != nil {
+		return fmt.Errorf("could not apply log to the FSM; %s", err)
+	}
+
+	o.readPathCounterMu.Lock()
+	o.readPathCounter = 0
+	o.readPathCounterMu.Unlock()
+
+	return nil
+}
+
+func (o *oramNodeServer) ReadPath(ctx context.Context, request *pb.ReadPathRequest) (*pb.ReadPathReply, error) {
+	if o.raftNode.State() != raft.Leader {
+		return nil, fmt.Errorf("not the leader node")
+	}
+
+	md, _ := metadata.FromIncomingContext(ctx)
+	requestID := md["requestid"][0]
+
+	var offsetList []int
+	for level := 0; level < storage.LevelCount; level++ {
+		offset, err := storage.GetBlockOffset(level, int(request.Path), int(request.StorageId), request.Block)
+		if err != nil {
+			return nil, fmt.Errorf("could not get offset from storage")
+		}
+		offsetList = append(offsetList, offset)
+	}
+	replicateOffsetAndBeginReadPathCommand, err := newReplicateOffsetListCommand(requestID, offsetList)
+	if err != nil {
+		return nil, fmt.Errorf("could not create offsetList replication command; %s", err)
+	}
+	err = o.raftNode.Apply(replicateOffsetAndBeginReadPathCommand, 2*time.Second).Error()
+	if err != nil {
+		return nil, fmt.Errorf("could not apply log to the FSM; %s", err)
+	}
+
+	var returnValue string
+	for level := 0; level < storage.LevelCount; level++ {
+		value, err := storage.ReadBlock(level, int(request.Path), offsetList[level], int(request.StorageId))
+		if err == nil {
+			returnValue = value
+		}
+	}
+
+	err = storage.EarlyReshuffle(int(request.Path), int(request.StorageId))
+	if err != nil { // TODO: should we delete offsetList in case of an earlyReshuffle error?
+		return nil, fmt.Errorf("early reshuffle failed;%s", err)
+	}
+
+	replicateDeleteOffsetListCommand, err := newReplicateDeleteOffsetListCommand(requestID)
+	if err != nil {
+		return nil, fmt.Errorf("could not create delete offsetList replication command; %s", err)
+	}
+	err = o.raftNode.Apply(replicateDeleteOffsetListCommand, 2*time.Second).Error()
+	if err != nil {
+		return nil, fmt.Errorf("could not apply log to the FSM; %s", err)
+	}
+
+	o.readPathCounterMu.Lock()
+	o.readPathCounter++
+	o.readPathCounterMu.Unlock()
+
+	return &pb.ReadPathReply{Value: returnValue}, nil
 }
 
 func (o *oramNodeServer) JoinRaftVoter(ctx context.Context, joinRaftVoterRequest *pb.JoinRaftVoterRequest) (*pb.JoinRaftVoterReply, error) {
@@ -55,13 +174,20 @@ func (o *oramNodeServer) JoinRaftVoter(ctx context.Context, joinRaftVoterRequest
 	return &pb.JoinRaftVoterReply{Success: true}, nil
 }
 
-func StartServer(oramNodeServerID int, rpcPort int, replicaID int, raftPort int, joinAddr string) {
+func StartServer(oramNodeServerID int, rpcPort int, replicaID int, raftPort int, joinAddr string, shardNodeRPCClients map[int]ReplicaRPCClientMap) {
 	isFirst := joinAddr == ""
 	oramNodeFSM := newOramNodeFSM()
 	r, err := startRaftServer(isFirst, replicaID, raftPort, oramNodeFSM)
 	if err != nil {
 		log.Fatalf("The raft node creation did not succeed; %s", err)
 	}
+
+	go func() {
+		for {
+			time.Sleep(5 * time.Second)
+			fmt.Println(oramNodeFSM)
+		}
+	}()
 
 	if !isFirst {
 		conn, err := grpc.Dial(joinAddr, grpc.WithTransportCredentials(insecure.NewCredentials()))
@@ -82,13 +208,26 @@ func StartServer(oramNodeServerID int, rpcPort int, replicaID int, raftPort int,
 		}
 	}
 
-	//TODO: init raft node and join on joinAddr
 	lis, err := net.Listen("tcp", fmt.Sprintf("localhost:%d", rpcPort))
 	if err != nil {
 		log.Fatalf("failed to listen: %v", err)
 	}
-	oramNodeServer := newOramNodeServer(oramNodeServerID, replicaID, r, oramNodeFSM)
-	grpcServer := grpc.NewServer()
+	oramNodeServer := newOramNodeServer(oramNodeServerID, replicaID, r, oramNodeFSM, shardNodeRPCClients)
+	go func() {
+		for {
+			time.Sleep(200 * time.Millisecond)
+			needEviction := false
+			oramNodeServer.readPathCounterMu.Lock()
+			if oramNodeServer.readPathCounter >= EvictionRate {
+				needEviction = true
+			}
+			oramNodeServer.readPathCounterMu.Unlock()
+			if needEviction {
+				oramNodeServer.evict(0, 0) // TODO: make it lexicographic
+			}
+		}
+	}()
+	grpcServer := grpc.NewServer(grpc.UnaryInterceptor(rpc.ContextPropagationUnaryServerInterceptor()))
 	pb.RegisterOramNodeServer(grpcServer, oramNodeServer)
 	grpcServer.Serve(lis)
 }
