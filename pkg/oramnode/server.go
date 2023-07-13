@@ -42,6 +42,21 @@ func newOramNodeServer(oramNodeServerID int, replicaID int, raftNode *raft.Raft,
 	}
 }
 
+func (o *oramNodeServer) performFailedEviction() error {
+	<-o.raftNode.LeaderCh()
+	o.oramNodeFSM.mu.Lock()
+	needsEviction := o.oramNodeFSM.unfinishedEviction
+	o.oramNodeFSM.mu.Unlock()
+	if needsEviction != nil {
+		o.oramNodeFSM.mu.Lock()
+		path := o.oramNodeFSM.unfinishedEviction.path
+		storageID := o.oramNodeFSM.unfinishedEviction.storageID
+		o.oramNodeFSM.mu.Unlock()
+		o.evict(path, storageID)
+	}
+	return nil
+}
+
 func (o *oramNodeServer) evict(path int, storageID int) error {
 	beginEvictionCommand, err := newReplicateBeginEvictionCommand(path, storageID)
 	if err != nil {
@@ -226,6 +241,11 @@ func StartServer(oramNodeServerID int, rpcPort int, replicaID int, raftPort int,
 			if needEviction {
 				oramNodeServer.evict(0, 0) // TODO: make it lexicographic
 			}
+		}
+	}()
+	go func() {
+		for {
+			oramNodeServer.performFailedEviction()
 		}
 	}()
 	grpcServer := grpc.NewServer(grpc.UnaryInterceptor(rpc.ContextPropagationUnaryServerInterceptor()))
