@@ -15,7 +15,6 @@ import (
 	"github.com/hashicorp/raft"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
-	"google.golang.org/grpc/metadata"
 )
 
 // How many ReadPath operations before eviction
@@ -108,8 +107,10 @@ func (o *oramNodeServer) ReadPath(ctx context.Context, request *pb.ReadPathReque
 		return nil, fmt.Errorf("not the leader node")
 	}
 
-	md, _ := metadata.FromIncomingContext(ctx)
-	requestID := md["requestid"][0]
+	requestID, err := rpc.GetRequestIDFromContext(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("unable to read requestid from request; %s", err)
+	}
 
 	var offsetList []int
 	for level := 0; level < storage.LevelCount; level++ {

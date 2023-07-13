@@ -14,7 +14,6 @@ import (
 	"github.com/hashicorp/raft"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
-	"google.golang.org/grpc/metadata"
 )
 
 type shardNodeServer struct {
@@ -65,8 +64,10 @@ func (s *shardNodeServer) query(ctx context.Context, op OperationType, block str
 	if s.raftNode.State() != raft.Leader {
 		return "", fmt.Errorf("not the leader node")
 	}
-	md, _ := metadata.FromIncomingContext(ctx)
-	requestID := md["requestid"][0]
+	requestID, err := rpc.GetRequestIDFromContext(ctx)
+	if err != nil {
+		return "", fmt.Errorf("unable to read requestid from request; %s", err)
+	}
 
 	newPath, newStorageID := storage.GetRandomPathAndStorageID()
 	requestReplicationCommand, err := newRequestReplicationCommand(block, requestID, newPath, newStorageID)
