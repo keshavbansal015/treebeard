@@ -23,15 +23,17 @@ type shardNodeServer struct {
 	raftNode          *raft.Raft
 	shardNodeFSM      *shardNodeFSM
 	oramNodeClients   RPCClientMap
+	storageHandler    *storage.StorageHandler
 }
 
-func newShardNodeServer(shardNodeServerID int, replicaID int, raftNode *raft.Raft, fsm *shardNodeFSM, oramNodeRPCClients RPCClientMap) *shardNodeServer {
+func newShardNodeServer(shardNodeServerID int, replicaID int, raftNode *raft.Raft, fsm *shardNodeFSM, oramNodeRPCClients RPCClientMap, storageHandler *storage.StorageHandler) *shardNodeServer {
 	return &shardNodeServer{
 		shardNodeServerID: shardNodeServerID,
 		replicaID:         replicaID,
 		raftNode:          raftNode,
 		shardNodeFSM:      fsm,
 		oramNodeClients:   oramNodeRPCClients,
+		storageHandler:    storageHandler,
 	}
 }
 
@@ -44,7 +46,7 @@ const (
 
 func (s *shardNodeServer) getPathAndStorageBasedOnRequest(block string, requestID string) (path int, storageID int) {
 	if !s.shardNodeFSM.isInitialRequest(block, requestID) {
-		return storage.GetRandomPathAndStorageID()
+		return s.storageHandler.GetRandomPathAndStorageID()
 	} else {
 		s.shardNodeFSM.mu.Lock()
 		defer s.shardNodeFSM.mu.Unlock()
@@ -69,7 +71,7 @@ func (s *shardNodeServer) query(ctx context.Context, op OperationType, block str
 		return "", fmt.Errorf("unable to read requestid from request; %s", err)
 	}
 
-	newPath, newStorageID := storage.GetRandomPathAndStorageID()
+	newPath, newStorageID := s.storageHandler.GetRandomPathAndStorageID()
 	requestReplicationCommand, err := newRequestReplicationCommand(block, requestID, newPath, newStorageID)
 	if err != nil {
 		return "", fmt.Errorf("could not create request replication command; %s", err)
@@ -241,9 +243,8 @@ func StartServer(shardNodeServerID int, rpcPort int, replicaID int, raftPort int
 	if err != nil {
 		log.Fatalf("failed to listen: %v", err)
 	}
-	shardnodeServer := newShardNodeServer(shardNodeServerID, replicaID, r, shardNodeFSM, oramNodeRPCClients)
+	shardnodeServer := newShardNodeServer(shardNodeServerID, replicaID, r, shardNodeFSM, oramNodeRPCClients, storage.NewStorageHandler())
 	grpcServer := grpc.NewServer(grpc.UnaryInterceptor(rpc.ContextPropagationUnaryServerInterceptor()))
 	pb.RegisterShardNodeServer(grpcServer, shardnodeServer)
 	grpcServer.Serve(lis)
-
 }

@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	shardnodepb "github.com/dsg-uwaterloo/oblishard/api/shardnode"
+	"github.com/dsg-uwaterloo/oblishard/pkg/storage"
 	"github.com/phayes/freeport"
 	"google.golang.org/grpc"
 )
@@ -112,9 +113,9 @@ func startLeaderRaftNodeServer(t *testing.T, withFailedShardNodeClients bool) *o
 	}
 	<-r.LeaderCh() // wait to become the leader
 	if withFailedShardNodeClients {
-		return newOramNodeServer(0, 0, r, fsm, getFailedMockShardNodeClients())
+		return newOramNodeServer(0, 0, r, fsm, getFailedMockShardNodeClients(), storage.NewStorageHandler())
 	} else {
-		return newOramNodeServer(0, 0, r, fsm, getMockShardNodeClients())
+		return newOramNodeServer(0, 0, r, fsm, getMockShardNodeClients(), storage.NewStorageHandler())
 	}
 }
 
