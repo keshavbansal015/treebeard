@@ -70,8 +70,35 @@ func getMockShardNodeClients() map[int]ReplicaRPCClientMap {
 	}
 }
 
+func getFailedMockShardNodeClients() map[int]ReplicaRPCClientMap {
+	return map[int]ReplicaRPCClientMap{
+		0: map[int]ShardNodeRPCClient{
+			0: {
+				ClientAPI: &mockShardNodeClient{
+					sendBlocksReply: func() (*shardnodepb.SendBlocksReply, error) {
+						return nil, fmt.Errorf("not the leader")
+					},
+					ackSentBlocksReply: func() (*shardnodepb.AckSentBlocksReply, error) {
+						return nil, fmt.Errorf("not the leader")
+					},
+				},
+			},
+			1: {
+				ClientAPI: &mockShardNodeClient{
+					sendBlocksReply: func() (*shardnodepb.SendBlocksReply, error) {
+						return nil, fmt.Errorf("not the leader")
+					},
+					ackSentBlocksReply: func() (*shardnodepb.AckSentBlocksReply, error) {
+						return nil, fmt.Errorf("not the leader")
+					},
+				},
+			},
+		},
+	}
+}
+
 // TODO: duplicate code with the sharnode server_test
-func startLeaderRaftNodeServer(t *testing.T) *oramNodeServer {
+func startLeaderRaftNodeServer(t *testing.T, withFailedShardNodeClients bool) *oramNodeServer {
 	cleanRaftDataDirectory("data-replicaid-0")
 
 	fsm := newOramNodeFSM()
@@ -84,16 +111,30 @@ func startLeaderRaftNodeServer(t *testing.T) *oramNodeServer {
 		t.Errorf("unable to start raft server")
 	}
 	<-r.LeaderCh() // wait to become the leader
-	return newOramNodeServer(0, 0, r, fsm, getMockShardNodeClients())
+	if withFailedShardNodeClients {
+		return newOramNodeServer(0, 0, r, fsm, getFailedMockShardNodeClients())
+	} else {
+		return newOramNodeServer(0, 0, r, fsm, getMockShardNodeClients())
+	}
 }
 
 func TestEvictCleansUpBeginEvictionAfterSuccessfulExecution(t *testing.T) {
-	o := startLeaderRaftNodeServer(t)
+	o := startLeaderRaftNodeServer(t, false)
 	o.evict(0, 0)
 	o.oramNodeFSM.mu.Lock()
 	defer o.oramNodeFSM.mu.Unlock()
 
 	if o.oramNodeFSM.unfinishedEviction != nil {
 		t.Errorf("evict should remove unfinished eviction after successful eviction")
+	}
+}
+
+func TestEvictKeepsBeginEvictionInFailureScenario(t *testing.T) {
+	o := startLeaderRaftNodeServer(t, true)
+	o.evict(0, 0)
+	o.oramNodeFSM.mu.Lock()
+	defer o.oramNodeFSM.mu.Unlock()
+	if o.oramNodeFSM.unfinishedEviction == nil {
+		t.Errorf("evict should add an unfinished eviction to FSM in failure scenarios")
 	}
 }
