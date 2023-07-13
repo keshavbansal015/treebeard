@@ -66,8 +66,8 @@ func (o *oramNodeServer) evict(path int, storageID int) error {
 	if err != nil {
 		return fmt.Errorf("could not apply log to the FSM; %s", err)
 	}
-
-	aggStash := make(map[string]string)
+	// TODO: General Notes from Our Discussions (Google Doc) - #6
+	aggStash := make(map[string]string) //map of block to value
 	randomShardNode := o.shardNodeRPCClients[0]
 	recievedBlocksStatus := make(map[string]bool) // map of blocks to isWritten
 	for level := 0; level < storage.LevelCount; level++ {
