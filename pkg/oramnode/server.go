@@ -11,7 +11,7 @@ import (
 
 	pb "github.com/dsg-uwaterloo/oblishard/api/oramnode"
 	"github.com/dsg-uwaterloo/oblishard/pkg/rpc"
-	"github.com/dsg-uwaterloo/oblishard/pkg/storage"
+	strg "github.com/dsg-uwaterloo/oblishard/pkg/storage"
 	"github.com/hashicorp/raft"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
@@ -19,6 +19,17 @@ import (
 
 // How many ReadPath operations before eviction
 const EvictionRate int = 4
+
+type storage interface {
+	GetLevelCount() int
+	GetMaxAccessCount() int
+	GetRandomPathAndStorageID() (path int, storageID int)
+	GetBlockOffset(level int, path int, storageID int, block string) (offset int, err error)
+	GetAccessCount(level int, path int, storageID int) (count int, err error)
+	ReadBucket(level int, path int, storageID int) (blocks map[string]string, err error)
+	WriteBucket(level int, path int, storageID int, ReadBucketBlocks map[string]string, shardNodeBlocks map[string]string, isAtomic bool) (writtenBlocks map[string]string, err error)
+	ReadBlock(level int, path int, storageID int, offset int) (value string, err error)
+}
 
 type oramNodeServer struct {
 	pb.UnimplementedOramNodeServer
@@ -29,10 +40,10 @@ type oramNodeServer struct {
 	shardNodeRPCClients map[int]ReplicaRPCClientMap
 	readPathCounter     int
 	readPathCounterMu   sync.Mutex
-	storageHandler      *storage.StorageHandler
+	storageHandler      storage
 }
 
-func newOramNodeServer(oramNodeServerID int, replicaID int, raftNode *raft.Raft, oramNodeFSM *oramNodeFSM, shardNodeRPCClients map[int]ReplicaRPCClientMap, storageHandler *storage.StorageHandler) *oramNodeServer {
+func newOramNodeServer(oramNodeServerID int, replicaID int, raftNode *raft.Raft, oramNodeFSM *oramNodeFSM, shardNodeRPCClients map[int]ReplicaRPCClientMap, storageHandler *strg.StorageHandler) *oramNodeServer {
 	return &oramNodeServer{
 		oramNodeServerID:    oramNodeServerID,
 		replicaID:           replicaID,
@@ -59,6 +70,86 @@ func (o *oramNodeServer) performFailedEviction() error {
 	return nil
 }
 
+func (o *oramNodeServer) earlyReshuffle(path int, storageID int) error {
+	for level := 0; level < o.storageHandler.GetLevelCount(); level++ {
+		accessCount, err := o.storageHandler.GetAccessCount(level, path, storageID)
+		if err != nil {
+			return fmt.Errorf("unable to get access count from the server; %s", err)
+		}
+		if accessCount < o.storageHandler.GetMaxAccessCount() {
+			continue
+		}
+		localStash, err := o.storageHandler.ReadBucket(level, path, storageID)
+		if err != nil {
+			return fmt.Errorf("unable to read bucket from the server; %s", err)
+		}
+		writtenBlocks, err := o.storageHandler.WriteBucket(level, path, storageID, localStash, nil, false)
+		if err != nil {
+			return fmt.Errorf("unable to write bucket from the server; %s", err)
+		}
+		for block := range localStash {
+			if _, exists := writtenBlocks[block]; !exists {
+				return fmt.Errorf("unable to write all blocks to the bucket")
+			}
+		}
+	}
+	return nil
+}
+
+func (o *oramNodeServer) readBucketAllLevels(path int, storageID int) (blocksFromReadBucket map[int]map[string]string, err error) {
+	blocksFromReadBucket = make(map[int]map[string]string) // map of bucket to map of block to value
+	for level := 0; level < o.storageHandler.GetLevelCount(); level++ {
+		blocks, err := o.storageHandler.ReadBucket(level, path, storageID)
+		if err != nil {
+			return nil, fmt.Errorf("unable to read bucket; %s", err)
+		}
+		if blocksFromReadBucket[level] == nil {
+			blocksFromReadBucket[level] = make(map[string]string)
+		}
+		for block, value := range blocks {
+			blocksFromReadBucket[level][block] = value
+		}
+	}
+	return blocksFromReadBucket, nil
+}
+
+func (o *oramNodeServer) readBlocksFromShardNode(path int, storageID int, randomShardNode ReplicaRPCClientMap) (receivedBlocks map[string]string, err error) {
+	receivedBlocks = make(map[string]string) // map of received block to value
+
+	shardNodeBlocks, err := randomShardNode.getBlocksFromShardNode(path, storageID)
+	if err != nil {
+		return nil, fmt.Errorf("unable to get blocks from shard node; %s", err)
+	}
+	for _, block := range shardNodeBlocks {
+		receivedBlocks[block.Block] = block.Value
+	}
+	return receivedBlocks, nil
+}
+
+func (o *oramNodeServer) writeBackBlocksToAllLevels(path int, storageID int, blocksFromReadBucket map[int]map[string]string, receivedBlocks map[string]string) (receivedBlocksIsWritten map[string]bool, err error) {
+	receivedBlocksCopy := make(map[string]string)
+	for block, value := range receivedBlocks {
+		receivedBlocksCopy[block] = value
+	}
+	receivedBlocksIsWritten = make(map[string]bool)
+	for block := range receivedBlocks {
+		receivedBlocksIsWritten[block] = false
+	}
+	for level := o.storageHandler.GetLevelCount() - 1; level >= 0; level-- {
+		writtenBlocks, err := o.storageHandler.WriteBucket(level, path, storageID, blocksFromReadBucket[level], receivedBlocksCopy, true)
+		if err != nil {
+			return nil, fmt.Errorf("unable to atomic write bucket; %s", err)
+		}
+		for block := range writtenBlocks {
+			if _, exists := receivedBlocksCopy[block]; exists {
+				delete(receivedBlocksCopy, block)
+				receivedBlocksIsWritten[block] = true
+			}
+		}
+	}
+	return receivedBlocksIsWritten, nil
+}
+
 func (o *oramNodeServer) evict(path int, storageID int) error {
 	beginEvictionCommand, err := newReplicateBeginEvictionCommand(path, storageID)
 	if err != nil {
@@ -68,40 +159,25 @@ func (o *oramNodeServer) evict(path int, storageID int) error {
 	if err != nil {
 		return fmt.Errorf("could not apply log to the FSM; %s", err)
 	}
-	// TODO: General Notes from Our Discussions (Google Doc) - #6
-	aggStash := make(map[string]string) //map of block to value
-	randomShardNode := o.shardNodeRPCClients[0]
-	recievedBlocksStatus := make(map[string]bool) // map of blocks to isWritten
-	for level := 0; level < storage.LevelCount; level++ {
-		blocks, err := o.storageHandler.ReadBucket(level, path, storageID)
-		if err != nil {
-			return fmt.Errorf("unable to read bucket; %s", err)
-		}
-		for block, value := range blocks {
-			aggStash[block] = value
-		}
-		// TODO: get blocks from multiple random shard nodes
-		shardNodeBlocks, err := randomShardNode.getBlocksFromShardNode(path, storageID)
-		if err != nil {
-			return fmt.Errorf("unable to get blocks from shard node; %s", err)
-		}
-		for _, block := range shardNodeBlocks {
-			aggStash[block.Block] = block.Value
-			recievedBlocksStatus[block.Block] = false
-		}
+
+	blocksFromReadBucket, err := o.readBucketAllLevels(path, storageID)
+	if err != nil {
+		return fmt.Errorf("unable to perform ReadBucket on all levels")
 	}
 
-	for level := storage.LevelCount - 1; level >= 0; level-- {
-		writtenBlocks, err := o.storageHandler.WriteBucket(level, path, storageID, aggStash, true)
-		if err != nil {
-			return fmt.Errorf("unable to atomic write bucket; %s", err)
-		}
-		for block := range writtenBlocks {
-			delete(aggStash, block)
-			recievedBlocksStatus[block] = true
-		}
+	// TODO: get blocks from multiple random shard nodes
+	randomShardNode := o.shardNodeRPCClients[0]
+	receivedBlocks, err := o.readBlocksFromShardNode(path, storageID, randomShardNode)
+	if err != nil {
+		return err
 	}
-	randomShardNode.sendBackAcksNacks(recievedBlocksStatus)
+
+	receivedBlocksIsWritten, err := o.writeBackBlocksToAllLevels(path, storageID, blocksFromReadBucket, receivedBlocks)
+	if err != nil {
+		return fmt.Errorf("unable to perform WriteBucket on all levels; %s", err)
+	}
+
+	randomShardNode.sendBackAcksNacks(receivedBlocksIsWritten)
 
 	endEvictionCommand, err := newReplicateEndEvictionCommand()
 	if err != nil {
@@ -119,6 +195,8 @@ func (o *oramNodeServer) evict(path int, storageID int) error {
 	return nil
 }
 
+// TODO: we can remove the IsReal parameter in the ReadPathRequest since the storage doesn't need it
+// TODO: allways retry with previous offsetList
 func (o *oramNodeServer) ReadPath(ctx context.Context, request *pb.ReadPathRequest) (*pb.ReadPathReply, error) {
 	if o.raftNode.State() != raft.Leader {
 		return nil, fmt.Errorf("not the leader node")
@@ -130,7 +208,7 @@ func (o *oramNodeServer) ReadPath(ctx context.Context, request *pb.ReadPathReque
 	}
 
 	var offsetList []int
-	for level := 0; level < storage.LevelCount; level++ {
+	for level := 0; level < o.storageHandler.GetLevelCount(); level++ {
 		offset, err := o.storageHandler.GetBlockOffset(level, int(request.Path), int(request.StorageId), request.Block)
 		if err != nil {
 			return nil, fmt.Errorf("could not get offset from storage")
@@ -147,14 +225,14 @@ func (o *oramNodeServer) ReadPath(ctx context.Context, request *pb.ReadPathReque
 	}
 
 	var returnValue string
-	for level := 0; level < storage.LevelCount; level++ {
+	for level := 0; level < o.storageHandler.GetLevelCount(); level++ {
 		value, err := o.storageHandler.ReadBlock(level, int(request.Path), offsetList[level], int(request.StorageId))
 		if err == nil {
 			returnValue = value
 		}
 	}
 
-	err = o.storageHandler.EarlyReshuffle(int(request.Path), int(request.StorageId))
+	err = o.earlyReshuffle(int(request.Path), int(request.StorageId))
 	if err != nil { // TODO: should we delete offsetList in case of an earlyReshuffle error?
 		return nil, fmt.Errorf("early reshuffle failed;%s", err)
 	}
@@ -230,7 +308,7 @@ func StartServer(oramNodeServerID int, rpcPort int, replicaID int, raftPort int,
 	if err != nil {
 		log.Fatalf("failed to listen: %v", err)
 	}
-	oramNodeServer := newOramNodeServer(oramNodeServerID, replicaID, r, oramNodeFSM, shardNodeRPCClients, storage.NewStorageHandler())
+	oramNodeServer := newOramNodeServer(oramNodeServerID, replicaID, r, oramNodeFSM, shardNodeRPCClients, strg.NewStorageHandler())
 	go func() {
 		for {
 			time.Sleep(200 * time.Millisecond)

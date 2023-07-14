@@ -1,7 +1,5 @@
 package storage
 
-import "fmt"
-
 // How many levels exist in the storage tree
 const LevelCount int = 32
 const MaxAccessCount int = 8
@@ -13,6 +11,14 @@ type StorageHandler struct {
 
 func NewStorageHandler() *StorageHandler {
 	return &StorageHandler{levelCount: LevelCount, maxAccessCount: MaxAccessCount}
+}
+
+func (s *StorageHandler) GetLevelCount() int {
+	return s.levelCount
+}
+
+func (s *StorageHandler) GetMaxAccessCount() int {
+	return s.maxAccessCount
 }
 
 func (s *StorageHandler) GetRandomPathAndStorageID() (path int, storageID int) {
@@ -41,11 +47,20 @@ func (s *StorageHandler) ReadBucket(level int, path int, storageID int) (blocks 
 	}, nil
 }
 
-func (s *StorageHandler) WriteBucket(level int, path int, storageID int, stash map[string]string, isAtomic bool) (writtenBlocks map[string]string, err error) {
+// TODO: think about the following scenario
+// There is a block that came from both shardNodeBlocks and ReadBucketBlocks
+// First, is this possible?
+// Second, what should we do?
+
+// TODO: WriteBucket SHOULD first write the ReadBucketBlocks.
+func (s *StorageHandler) WriteBucket(level int, path int, storageID int, ReadBucketBlocks map[string]string, shardNodeBlocks map[string]string, isAtomic bool) (writtenBlocks map[string]string, err error) {
 	// TODO: implement
 	// TODO: It should make the counter zero
 	writtenBlocks = make(map[string]string)
-	for block, value := range stash {
+	for block, value := range ReadBucketBlocks {
+		writtenBlocks[block] = value
+	}
+	for block, value := range shardNodeBlocks {
 		writtenBlocks[block] = value
 	}
 	return writtenBlocks, nil
@@ -56,30 +71,4 @@ func (s *StorageHandler) ReadBlock(level int, path int, storageID int, offset in
 	// TODO: it should invalidate and increase counter
 	value = "test_read_block_from_storage"
 	return value, nil
-}
-
-func (s *StorageHandler) EarlyReshuffle(path int, storageID int) error {
-	for level := 0; level < LevelCount; level++ {
-		accessCount, err := s.GetAccessCount(level, path, storageID)
-		if err != nil {
-			return fmt.Errorf("unable to get access count from the server; %s", err)
-		}
-		if accessCount < MaxAccessCount {
-			continue
-		}
-		localStash, err := s.ReadBucket(level, path, storageID)
-		if err != nil {
-			return fmt.Errorf("unable to read bucket from the server; %s", err)
-		}
-		writtenBlocks, err := s.WriteBucket(level, path, storageID, localStash, false)
-		if err != nil {
-			return fmt.Errorf("unable to write bucket from the server; %s", err)
-		}
-		for block := range localStash {
-			if _, exists := writtenBlocks[block]; !exists {
-				return fmt.Errorf("unable to write all blocks to the bucket")
-			}
-		}
-	}
-	return nil
 }
