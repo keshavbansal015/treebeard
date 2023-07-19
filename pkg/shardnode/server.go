@@ -83,7 +83,7 @@ func (s *shardNodeServer) query(ctx context.Context, op OperationType, block str
 
 	path, storageID := s.getPathAndStorageBasedOnRequest(block, requestID)
 	oramNodeReplicaMap := s.oramNodeClients.getRandomOramNodeReplicaMap()
-	reply, err := oramNodeReplicaMap.readPathFromAllOramNodeReplicas(ctx, block, path, storageID, s.shardNodeFSM.isInitialRequest(block, requestID))
+	reply, err := oramNodeReplicaMap.readPathFromAllOramNodeReplicas(ctx, block, path, storageID)
 
 	if err != nil {
 		return "", fmt.Errorf("could not call the ReadPath RPC on the oram node. %s", err)

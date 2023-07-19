@@ -147,7 +147,7 @@ func (m *mockStorageHandler) GetBlockOffset(level int, path int, storageID int, 
 	return level, nil
 }
 func (m *mockStorageHandler) GetAccessCount(level int, path int, storageID int) (count int, err error) {
-	return 0, nil // TODO: change
+	return 0, nil
 }
 
 func (m *mockStorageHandler) ReadBucket(level int, path int, storageID int) (blocks map[string]string, err error) {
@@ -164,10 +164,9 @@ func (m *mockStorageHandler) WriteBucket(level int, path int, storageID int, rea
 }
 
 func (m *mockStorageHandler) ReadBlock(level int, path int, storageID int, offset int) (value string, err error) {
-	return "", nil // TODO: change
+	return "", nil
 }
 
-// TODO: duplicate code with the sharnode server_test
 func startLeaderRaftNodeServer(t *testing.T) *oramNodeServer {
 	cleanRaftDataDirectory("data-replicaid-0")
 
@@ -330,7 +329,7 @@ func TestEvictResetsReadPathCounter(t *testing.T) {
 func TestReadPathRemovesOffsetListAfterSuccessfulExecution(t *testing.T) {
 	o := startLeaderRaftNodeServer(t).withMockStorageHandler(newMockStorageHandler(4, 4))
 	ctx := metadata.NewIncomingContext(context.Background(), metadata.Pairs("requestid", "request1"))
-	o.ReadPath(ctx, &oramnode.ReadPathRequest{Block: "a", Path: 1, StorageId: 2, IsReal: true})
+	o.ReadPath(ctx, &oramnode.ReadPathRequest{Block: "a", Path: 1, StorageId: 2})
 	o.oramNodeFSM.mu.Lock()
 	defer o.oramNodeFSM.mu.Unlock()
 	if offsetList, exists := o.oramNodeFSM.offsetListMap["request1"]; exists {
@@ -341,7 +340,7 @@ func TestReadPathRemovesOffsetListAfterSuccessfulExecution(t *testing.T) {
 func TestReadPathIncrementsReadPathCounter(t *testing.T) {
 	o := startLeaderRaftNodeServer(t).withMockStorageHandler(newMockStorageHandler(4, 4))
 	ctx := metadata.NewIncomingContext(context.Background(), metadata.Pairs("requestid", "request1"))
-	o.ReadPath(ctx, &oramnode.ReadPathRequest{Block: "a", Path: 1, StorageId: 2, IsReal: true})
+	o.ReadPath(ctx, &oramnode.ReadPathRequest{Block: "a", Path: 1, StorageId: 2})
 	o.oramNodeFSM.mu.Lock()
 	defer o.oramNodeFSM.mu.Unlock()
 	if o.readPathCounter != 1 {

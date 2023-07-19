@@ -195,7 +195,6 @@ func (o *oramNodeServer) evict(path int, storageID int) error {
 	return nil
 }
 
-// TODO: we can remove the IsReal parameter in the ReadPathRequest since the storage doesn't need it
 // TODO: allways retry with previous offsetList
 func (o *oramNodeServer) ReadPath(ctx context.Context, request *pb.ReadPathRequest) (*pb.ReadPathReply, error) {
 	if o.raftNode.State() != raft.Leader {

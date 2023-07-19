@@ -33,7 +33,6 @@ type positionState struct {
 }
 
 type shardNodeFSM struct {
-	// TODO note
 	// I'm starting with simple maps and one mutex to handle race conditions.
 	// However, there are other ways to design this that might be better regarding performance:
 	//     1. using different mutexes for different maps so that we just block the exact map that is having multiple access.
