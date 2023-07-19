@@ -24,8 +24,8 @@ type beginEvictionData struct {
 type oramNodeFSM struct {
 	mu sync.Mutex
 
-	offsetListMap      map[string][]int   //map of request id to offsetList
-	unfinishedEviction *beginEvictionData //unfinished eviction
+	offsetListMap      map[string][]int   // map of block to offsetList
+	unfinishedEviction *beginEvictionData // unfinished eviction
 }
 
 func (fsm *oramNodeFSM) String() string {
@@ -42,18 +42,18 @@ func newOramNodeFSM() *oramNodeFSM {
 	return &oramNodeFSM{offsetListMap: make(map[string][]int)}
 }
 
-func (fsm *oramNodeFSM) handleOffsetListReplicationCommand(requestID string, offsetList []int) {
+func (fsm *oramNodeFSM) handleOffsetListReplicationCommand(block string, offsetList []int) {
 	fsm.mu.Lock()
 	defer fsm.mu.Unlock()
 
-	fsm.offsetListMap[requestID] = offsetList
+	fsm.offsetListMap[block] = offsetList
 }
 
-func (fsm *oramNodeFSM) handleDeleteOffsetListReplicationCommand(requestID string) {
+func (fsm *oramNodeFSM) handleDeleteOffsetListReplicationCommand(block string) {
 	fsm.mu.Lock()
 	defer fsm.mu.Unlock()
 
-	delete(fsm.offsetListMap, requestID)
+	delete(fsm.offsetListMap, block)
 }
 
 func (fsm *oramNodeFSM) handleBeginEvictionCommand(path int, storageID int) {

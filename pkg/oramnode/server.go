@@ -195,48 +195,50 @@ func (o *oramNodeServer) evict(path int, storageID int) error {
 	return nil
 }
 
-// TODO: allways retry with previous offsetList
 func (o *oramNodeServer) ReadPath(ctx context.Context, request *pb.ReadPathRequest) (*pb.ReadPathReply, error) {
 	if o.raftNode.State() != raft.Leader {
 		return nil, fmt.Errorf("not the leader node")
 	}
 
-	requestID, err := rpc.GetRequestIDFromContext(ctx)
-	if err != nil {
-		return nil, fmt.Errorf("unable to read requestid from request; %s", err)
-	}
-
 	var offsetList []int
-	for level := 0; level < o.storageHandler.GetLevelCount(); level++ {
-		offset, err := o.storageHandler.GetBlockOffset(level, int(request.Path), int(request.StorageId), request.Block)
-		if err != nil {
-			return nil, fmt.Errorf("could not get offset from storage")
+	o.oramNodeFSM.mu.Lock()
+	if _, exists := o.oramNodeFSM.offsetListMap[request.Block]; exists {
+		offsetList = o.oramNodeFSM.offsetListMap[request.Block]
+	}
+	o.oramNodeFSM.mu.Unlock()
+
+	if offsetList == nil {
+		for level := 0; level < o.storageHandler.GetLevelCount(); level++ {
+			offset, err := o.storageHandler.GetBlockOffset(level, int(request.Path), int(request.StorageId), request.Block)
+			if err != nil {
+				return nil, fmt.Errorf("could not get offset from storage")
+			}
+			offsetList = append(offsetList, offset)
 		}
-		offsetList = append(offsetList, offset)
-	}
-	replicateOffsetAndBeginReadPathCommand, err := newReplicateOffsetListCommand(requestID, offsetList)
-	if err != nil {
-		return nil, fmt.Errorf("could not create offsetList replication command; %s", err)
-	}
-	err = o.raftNode.Apply(replicateOffsetAndBeginReadPathCommand, 2*time.Second).Error()
-	if err != nil {
-		return nil, fmt.Errorf("could not apply log to the FSM; %s", err)
+		replicateOffsetAndBeginReadPathCommand, err := newReplicateOffsetListCommand(request.Block, offsetList)
+		if err != nil {
+			return nil, fmt.Errorf("could not create offsetList replication command; %s", err)
+		}
+		err = o.raftNode.Apply(replicateOffsetAndBeginReadPathCommand, 2*time.Second).Error()
+		if err != nil {
+			return nil, fmt.Errorf("could not apply log to the FSM; %s", err)
+		}
 	}
 
 	var returnValue string
 	for level := 0; level < o.storageHandler.GetLevelCount(); level++ {
-		value, err := o.storageHandler.ReadBlock(level, int(request.Path), offsetList[level], int(request.StorageId))
+		value, err := o.storageHandler.ReadBlock(level, int(request.Path), int(request.StorageId), offsetList[level])
 		if err == nil {
 			returnValue = value
 		}
 	}
 
-	err = o.earlyReshuffle(int(request.Path), int(request.StorageId))
+	err := o.earlyReshuffle(int(request.Path), int(request.StorageId))
 	if err != nil { // TODO: should we delete offsetList in case of an earlyReshuffle error?
 		return nil, fmt.Errorf("early reshuffle failed;%s", err)
 	}
 
-	replicateDeleteOffsetListCommand, err := newReplicateDeleteOffsetListCommand(requestID)
+	replicateDeleteOffsetListCommand, err := newReplicateDeleteOffsetListCommand(request.Block)
 	if err != nil {
 		return nil, fmt.Errorf("could not create delete offsetList replication command; %s", err)
 	}

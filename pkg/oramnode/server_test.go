@@ -102,10 +102,11 @@ func getFailedMockShardNodeClients() map[int]ReplicaRPCClientMap {
 }
 
 type mockStorageHandler struct {
-	levelCount      int
-	maxAccessCount  int
-	latestReadBlock int
-	writeBucketFunc func(level int, path int, storageID int, ReadBucketBlocks map[string]string, shardNodeBlocks map[string]string, isAtomic bool) (writtenBlocks map[string]string, err error)
+	levelCount               int
+	maxAccessCount           int
+	latestReadBlock          int
+	writeBucketFunc          func(level int, path int, storageID int, ReadBucketBlocks map[string]string, shardNodeBlocks map[string]string, isAtomic bool) (writtenBlocks map[string]string, err error)
+	readBlockAccessedOffsets []int
 }
 
 func newMockStorageHandler(levelCount int, maxAccessCount int) *mockStorageHandler {
@@ -164,6 +165,7 @@ func (m *mockStorageHandler) WriteBucket(level int, path int, storageID int, rea
 }
 
 func (m *mockStorageHandler) ReadBlock(level int, path int, storageID int, offset int) (value string, err error) {
+	m.readBlockAccessedOffsets = append(m.readBlockAccessedOffsets, offset)
 	return "", nil
 }
 
@@ -203,7 +205,6 @@ func TestReadBucketAllLevelsReturnsAllTreeBlocks(t *testing.T) {
 	for level := 0; level < 12; level++ {
 		fmt.Println(level)
 		for i := 4 * level; i < 4*level+4; i++ {
-			fmt.Println(i)
 			if _, exists := blocks[level]; !exists {
 				t.Errorf("all tree values should be in the blocksFromReadBucket")
 			}
@@ -332,8 +333,29 @@ func TestReadPathRemovesOffsetListAfterSuccessfulExecution(t *testing.T) {
 	o.ReadPath(ctx, &oramnode.ReadPathRequest{Block: "a", Path: 1, StorageId: 2})
 	o.oramNodeFSM.mu.Lock()
 	defer o.oramNodeFSM.mu.Unlock()
-	if offsetList, exists := o.oramNodeFSM.offsetListMap["request1"]; exists {
+	if offsetList, exists := o.oramNodeFSM.offsetListMap["a"]; exists {
 		t.Errorf("expected that ReadPath removes offset list after successful execution, but it's equal to %v", offsetList)
+	}
+}
+
+func TestReadPathUsesPreviousStoredOffsetList(t *testing.T) {
+	o := startLeaderRaftNodeServer(t).withMockStorageHandler(newMockStorageHandler(4, 4))
+	ctx := metadata.NewIncomingContext(context.Background(), metadata.Pairs("requestid", "request1"))
+	o.oramNodeFSM.mu.Lock()
+	o.oramNodeFSM.offsetListMap["a"] = []int{1, 2, 3, 1}
+	o.oramNodeFSM.mu.Unlock()
+
+	o.ReadPath(ctx, &oramnode.ReadPathRequest{Block: "a", Path: 1, StorageId: 2})
+
+	o.oramNodeFSM.mu.Lock()
+	defer o.oramNodeFSM.mu.Unlock()
+	mockStorage := o.storageHandler.(*mockStorageHandler)
+	expectedOffsetList := []int{1, 2, 3, 1}
+
+	for idx, offset := range mockStorage.readBlockAccessedOffsets {
+		if expectedOffsetList[idx] != offset {
+			t.Errorf("Expected offset %d but received %d", expectedOffsetList[idx], offset)
+		}
 	}
 }
 
