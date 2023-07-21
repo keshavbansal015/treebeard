@@ -20,7 +20,7 @@ type bucket struct {
 func NewBucket(id int, info *client) *bucket {
 	blockIndexMap := make([]int, bucketSize)
 	for i := 0; i < bucketSize; i++ {
-		blockIndexMap[i] = i
+		blockIndexMap[i] = -1
 	}
 	bucket := &bucket{
 		id:            id,
