@@ -38,7 +38,6 @@ type OramNodeConfig struct {
 	Endpoints []OramNodeEndpoint
 }
 
-// TODO: Refactor to remove duplication between the following functions
 func ReadRouterEndpoints(path string) ([]RouterEndpoint, error) {
 	yamlFile, err := os.ReadFile(path)
 	if err != nil {

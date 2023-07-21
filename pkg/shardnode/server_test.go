@@ -9,13 +9,14 @@ import (
 
 	oramnodepb "github.com/dsg-uwaterloo/oblishard/api/oramnode"
 	shardnodepb "github.com/dsg-uwaterloo/oblishard/api/shardnode"
+	"github.com/dsg-uwaterloo/oblishard/pkg/storage"
 	"github.com/hashicorp/raft"
 	"github.com/phayes/freeport"
 	"google.golang.org/grpc/metadata"
 )
 
 func TestGetPathAndStorageBasedOnRequestWhenInitialRequestReturnsRealPathAndStorage(t *testing.T) {
-	s := newShardNodeServer(0, 0, &raft.Raft{}, newShardNodeFSM(), nil)
+	s := newShardNodeServer(0, 0, &raft.Raft{}, newShardNodeFSM(), nil, storage.NewStorageHandler())
 	s.shardNodeFSM.requestLog["block1"] = []string{"request1", "request2"}
 	s.shardNodeFSM.positionMap["block1"] = positionState{path: 23, storageID: 3}
 
@@ -29,7 +30,7 @@ func TestGetPathAndStorageBasedOnRequestWhenInitialRequestReturnsRealPathAndStor
 }
 
 func TestCreateResponseChannelForRequestIDAddsChannelToResponseChannel(t *testing.T) {
-	s := newShardNodeServer(0, 0, &raft.Raft{}, newShardNodeFSM(), nil)
+	s := newShardNodeServer(0, 0, &raft.Raft{}, newShardNodeFSM(), nil, storage.NewStorageHandler())
 	s.createResponseChannelForRequestID("req1")
 	if _, exists := s.shardNodeFSM.responseChannel["req1"]; !exists {
 		t.Errorf("Expected a new channel for key req1 but nothing found!")
@@ -37,7 +38,7 @@ func TestCreateResponseChannelForRequestIDAddsChannelToResponseChannel(t *testin
 }
 
 func TestQueryReturnsErrorForNonLeaderRaftPeer(t *testing.T) {
-	s := newShardNodeServer(0, 0, &raft.Raft{}, newShardNodeFSM(), nil)
+	s := newShardNodeServer(0, 0, &raft.Raft{}, newShardNodeFSM(), nil, storage.NewStorageHandler())
 	_, err := s.query(context.Background(), Read, "block", "")
 	if err == nil {
 		t.Errorf("A non-leader raft peer should return error after call to query.")
@@ -85,7 +86,7 @@ func startLeaderRaftNodeServer(t *testing.T) *shardNodeServer {
 	fsm.raftNode = r
 	fsm.mu.Unlock()
 	<-r.LeaderCh() // wait to become the leader
-	return newShardNodeServer(0, 0, r, fsm, getMockOramNodeClients())
+	return newShardNodeServer(0, 0, r, fsm, getMockOramNodeClients(), storage.NewStorageHandler())
 }
 
 func TestQueryReturnsResponseRecievedFromOramNode(t *testing.T) {
@@ -195,7 +196,7 @@ func TestQueryReturnsResponseToAllWaitingRequests(t *testing.T) {
 }
 
 func TestGetBlocksForSendReturnsAtMostMaxBlocksFromTheStash(t *testing.T) {
-	s := newShardNodeServer(0, 0, &raft.Raft{}, newShardNodeFSM(), make(RPCClientMap))
+	s := newShardNodeServer(0, 0, &raft.Raft{}, newShardNodeFSM(), make(RPCClientMap), storage.NewStorageHandler())
 	s.shardNodeFSM.stash = map[string]stashState{
 		"block1": {value: "block1", logicalTime: 0, waitingStatus: false},
 		"block2": {value: "block2", logicalTime: 0, waitingStatus: false},
@@ -218,7 +219,7 @@ func TestGetBlocksForSendReturnsAtMostMaxBlocksFromTheStash(t *testing.T) {
 }
 
 func TestGetBlocksForSendReturnsOnlyBlocksForPathAndStorageID(t *testing.T) {
-	s := newShardNodeServer(0, 0, &raft.Raft{}, newShardNodeFSM(), make(RPCClientMap))
+	s := newShardNodeServer(0, 0, &raft.Raft{}, newShardNodeFSM(), make(RPCClientMap), storage.NewStorageHandler())
 	s.shardNodeFSM.stash = map[string]stashState{
 		"block1": {value: "block1", logicalTime: 0, waitingStatus: false},
 		"block2": {value: "block2", logicalTime: 0, waitingStatus: false},
@@ -237,7 +238,7 @@ func TestGetBlocksForSendReturnsOnlyBlocksForPathAndStorageID(t *testing.T) {
 }
 
 func TestGetBlocksForSendDoesNotReturnsWaitingBlocks(t *testing.T) {
-	s := newShardNodeServer(0, 0, &raft.Raft{}, newShardNodeFSM(), make(RPCClientMap))
+	s := newShardNodeServer(0, 0, &raft.Raft{}, newShardNodeFSM(), make(RPCClientMap), storage.NewStorageHandler())
 	s.shardNodeFSM.stash = map[string]stashState{
 		"block1": {value: "block1", logicalTime: 0, waitingStatus: true},
 		"block2": {value: "block2", logicalTime: 0, waitingStatus: false},

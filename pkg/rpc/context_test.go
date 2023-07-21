@@ -41,3 +41,21 @@ func TestContextPropagationUnaryServerInterceptorSendsIngoingContextToOutgoingCo
 		t.Errorf("Expected to see metadata on outgoing context")
 	}
 }
+
+func TestGetRequestIDFromContextReturnsRequestIDFromMetadata(t *testing.T) {
+	ctx := metadata.NewIncomingContext(context.Background(), metadata.Pairs("requestid", "1238394"))
+	requestID, err := rpc.GetRequestIDFromContext(ctx)
+	if err != nil {
+		t.Errorf("Expected no error in call to GetContextWithRequestID when requestid is available in the metadata")
+	}
+	if requestID != "1238394" {
+		t.Errorf("Expected requestID to be 1238394 but got: %s", requestID)
+	}
+}
+
+func TestGetRequestIDFromContextWithNoRequestIDReturnsError(t *testing.T) {
+	_, err := rpc.GetRequestIDFromContext(context.Background())
+	if err == nil {
+		t.Errorf("GetRequestIDFromContext should return error when no request id is available")
+	}
+}

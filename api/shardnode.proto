@@ -56,7 +56,7 @@ message SendBlocksReply {
 // it represents both acks and nacks
 message Ack {
     string block = 1;
-    bool is_ack = 2; //if flase: nack
+    bool is_ack = 2; // if flase: nack
 }
 
 message AckSentBlocksRequest {

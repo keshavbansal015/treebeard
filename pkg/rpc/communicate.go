@@ -32,7 +32,7 @@ func CallAllReplicas(ctx context.Context, clients []interface{}, replicaFuncs []
 				return result.reply, nil
 			}
 		case <-timeout:
-			return nil, fmt.Errorf("could not read blocks from the shardnode")
+			return nil, fmt.Errorf("could not read blocks from the replicas")
 		}
 	}
 }

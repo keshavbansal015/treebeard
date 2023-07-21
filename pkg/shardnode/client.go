@@ -28,7 +28,7 @@ func (r RPCClientMap) getRandomOramNodeReplicaMap() ReplicaRPCClientMap {
 	return randomOramNode
 }
 
-func (r *ReplicaRPCClientMap) readPathFromAllOramNodeReplicas(ctx context.Context, block string, path int, storageID int, isReal bool) (*oramnodepb.ReadPathReply, error) {
+func (r *ReplicaRPCClientMap) readPathFromAllOramNodeReplicas(ctx context.Context, block string, path int, storageID int) (*oramnodepb.ReadPathReply, error) {
 	var replicaFuncs []rpc.CallFunc
 	var clients []interface{}
 	for _, c := range *r {
@@ -48,7 +48,6 @@ func (r *ReplicaRPCClientMap) readPathFromAllOramNodeReplicas(ctx context.Contex
 			Block:     block,
 			Path:      int32(path),
 			StorageId: int32(storageID),
-			IsReal:    isReal,
 		},
 	)
 	if err != nil {

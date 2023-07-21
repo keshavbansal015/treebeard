@@ -61,7 +61,7 @@ func TestReadPathFromAllOramNodeReplicasReturnsResponseFromLeader(t *testing.T) 
 		},
 	}
 	replicaMap := oramNodeClients[0]
-	reply, err := replicaMap.readPathFromAllOramNodeReplicas(context.Background(), "", 0, 0, true)
+	reply, err := replicaMap.readPathFromAllOramNodeReplicas(context.Background(), "", 0, 0)
 	if err != nil {
 		t.Errorf("could not get the response that the leader returned. Error: %s", err)
 	}
@@ -90,7 +90,7 @@ func TestReadPathFromAllOramNodeReplicasTimeoutsIfNoResponseIsReceived(t *testin
 		},
 	}
 	replicaMap := oramNodeClients[0]
-	_, err := replicaMap.readPathFromAllOramNodeReplicas(context.Background(), "", 0, 0, true)
+	_, err := replicaMap.readPathFromAllOramNodeReplicas(context.Background(), "", 0, 0)
 	if err == nil {
 		t.Errorf("expected timeout error, but no error occurred.")
 	}
