@@ -21,6 +21,8 @@ type data struct {
 	name  string
 	value int
 }
+const numReal := 4;
+
 
 func NewClient(host string, db int, key []byte) *client {
 	return &client{
@@ -81,7 +83,7 @@ func (info *client) databaseInit(filepath string) (position_map map[string]int, 
 	
 	// i keeps track of whether we should load dummies; when i reach 4, add dummies
 	i := 0
-	bucketCount := 0
+	bucketCount := 1
 	// userID of dummies
 	dummyCount := 0
 	// initialize map
@@ -129,6 +131,7 @@ func (info *client) databaseInit(filepath string) (position_map map[string]int, 
 					fmt.Println("Error pushing dummy to db:", err)
 					return nil, err
 				}
+				
 				// push meta data of dummies to db
 				err = client.RPush(ctx, strconv.Itoa(bucketCount), dummyID).Err()
 				if err != nil {
@@ -136,6 +139,11 @@ func (info *client) databaseInit(filepath string) (position_map map[string]int, 
 					return nil, err
 				}
 				dummyCount++
+			}
+			err = client.RPush(ctx, strconv.Itoa(bucketCount), 4).Err()
+			if err != nil {
+				fmt.Println("Error pushing dummy meta data start to db:", err)
+				return nil, err
 			}
 			i = 0
 			bucketCount++
@@ -154,10 +162,10 @@ func (info *client) DatabaseClear() (err error) {
 	return nil
 }
 
-func (info *client) GetValueByIndex(bucketId int, bit int) (value string, err error) {
+func (info *client) GetMetadata(pathId int, bit int) (value string, err error) {
 	client := info.getClient()
 	ctx := context.Background()
-	value, err = client.LIndex(ctx, strconv.Itoa(bucketId), int64(bit)).Result()
+	value, err = client.LIndex(ctx, strconv.Itoa(pathId), int64(bit)).Result()
 	if err != nil {
 		return "", err
 	}
@@ -186,13 +194,15 @@ func main() {
 	if err != nil {
 		fmt.Println("error initializing database")
 	}
-	fmt.Println(posmap["user5931030199432363941"])
-	value, err := info.GetValueByIndex(3, 1)
+	pathId := posmap["user5241976879437760820"]
+	fmt.Println(pathId)
+	
+	vmap, err := info.readPath(pathId, "user5241976879437760820")
+	value, err := info.Get("user5241976879437760820")
 	fmt.Println(value)
-	value, err = info.Get("user5931030199432363941")
-	fmt.Println(value)
-	value, err = Decrypt(value, info.key)
-	fmt.Println(value)
+	for key, value := range vmap {
+		fmt.Printf("Key: %s, Value: %s \n", key, value)
+	}
 	info.DatabaseClear()
 	info.CloseClient()
 }
