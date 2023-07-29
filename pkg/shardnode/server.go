@@ -82,15 +82,31 @@ func (s *shardNodeServer) query(ctx context.Context, op OperationType, block str
 	}
 
 	path, storageID := s.getPathAndStorageBasedOnRequest(block, requestID)
-	oramNodeReplicaMap := s.oramNodeClients.getRandomOramNodeReplicaMap()
-	reply, err := oramNodeReplicaMap.readPathFromAllOramNodeReplicas(ctx, block, path, storageID)
 
-	if err != nil {
-		return "", fmt.Errorf("could not call the ReadPath RPC on the oram node. %s", err)
+	isInStash := false
+	s.shardNodeFSM.mu.Lock()
+	if _, exists := s.shardNodeFSM.stash[block]; exists {
+		isInStash = true
 	}
+	s.shardNodeFSM.mu.Unlock()
+
+	oramNodeReplicaMap := s.oramNodeClients.getRandomOramNodeReplicaMap()
+	var replyValue string
+	if isInStash {
+		// We don't wait for the answer when we can answer the request from the stash.
+		go oramNodeReplicaMap.readPathFromAllOramNodeReplicas(ctx, block, path, storageID)
+		replyValue = ""
+	} else {
+		reply, err := oramNodeReplicaMap.readPathFromAllOramNodeReplicas(ctx, block, path, storageID)
+		if err != nil {
+			return "", fmt.Errorf("could not call the ReadPath RPC on the oram node. %s", err)
+		}
+		replyValue = reply.Value
+	}
+
 	responseChannel := s.createResponseChannelForRequestID(requestID)
 	if s.shardNodeFSM.isInitialRequest(block, requestID) {
-		responseReplicationCommand, err := newResponseReplicationCommand(reply.Value, requestID, block, value, op)
+		responseReplicationCommand, err := newResponseReplicationCommand(replyValue, requestID, block, value, op)
 		if err != nil {
 			return "", fmt.Errorf("could not create response replication command; %s", err)
 		}

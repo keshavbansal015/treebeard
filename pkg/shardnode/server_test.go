@@ -101,6 +101,21 @@ func TestQueryReturnsResponseRecievedFromOramNode(t *testing.T) {
 	}
 }
 
+func TestQueryPrioritizesStashValueToOramNodeResponse(t *testing.T) {
+	s := startLeaderRaftNodeServer(t)
+	ctx := metadata.NewIncomingContext(context.Background(), metadata.Pairs("requestid", "request1"))
+	s.shardNodeFSM.mu.Lock()
+	s.shardNodeFSM.stash["block1"] = stashState{value: "stash_value", logicalTime: 0, waitingStatus: false}
+	s.shardNodeFSM.mu.Unlock()
+	response, err := s.query(ctx, Read, "block1", "")
+	if response != "stash_value" {
+		t.Errorf("expected the response to be \"stash_value\" but it is: %s", response)
+	}
+	if err != nil {
+		t.Errorf("expected no error in call to query")
+	}
+}
+
 func TestQueryReturnsSentValueForWriteRequests(t *testing.T) {
 	s := startLeaderRaftNodeServer(t)
 	ctx := metadata.NewIncomingContext(context.Background(), metadata.Pairs("requestid", "request1"))
