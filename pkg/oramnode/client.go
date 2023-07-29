@@ -16,8 +16,6 @@ type ShardNodeRPCClient struct {
 	Conn      *grpc.ClientConn
 }
 
-const MaxBlocksToSend int32 = 5
-
 type ReplicaRPCClientMap map[int]ShardNodeRPCClient
 
 func (r *ReplicaRPCClientMap) sendAcksToShardNode(acks []*shardnodepb.Ack) error {
@@ -47,7 +45,7 @@ func (r *ReplicaRPCClientMap) sendAcksToShardNode(acks []*shardnodepb.Ack) error
 	return nil
 }
 
-func (r *ReplicaRPCClientMap) getBlocksFromShardNode(path int, storageID int) ([]*shardnodepb.Block, error) {
+func (r *ReplicaRPCClientMap) getBlocksFromShardNode(path int, storageID int, maxBlocksToSend int) ([]*shardnodepb.Block, error) {
 
 	var replicaFuncs []rpc.CallFunc
 	var clients []interface{}
@@ -65,7 +63,7 @@ func (r *ReplicaRPCClientMap) getBlocksFromShardNode(path int, storageID int) ([
 		clients,
 		replicaFuncs,
 		&shardnodepb.SendBlocksRequest{
-			MaxBlocks: MaxBlocksToSend,
+			MaxBlocks: int32(maxBlocksToSend),
 			Path:      int32(path),
 			StorageId: int32(storageID),
 		},

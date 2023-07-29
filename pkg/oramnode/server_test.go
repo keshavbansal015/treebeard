@@ -9,6 +9,7 @@ import (
 
 	"github.com/dsg-uwaterloo/oblishard/api/oramnode"
 	shardnodepb "github.com/dsg-uwaterloo/oblishard/api/shardnode"
+	"github.com/dsg-uwaterloo/oblishard/pkg/config"
 	strg "github.com/dsg-uwaterloo/oblishard/pkg/storage"
 	"github.com/phayes/freeport"
 	"google.golang.org/grpc"
@@ -182,7 +183,7 @@ func startLeaderRaftNodeServer(t *testing.T) *oramNodeServer {
 		t.Errorf("unable to start raft server")
 	}
 	<-r.LeaderCh() // wait to become the leader
-	return newOramNodeServer(0, 0, r, fsm, getMockShardNodeClients(), strg.NewStorageHandler())
+	return newOramNodeServer(0, 0, r, fsm, getMockShardNodeClients(), strg.NewStorageHandler(), config.Parameters{MaxBlocksToSend: 5, EvictionRate: 4})
 }
 
 func (o *oramNodeServer) withFailedShardNodeClients() *oramNodeServer {

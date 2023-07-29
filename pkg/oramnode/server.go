@@ -10,15 +10,13 @@ import (
 	"time"
 
 	pb "github.com/dsg-uwaterloo/oblishard/api/oramnode"
+	"github.com/dsg-uwaterloo/oblishard/pkg/config"
 	"github.com/dsg-uwaterloo/oblishard/pkg/rpc"
 	strg "github.com/dsg-uwaterloo/oblishard/pkg/storage"
 	"github.com/hashicorp/raft"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 )
-
-// How many ReadPath operations before eviction
-const EvictionRate int = 4
 
 type storage interface {
 	GetLevelCount() int
@@ -41,9 +39,10 @@ type oramNodeServer struct {
 	readPathCounter     int
 	readPathCounterMu   sync.Mutex
 	storageHandler      storage
+	parameters          config.Parameters
 }
 
-func newOramNodeServer(oramNodeServerID int, replicaID int, raftNode *raft.Raft, oramNodeFSM *oramNodeFSM, shardNodeRPCClients map[int]ReplicaRPCClientMap, storageHandler *strg.StorageHandler) *oramNodeServer {
+func newOramNodeServer(oramNodeServerID int, replicaID int, raftNode *raft.Raft, oramNodeFSM *oramNodeFSM, shardNodeRPCClients map[int]ReplicaRPCClientMap, storageHandler *strg.StorageHandler, parameters config.Parameters) *oramNodeServer {
 	return &oramNodeServer{
 		oramNodeServerID:    oramNodeServerID,
 		replicaID:           replicaID,
@@ -52,6 +51,7 @@ func newOramNodeServer(oramNodeServerID int, replicaID int, raftNode *raft.Raft,
 		shardNodeRPCClients: shardNodeRPCClients,
 		readPathCounter:     0,
 		storageHandler:      storageHandler,
+		parameters:          parameters,
 	}
 }
 
@@ -116,7 +116,7 @@ func (o *oramNodeServer) readBucketAllLevels(path int, storageID int) (blocksFro
 func (o *oramNodeServer) readBlocksFromShardNode(path int, storageID int, randomShardNode ReplicaRPCClientMap) (receivedBlocks map[string]string, err error) {
 	receivedBlocks = make(map[string]string) // map of received block to value
 
-	shardNodeBlocks, err := randomShardNode.getBlocksFromShardNode(path, storageID)
+	shardNodeBlocks, err := randomShardNode.getBlocksFromShardNode(path, storageID, o.parameters.MaxBlocksToSend)
 	if err != nil {
 		return nil, fmt.Errorf("unable to get blocks from shard node; %s", err)
 	}
@@ -271,7 +271,7 @@ func (o *oramNodeServer) JoinRaftVoter(ctx context.Context, joinRaftVoterRequest
 	return &pb.JoinRaftVoterReply{Success: true}, nil
 }
 
-func StartServer(oramNodeServerID int, rpcPort int, replicaID int, raftPort int, joinAddr string, shardNodeRPCClients map[int]ReplicaRPCClientMap) {
+func StartServer(oramNodeServerID int, rpcPort int, replicaID int, raftPort int, joinAddr string, shardNodeRPCClients map[int]ReplicaRPCClientMap, parameters config.Parameters) {
 	isFirst := joinAddr == ""
 	oramNodeFSM := newOramNodeFSM()
 	r, err := startRaftServer(isFirst, replicaID, raftPort, oramNodeFSM)
@@ -309,13 +309,13 @@ func StartServer(oramNodeServerID int, rpcPort int, replicaID int, raftPort int,
 	if err != nil {
 		log.Fatalf("failed to listen: %v", err)
 	}
-	oramNodeServer := newOramNodeServer(oramNodeServerID, replicaID, r, oramNodeFSM, shardNodeRPCClients, strg.NewStorageHandler())
+	oramNodeServer := newOramNodeServer(oramNodeServerID, replicaID, r, oramNodeFSM, shardNodeRPCClients, strg.NewStorageHandler(), parameters)
 	go func() {
 		for {
 			time.Sleep(200 * time.Millisecond)
 			needEviction := false
 			oramNodeServer.readPathCounterMu.Lock()
-			if oramNodeServer.readPathCounter >= EvictionRate {
+			if oramNodeServer.readPathCounter >= oramNodeServer.parameters.EvictionRate {
 				needEviction = true
 			}
 			oramNodeServer.readPathCounterMu.Unlock()
