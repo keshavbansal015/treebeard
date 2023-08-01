@@ -41,6 +41,7 @@ type OramNodeConfig struct {
 type Parameters struct {
 	MaxBlocksToSend int `yaml:"max-blocks-to-send"`
 	EvictionRate    int `yaml:"eviction-rate"`
+	BatchSize       int `yaml:"batch-size"`
 }
 
 func ReadRouterEndpoints(path string) ([]RouterEndpoint, error) {

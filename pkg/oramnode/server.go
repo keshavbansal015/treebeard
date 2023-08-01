@@ -22,11 +22,12 @@ type storage interface {
 	GetLevelCount() int
 	GetMaxAccessCount() int
 	GetRandomPathAndStorageID() (path int, storageID int)
-	GetBlockOffset(level int, path int, storageID int, block string) (offset int, err error)
-	GetAccessCount(level int, path int, storageID int) (count int, err error)
-	ReadBucket(level int, path int, storageID int) (blocks map[string]string, err error)
-	WriteBucket(level int, path int, storageID int, ReadBucketBlocks map[string]string, shardNodeBlocks map[string]string, isAtomic bool) (writtenBlocks map[string]string, err error)
-	ReadBlock(level int, path int, storageID int, offset int) (value string, err error)
+	GetBlockOffset(bucketID int, storageID int, blocks []string) (offset int, isReal bool, blockFound string, err error)
+	GetAccessCount(bucketID int, storageID int) (count int, err error)
+	ReadBucket(bucketID int, storageID int) (blocks map[string]string, err error)
+	WriteBucket(bucketID int, storageID int, ReadBucketBlocks map[string]string, shardNodeBlocks map[string]string, isAtomic bool) (writtenBlocks map[string]string, err error)
+	ReadBlock(bucketID int, storageID int, offset int) (value string, err error)
+	GetBucketsInPaths(paths []int) (bucketIDs []int, err error)
 }
 
 type oramNodeServer struct {
@@ -70,20 +71,20 @@ func (o *oramNodeServer) performFailedEviction() error {
 	return nil
 }
 
-func (o *oramNodeServer) earlyReshuffle(path int, storageID int) error {
-	for level := 0; level < o.storageHandler.GetLevelCount(); level++ {
-		accessCount, err := o.storageHandler.GetAccessCount(level, path, storageID)
+func (o *oramNodeServer) earlyReshuffle(buckets []int, storageID int) error {
+	for _, bucket := range buckets {
+		accessCount, err := o.storageHandler.GetAccessCount(bucket, storageID)
 		if err != nil {
 			return fmt.Errorf("unable to get access count from the server; %s", err)
 		}
 		if accessCount < o.storageHandler.GetMaxAccessCount() {
 			continue
 		}
-		localStash, err := o.storageHandler.ReadBucket(level, path, storageID)
+		localStash, err := o.storageHandler.ReadBucket(bucket, storageID)
 		if err != nil {
 			return fmt.Errorf("unable to read bucket from the server; %s", err)
 		}
-		writtenBlocks, err := o.storageHandler.WriteBucket(level, path, storageID, localStash, nil, false)
+		writtenBlocks, err := o.storageHandler.WriteBucket(bucket, storageID, localStash, nil, false)
 		if err != nil {
 			return fmt.Errorf("unable to write bucket from the server; %s", err)
 		}
@@ -98,16 +99,20 @@ func (o *oramNodeServer) earlyReshuffle(path int, storageID int) error {
 
 func (o *oramNodeServer) readBucketAllLevels(path int, storageID int) (blocksFromReadBucket map[int]map[string]string, err error) {
 	blocksFromReadBucket = make(map[int]map[string]string) // map of bucket to map of block to value
-	for level := 0; level < o.storageHandler.GetLevelCount(); level++ {
-		blocks, err := o.storageHandler.ReadBucket(level, path, storageID)
+	buckets, err := o.storageHandler.GetBucketsInPaths([]int{path})
+	if err != nil {
+		return nil, fmt.Errorf("unable to get bucket ids for early reshuffle path; %v", err)
+	}
+	for _, bucket := range buckets {
+		blocks, err := o.storageHandler.ReadBucket(bucket, storageID)
 		if err != nil {
 			return nil, fmt.Errorf("unable to read bucket; %s", err)
 		}
-		if blocksFromReadBucket[level] == nil {
-			blocksFromReadBucket[level] = make(map[string]string)
+		if blocksFromReadBucket[bucket] == nil {
+			blocksFromReadBucket[bucket] = make(map[string]string)
 		}
 		for block, value := range blocks {
-			blocksFromReadBucket[level][block] = value
+			blocksFromReadBucket[bucket][block] = value
 		}
 	}
 	return blocksFromReadBucket, nil
@@ -135,8 +140,12 @@ func (o *oramNodeServer) writeBackBlocksToAllLevels(path int, storageID int, blo
 	for block := range receivedBlocks {
 		receivedBlocksIsWritten[block] = false
 	}
-	for level := o.storageHandler.GetLevelCount() - 1; level >= 0; level-- {
-		writtenBlocks, err := o.storageHandler.WriteBucket(level, path, storageID, blocksFromReadBucket[level], receivedBlocksCopy, true)
+	buckets, err := o.storageHandler.GetBucketsInPaths([]int{path})
+	if err != nil {
+		return nil, fmt.Errorf("unable to get bucket ids for early reshuffle path; %v", err)
+	}
+	for i := len(buckets) - 1; i >= 0; i-- {
+		writtenBlocks, err := o.storageHandler.WriteBucket(buckets[i], storageID, blocksFromReadBucket[buckets[i]], receivedBlocksCopy, true)
 		if err != nil {
 			return nil, fmt.Errorf("unable to atomic write bucket; %s", err)
 		}
@@ -195,63 +204,73 @@ func (o *oramNodeServer) evict(path int, storageID int) error {
 	return nil
 }
 
+func (o *oramNodeServer) getDistinctPathsInBatch(requests []*pb.BlockRequest) []int {
+	paths := make(map[int]bool)
+	for _, request := range requests {
+		paths[int(request.Path)] = true
+	}
+	var pathList []int
+	for path := range paths {
+		pathList = append(pathList, path)
+	}
+	return pathList
+}
+
 func (o *oramNodeServer) ReadPath(ctx context.Context, request *pb.ReadPathRequest) (*pb.ReadPathReply, error) {
 	if o.raftNode.State() != raft.Leader {
 		return nil, fmt.Errorf("not the leader node")
 	}
 
-	var offsetList []int
-	o.oramNodeFSM.mu.Lock()
-	if _, exists := o.oramNodeFSM.offsetListMap[request.Block]; exists {
-		offsetList = o.oramNodeFSM.offsetListMap[request.Block]
+	var blocks []string
+	for _, request := range request.Requests {
+		blocks = append(blocks, request.Block)
 	}
-	o.oramNodeFSM.mu.Unlock()
 
-	if offsetList == nil {
-		for level := 0; level < o.storageHandler.GetLevelCount(); level++ {
-			offset, err := o.storageHandler.GetBlockOffset(level, int(request.Path), int(request.StorageId), request.Block)
+	offsetList := make(map[int]int)                // map of bucket id to offset
+	realBlockBucketMapping := make(map[int]string) // map of bucket id to block
+
+	buckets, err := o.storageHandler.GetBucketsInPaths(o.getDistinctPathsInBatch(request.Requests))
+	if err != nil {
+		return nil, fmt.Errorf("could not get bucket ids in the paths; %v", err)
+	}
+	for _, bucketID := range buckets {
+		offset, isReal, blockFound, err := o.storageHandler.GetBlockOffset(bucketID, int(request.StorageId), blocks)
+		if err != nil {
+			return nil, fmt.Errorf("could not get offset from storage")
+		}
+		if isReal {
+			realBlockBucketMapping[bucketID] = blockFound
+		}
+		offsetList[bucketID] = offset
+	}
+
+	returnValues := make(map[string]string) // map of block to value
+	for _, bucketID := range buckets {
+		if block, exists := realBlockBucketMapping[bucketID]; exists {
+			value, err := o.storageHandler.ReadBlock(bucketID, int(request.StorageId), offsetList[bucketID])
 			if err != nil {
-				return nil, fmt.Errorf("could not get offset from storage")
+				return nil, err
 			}
-			offsetList = append(offsetList, offset)
-		}
-		replicateOffsetAndBeginReadPathCommand, err := newReplicateOffsetListCommand(request.Block, offsetList)
-		if err != nil {
-			return nil, fmt.Errorf("could not create offsetList replication command; %s", err)
-		}
-		err = o.raftNode.Apply(replicateOffsetAndBeginReadPathCommand, 2*time.Second).Error()
-		if err != nil {
-			return nil, fmt.Errorf("could not apply log to the FSM; %s", err)
+			returnValues[block] = value
+		} else {
+			o.storageHandler.ReadBlock(bucketID, int(request.StorageId), offsetList[bucketID])
 		}
 	}
 
-	var returnValue string
-	for level := 0; level < o.storageHandler.GetLevelCount(); level++ {
-		value, err := o.storageHandler.ReadBlock(level, int(request.Path), int(request.StorageId), offsetList[level])
-		if err == nil {
-			returnValue = value
-		}
-	}
-
-	err := o.earlyReshuffle(int(request.Path), int(request.StorageId))
-	if err != nil { // TODO: should we delete offsetList in case of an earlyReshuffle error?
+	err = o.earlyReshuffle(buckets, int(request.StorageId))
+	if err != nil {
 		return nil, fmt.Errorf("early reshuffle failed;%s", err)
-	}
-
-	replicateDeleteOffsetListCommand, err := newReplicateDeleteOffsetListCommand(request.Block)
-	if err != nil {
-		return nil, fmt.Errorf("could not create delete offsetList replication command; %s", err)
-	}
-	err = o.raftNode.Apply(replicateDeleteOffsetListCommand, 2*time.Second).Error()
-	if err != nil {
-		return nil, fmt.Errorf("could not apply log to the FSM; %s", err)
 	}
 
 	o.readPathCounterMu.Lock()
 	o.readPathCounter++
 	o.readPathCounterMu.Unlock()
 
-	return &pb.ReadPathReply{Value: returnValue}, nil
+	var response []*pb.BlockResponse
+	for block, value := range returnValues {
+		response = append(response, &pb.BlockResponse{Block: block, Value: value})
+	}
+	return &pb.ReadPathReply{Responses: response}, nil
 }
 
 func (o *oramNodeServer) JoinRaftVoter(ctx context.Context, joinRaftVoterRequest *pb.JoinRaftVoterRequest) (*pb.JoinRaftVoterReply, error) {

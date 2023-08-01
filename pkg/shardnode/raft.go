@@ -134,7 +134,7 @@ func (fsm *shardNodeFSM) handleLocalResponseReplicationChanges(requestID string,
 	}
 	if fsm.raftNode.State() == raft.Leader {
 		for _, waitingRequestID := range fsm.requestLog[r.RequestedBlock] {
-			timout := time.After(1 * time.Second)
+			timout := time.After(1 * time.Second) // TODO: think about this in the batching scenario
 			select {
 			case <-timout:
 				continue

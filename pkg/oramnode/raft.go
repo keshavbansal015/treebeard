@@ -24,7 +24,6 @@ type beginEvictionData struct {
 type oramNodeFSM struct {
 	mu sync.Mutex
 
-	offsetListMap      map[string][]int   // map of block to offsetList
 	unfinishedEviction *beginEvictionData // unfinished eviction
 }
 
@@ -33,27 +32,12 @@ func (fsm *oramNodeFSM) String() string {
 	defer fsm.mu.Unlock()
 
 	out := fmt.Sprintln("oramNodeFSM")
-	out = out + fmt.Sprintf("offsetListMap: %v\n", fsm.offsetListMap)
 	out = out + fmt.Sprintf("unfinishedEviction: %v\n", fsm.unfinishedEviction)
 	return out
 }
 
 func newOramNodeFSM() *oramNodeFSM {
-	return &oramNodeFSM{offsetListMap: make(map[string][]int)}
-}
-
-func (fsm *oramNodeFSM) handleOffsetListReplicationCommand(block string, offsetList []int) {
-	fsm.mu.Lock()
-	defer fsm.mu.Unlock()
-
-	fsm.offsetListMap[block] = offsetList
-}
-
-func (fsm *oramNodeFSM) handleDeleteOffsetListReplicationCommand(block string) {
-	fsm.mu.Lock()
-	defer fsm.mu.Unlock()
-
-	delete(fsm.offsetListMap, block)
+	return &oramNodeFSM{}
 }
 
 func (fsm *oramNodeFSM) handleBeginEvictionCommand(path int, storageID int) {
@@ -77,19 +61,7 @@ func (fsm *oramNodeFSM) Apply(rLog *raft.Log) interface{} {
 		if err != nil {
 			return fmt.Errorf("could not unmarshall the command; %s", err)
 		}
-		requestID := command.RequestID
-		if command.Type == ReplicateOffsetList {
-			log.Println("got replication command for replicate offsetList")
-			var payload ReplicateOffsetListPayload
-			err := msgpack.Unmarshal(command.Payload, &payload)
-			if err != nil {
-				return fmt.Errorf("could not unmarshall the offsetList replication command; %s", err)
-			}
-			fsm.handleOffsetListReplicationCommand(requestID, payload.OffsetList)
-		} else if command.Type == ReplicateDeleteOffsetList {
-			log.Println("got replication command for replicate delete offsetList")
-			fsm.handleDeleteOffsetListReplicationCommand(requestID)
-		} else if command.Type == ReplicateBeginEviction {
+		if command.Type == ReplicateBeginEviction {
 			log.Println("got replication command for replicate begin eviction")
 			var payload ReplicateBeginEvictionPayload
 			err := msgpack.Unmarshal(command.Payload, &payload)
