@@ -135,10 +135,6 @@ func (m *mockStorageHandler) withCustomWriteFunc(customeWriteFunc func(bucketID 
 	return m
 }
 
-func (m *mockStorageHandler) GetLevelCount() int {
-	return m.levelCount
-}
-
 func (m *mockStorageHandler) GetMaxAccessCount() int {
 	return m.maxAccessCount
 }

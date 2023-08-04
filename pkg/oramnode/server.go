@@ -19,7 +19,6 @@ import (
 )
 
 type storage interface {
-	GetLevelCount() int
 	GetMaxAccessCount() int
 	GetRandomPathAndStorageID() (path int, storageID int)
 	GetBlockOffset(bucketID int, storageID int, blocks []string) (offset int, isReal bool, blockFound string, err error)
