@@ -22,7 +22,8 @@ func (info *client) getDummyObject(pathId int) (key string, value string, err er
 		fmt.Println("error fetching metadata")
 		return "", "", err
 	}
-	value, err = info.Get(key)
+	index, err:= strconv.Atoi(string(key[0]))
+	value, err = info.Get(pathId, index)
 	if err != nil {
 		fmt.Println(key)
 		fmt.Println("error fetching dummy data")
@@ -51,9 +52,11 @@ func (info *client) readPath(pathId int, blockIndex string) (map[string]string, 
 					fmt.Println("error fetching metadata")
 					return nil, err
 				}
+				index, err:= strconv.Atoi(string(key[0]))
+				key = key[1:]
 				if key == blockIndex {
 					found = true
-					value, err := info.Get(key)
+					value, err := info.Get(posId, index)
 					if err != nil {
 						fmt.Println("error fetching data")
 						return nil, err

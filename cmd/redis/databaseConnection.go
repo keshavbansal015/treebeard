@@ -7,6 +7,8 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"math/rand"
+	"time"
 
 	"github.com/redis/go-redis/v9"
 )
@@ -61,17 +63,26 @@ func (info *client) Set(key string, value string) (err error) {
 	 return err
 	}
 	return nil
-   }
+}
    
-   func (info *client) Get(key string) (value string, err error) {
+func (info *client) Get(bucketId int, bit int) (value string, err error) {
 	client := info.getClient()
 	ctx := context.Background()
-	block, err := client.Get(ctx, key).Result()
+	value, err = client.LIndex(ctx, strconv.Itoa(bucketId), int64(bit)).Result()
 	if err != nil {
-	 return "", err
+		return "", err
 	}
-	return block, nil
-   }
+	return value, nil
+}
+
+func shuffleArray(arr []int) {
+    rand.Seed(time.Now().UnixNano())
+
+    for i := len(arr) - 1; i > 0; i-- {
+        j := rand.Intn(i + 1)
+        arr[i], arr[j] = arr[j], arr[i]
+    }
+}
 
 func (info *client) databaseInit(filepath string) (position_map map[string]int, err error) {
 	file, err := os.Open(filepath)
@@ -92,7 +103,15 @@ func (info *client) databaseInit(filepath string) (position_map map[string]int, 
 	dummyCount := 0
 	// initialize map
 	position_map = make(map[string]int)
-	fmt.Println("init done")
+	// initialize value array
+	values := make([]string, Z + S)
+	metadatas := make([]string, Z + S)
+	realIndex := make ([]int, Z + S)
+	for k := 0; k < Z + S; k++ {
+		// Generate a random number between 0 and 9
+		realIndex[k] = k
+	}
+	shuffleArray(realIndex)
 	for scanner.Scan() {
 		line := scanner.Text()
 		parts := strings.Fields(line)
@@ -103,18 +122,10 @@ func (info *client) databaseInit(filepath string) (position_map map[string]int, 
 			fmt.Println("Error encrypting data")
 			return nil, err
 		}
-		// push data to db
-		err = client.Set(ctx, userID, value, 0).Err()
-		if err != nil {
-			fmt.Println("Error pushing to db:", err)
-			return nil, err
-		}
-		// push meta data to db
-		err = client.RPush(ctx, strconv.Itoa(bucketCount), userID).Err()
-		if err != nil {
-			fmt.Println("Error pushing meta data to db:", err)
-			return nil, err
-		}
+		// add encrypted value to array
+		values[realIndex[i]] = value
+		// push meta data to array
+		metadatas[i] = strconv.Itoa(realIndex[i]) + userID
 		// put userId into position map
 		position_map[userID] = bucketCount
 		i++
@@ -128,29 +139,32 @@ func (info *client) databaseInit(filepath string) (position_map map[string]int, 
 					fmt.Println("Error encrypting data")
 					return nil, err
 				}
-				// push dummy to db
-				err = client.Set(ctx, dummyID, dummyString, 0).Err()
-				
-				if err != nil {
-					fmt.Println("Error pushing dummy to db:", err)
-					return nil, err
-				}
-				
-				// push meta data of dummies to db
-				err = client.RPush(ctx, strconv.Itoa(bucketCount), dummyID).Err()
-				if err != nil {
-					fmt.Println("Error pushing dummy meta data to db:", err)
-					return nil, err
-				}
+				// push dummy to array
+				values[realIndex[i]] = dummyString
+				// push meta data of dummies to array
+				metadatas[i] = strconv.Itoa(realIndex[i]) + dummyID
 				dummyCount++
 			}
-			err = client.RPush(ctx, strconv.Itoa(bucketCount), Z).Err()
+			// push content of value array and meta data array
+			err = info.PushContent(bucketCount, values)
+			if err != nil {
+				fmt.Println("Error pushing values to db:", err)
+				return nil, err
+			}
+			err = info.PushContent(-1 * bucketCount, metadatas)
+			if err != nil {
+				fmt.Println("Error pushing metadatas to db:", err)
+				return nil, err
+			}
+			err = client.RPush(ctx, strconv.Itoa(-1 * bucketCount), Z).Err()
 			if err != nil {
 				fmt.Println("Error pushing dummy meta data start to db:", err)
 				return nil, err
 			}
 			i = 0
 			bucketCount++
+			// generate new random index for next bucket
+			shuffleArray(realIndex)
 		}
 	}
 	return position_map, nil
@@ -166,10 +180,10 @@ func (info *client) DatabaseClear() (err error) {
 	return nil
 }
 
-func (info *client) GetMetadata(pathId int, bit int) (value string, err error) {
+func (info *client) GetMetadata(bucketId int, bit int) (value string, err error) {
 	client := info.getClient()
 	ctx := context.Background()
-	value, err = client.LIndex(ctx, strconv.Itoa(pathId), int64(bit)).Result()
+	value, err = client.LIndex(ctx, strconv.Itoa(-1 * bucketId), int64(bit)).Result()
 	if err != nil {
 		return "", err
 	}
@@ -202,8 +216,6 @@ func main() {
 	fmt.Println(pathId)
 	
 	vmap, err := info.readPath(pathId, "user5241976879437760820")
-	value, err := info.Get("user5241976879437760820")
-	fmt.Println(value)
 	for key, value := range vmap {
 		fmt.Printf("Key: %s, Value: %s \n", key, value)
 	}
