@@ -21,7 +21,11 @@ type data struct {
 	name  string
 	value int
 }
-const numReal := 4;
+
+const (
+    Z = 4;
+    S = 6;
+)
 
 
 func NewClient(host string, db int, key []byte) *client {
@@ -81,7 +85,7 @@ func (info *client) databaseInit(filepath string) (position_map map[string]int, 
 	client := info.getClient()
 	ctx := context.Background()
 	
-	// i keeps track of whether we should load dummies; when i reach 4, add dummies
+	// i keeps track of whether we should load dummies; when i reach Z, add dummies
 	i := 0
 	bucketCount := 1
 	// userID of dummies
@@ -115,8 +119,8 @@ func (info *client) databaseInit(filepath string) (position_map map[string]int, 
 		position_map[userID] = bucketCount
 		i++
 		// push dummy values if the current bucket is full
-		if i == 4 {
-			for ; i <= 9; i++ {
+		if i == Z {
+			for ; i < Z + S; i++ {
 				dummyID := "dummy" + strconv.Itoa(dummyCount)
 				dummyString := "b" + strconv.Itoa(bucketCount) + "d" + strconv.Itoa(i)
 				dummyString, err = Encrypt(dummyString, info.key)
@@ -140,7 +144,7 @@ func (info *client) databaseInit(filepath string) (position_map map[string]int, 
 				}
 				dummyCount++
 			}
-			err = client.RPush(ctx, strconv.Itoa(bucketCount), 4).Err()
+			err = client.RPush(ctx, strconv.Itoa(bucketCount), Z).Err()
 			if err != nil {
 				fmt.Println("Error pushing dummy meta data start to db:", err)
 				return nil, err

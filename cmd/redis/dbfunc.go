@@ -7,7 +7,7 @@ import (
 
 // need to implement incrementation of dummyIndex after read
 func (info *client) getDummyObject(pathId int) (key string, value string, err error) {
-	key, err = info.GetMetadata(pathId, 10)
+	key, err = info.GetMetadata(pathId, Z + S)
 	if err != nil {
 		fmt.Println("error fetching dummy index metadata")
 		return "", "", err
@@ -45,7 +45,7 @@ func (info *client) readPath(pathId int, blockIndex string) (map[string]string, 
 			}
 			value_map[key] = value
 		} else {
-			for i := 0; i < 4; i++ {
+			for i := 0; i < Z; i++ {
 				key, err := info.GetMetadata(posId, i)
 				if err != nil {
 					fmt.Println("error fetching metadata")
