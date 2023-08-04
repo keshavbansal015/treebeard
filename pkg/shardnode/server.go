@@ -47,6 +47,8 @@ const (
 	Write
 )
 
+// For the initial request of a block, it returns the path and storageID from the position map.
+// For other requests, it returns a random path and storageID.
 func (s *shardNodeServer) getPathAndStorageBasedOnRequest(block string, requestID string) (path int, storageID int) {
 	if !s.shardNodeFSM.isInitialRequest(block, requestID) {
 		return s.storageHandler.GetRandomPathAndStorageID()
@@ -57,6 +59,7 @@ func (s *shardNodeServer) getPathAndStorageBasedOnRequest(block string, requestI
 	}
 }
 
+// It creates a channel for receiving the response from the raft FSM for the current requestID.
 func (s *shardNodeServer) createResponseChannelForRequestID(requestID string) chan string {
 	s.shardNodeFSM.mu.Lock()
 	defer s.shardNodeFSM.mu.Unlock()
@@ -65,6 +68,7 @@ func (s *shardNodeServer) createResponseChannelForRequestID(requestID string) ch
 	return ch
 }
 
+// It periodically sends batches.
 func (s *shardNodeServer) sendBatchesForever() {
 	for {
 		s.sendCurrentBatches()
@@ -72,6 +76,7 @@ func (s *shardNodeServer) sendBatchesForever() {
 	}
 }
 
+// For queues that have more than batchSize requests, it sends the batch and waits for the responses.
 func (s *shardNodeServer) sendCurrentBatches() {
 	s.batchManager.mu.Lock()
 	defer s.batchManager.mu.Unlock()
@@ -155,6 +160,8 @@ func (s *shardNodeServer) Write(ctx context.Context, writeRequest *pb.WriteReque
 	return &pb.WriteReply{Success: val == writeRequest.Value}, nil
 }
 
+// It gets maxBlocks from the stash to send to the requesting oram node.
+// The blocks should be for the same path and storageID.
 func (s *shardNodeServer) getBlocksForSend(maxBlocks int, path int, storageID int) (blocksToReturn []*pb.Block, blocks []string) {
 	s.shardNodeFSM.mu.Lock()
 	defer s.shardNodeFSM.mu.Unlock()
@@ -180,6 +187,7 @@ func (s *shardNodeServer) getBlocksForSend(maxBlocks int, path int, storageID in
 	return blocksToReturn, blocks
 }
 
+// It sends blocks to the oram node for eviction.
 func (s *shardNodeServer) SendBlocks(ctx context.Context, request *pb.SendBlocksRequest) (*pb.SendBlocksReply, error) {
 
 	blocksToReturn, blocks := s.getBlocksForSend(int(request.MaxBlocks), int(request.Path), int(request.StorageId))
@@ -196,6 +204,8 @@ func (s *shardNodeServer) SendBlocks(ctx context.Context, request *pb.SendBlocks
 	return &pb.SendBlocksReply{Blocks: blocksToReturn}, nil
 }
 
+// It gets the acks and nacks from the oram node.
+// Ackes and Nackes get replicated to be handled in the raft layer.
 func (s *shardNodeServer) AckSentBlocks(ctx context.Context, reply *pb.AckSentBlocksRequest) (*pb.AckSentBlocksReply, error) {
 	var ackedBlocks []string
 	var nackedBlocks []string

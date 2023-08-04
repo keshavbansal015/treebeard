@@ -22,6 +22,8 @@ func newBatchManager(batchSize int) *batchManager {
 	return &batchManager
 }
 
+// It add the request to the correct queue and return a response channel.
+// The client uses the response channel to get the result of this request.
 func (b *batchManager) addRequestToStorageQueueAndWait(req blockRequest, storageID int) chan string {
 	b.mu.Lock()
 	defer b.mu.Unlock()
@@ -31,6 +33,7 @@ func (b *batchManager) addRequestToStorageQueueAndWait(req blockRequest, storage
 	return b.responseChannel[req.block]
 }
 
+// It simply adds the request to the correct queue.
 func (b *batchManager) addRequestToStorageQueueWithoutWaiting(req blockRequest, storageID int) {
 	b.mu.Lock()
 	defer b.mu.Unlock()

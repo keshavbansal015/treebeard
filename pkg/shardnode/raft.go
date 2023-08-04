@@ -110,6 +110,8 @@ func (fsm *shardNodeFSM) handleReplicateRequestAndPathAndStorage(requestID strin
 
 type localReplicaChangeHandlerFunc func(requestID string, r ReplicateResponsePayload)
 
+// It handles the response replication changes locally on each raft replica.
+// The leader doesn't wait for this to finish to return success for the response replication command.
 func (fsm *shardNodeFSM) handleLocalResponseReplicationChanges(requestID string, r ReplicateResponsePayload) {
 	fsm.mu.Lock()
 	defer fsm.mu.Unlock()
@@ -171,6 +173,8 @@ func (fsm *shardNodeFSM) handleReplicateSentBlocks(r ReplicateSentBlocksPayload)
 	}
 }
 
+// It keeps the nacked blocks and deletes not changed acked blocks.
+// If an acked block was changed during the eviction, it will keep it.
 func (fsm *shardNodeFSM) handleLocalAcksNacksReplicationChanges(requestID string) {
 	fsm.mu.Lock()
 	defer fsm.mu.Unlock()

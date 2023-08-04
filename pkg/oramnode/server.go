@@ -55,6 +55,7 @@ func newOramNodeServer(oramNodeServerID int, replicaID int, raftNode *raft.Raft,
 	}
 }
 
+// It runs the failed eviction as the new leader.
 func (o *oramNodeServer) performFailedEviction() error {
 	<-o.raftNode.LeaderCh()
 	o.oramNodeFSM.mu.Lock()
