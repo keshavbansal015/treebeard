@@ -5,6 +5,21 @@ import (
 	"strconv"
 )
 
+type IntSet map[int]struct{}
+
+func (s IntSet) Add(item int) {
+	s[item] = struct{}{}
+}
+
+func (s IntSet) Remove(item int) {
+	delete(s, item)
+}
+
+func (s IntSet) Contains(item int) bool {
+	_, found := s[item]
+	return found
+}
+
 // need to implement incrementation of dummyIndex after read
 func (info *client) getDummyObject(pathId int) (key string, value string, err error) {
 	key, err = info.GetMetadata(pathId, Z + S)
@@ -37,7 +52,7 @@ func (info *client) getDummyObject(pathId int) (key string, value string, err er
 func (info *client) readPath(pathId int, blockIndex string) (map[string]string, error) {
 	found := false
 	value_map := make(map[string]string)
-	for posId := pathId; posId > 0; posId = (posId - 1) >> 1 {
+	for posId := pathId; posId > 0; posId = posId >> shift {
 		if found {
 			key, value, err := info.getDummyObject(posId)
 			if err != nil {
@@ -76,4 +91,30 @@ func (info *client) readPath(pathId int, blockIndex string) (map[string]string, 
 		}
 	}
 	return value_map, nil
+}
+
+func (info *client) GetBucketsInPaths(pathIds []int) []int {
+	bucketIds := make(IntSet)
+	for i := 0; i < len(pathIds); i++ {
+		for bucketId := pathIds[i]; bucketId > 0; bucketId = bucketId >> shift {
+			if bucketIds.Contains(bucketId) {
+				break;
+			} else {
+				bucketIds.Add(bucketId)
+				// fmt.Println(bucketId)
+			}
+		}
+	}
+	bucketIdResult := make([]int, len(bucketIds))
+	i := 0
+	for key := range bucketIds {
+		bucketIdResult[i] = key
+		i++
+		// fmt.Println(key)
+	}
+	return bucketIdResult
+}
+
+func (info *client) GetBlockOffset(bucketId int, blocks []string) {
+	
 }

@@ -25,8 +25,9 @@ type data struct {
 }
 
 const (
-    Z = 4;
-    S = 6;
+    Z = 1
+    S = 9
+	shift = 1 // 2^shift children per node
 )
 
 
@@ -77,7 +78,6 @@ func (info *client) Get(bucketId int, bit int) (value string, err error) {
 
 func shuffleArray(arr []int) {
     rand.Seed(time.Now().UnixNano())
-
     for i := len(arr) - 1; i > 0; i-- {
         j := rand.Intn(i + 1)
         arr[i], arr[j] = arr[j], arr[i]
@@ -218,6 +218,15 @@ func main() {
 	vmap, err := info.readPath(pathId, "user5241976879437760820")
 	for key, value := range vmap {
 		fmt.Printf("Key: %s, Value: %s \n", key, value)
+	}
+	paths := make([]int, 4)
+	paths[0] = 16
+	paths[1] = 18
+	paths[2] = 21
+	paths[3] = 31
+	arr := info.GetBucketsInPaths(paths)
+	for i := 0; i < len(arr); i++ {
+		fmt.Println(arr[i])
 	}
 	info.DatabaseClear()
 	info.CloseClient()
