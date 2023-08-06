@@ -63,10 +63,10 @@ func (o *oramNodeServer) performFailedEviction() error {
 	o.oramNodeFSM.mu.Unlock()
 	if needsEviction != nil {
 		o.oramNodeFSM.mu.Lock()
-		path := o.oramNodeFSM.unfinishedEviction.path
+		paths := o.oramNodeFSM.unfinishedEviction.paths
 		storageID := o.oramNodeFSM.unfinishedEviction.storageID
 		o.oramNodeFSM.mu.Unlock()
-		o.evict(path, storageID)
+		o.evict(paths, storageID)
 	}
 	return nil
 }
@@ -97,9 +97,8 @@ func (o *oramNodeServer) earlyReshuffle(buckets []int, storageID int) error {
 	return nil
 }
 
-func (o *oramNodeServer) readBucketAllLevels(path int, storageID int) (blocksFromReadBucket map[int]map[string]string, err error) {
+func (o *oramNodeServer) readAllBuckets(buckets []int, storageID int) (blocksFromReadBucket map[int]map[string]string, err error) {
 	blocksFromReadBucket = make(map[int]map[string]string) // map of bucket to map of block to value
-	buckets, err := o.storageHandler.GetBucketsInPaths([]int{path})
 	if err != nil {
 		return nil, fmt.Errorf("unable to get bucket ids for early reshuffle path; %v", err)
 	}
@@ -118,10 +117,10 @@ func (o *oramNodeServer) readBucketAllLevels(path int, storageID int) (blocksFro
 	return blocksFromReadBucket, nil
 }
 
-func (o *oramNodeServer) readBlocksFromShardNode(path int, storageID int, randomShardNode ReplicaRPCClientMap) (receivedBlocks map[string]string, err error) {
+func (o *oramNodeServer) readBlocksFromShardNode(paths []int, storageID int, randomShardNode ReplicaRPCClientMap) (receivedBlocks map[string]string, err error) {
 	receivedBlocks = make(map[string]string) // map of received block to value
 
-	shardNodeBlocks, err := randomShardNode.getBlocksFromShardNode(path, storageID, o.parameters.MaxBlocksToSend)
+	shardNodeBlocks, err := randomShardNode.getBlocksFromShardNode(paths, storageID, o.parameters.MaxBlocksToSend)
 	if err != nil {
 		return nil, fmt.Errorf("unable to get blocks from shard node; %s", err)
 	}
@@ -131,7 +130,7 @@ func (o *oramNodeServer) readBlocksFromShardNode(path int, storageID int, random
 	return receivedBlocks, nil
 }
 
-func (o *oramNodeServer) writeBackBlocksToAllLevels(path int, storageID int, blocksFromReadBucket map[int]map[string]string, receivedBlocks map[string]string) (receivedBlocksIsWritten map[string]bool, err error) {
+func (o *oramNodeServer) writeBackBlocksToAllBuckets(buckets []int, storageID int, blocksFromReadBucket map[int]map[string]string, receivedBlocks map[string]string) (receivedBlocksIsWritten map[string]bool, err error) {
 	receivedBlocksCopy := make(map[string]string)
 	for block, value := range receivedBlocks {
 		receivedBlocksCopy[block] = value
@@ -139,10 +138,6 @@ func (o *oramNodeServer) writeBackBlocksToAllLevels(path int, storageID int, blo
 	receivedBlocksIsWritten = make(map[string]bool)
 	for block := range receivedBlocks {
 		receivedBlocksIsWritten[block] = false
-	}
-	buckets, err := o.storageHandler.GetBucketsInPaths([]int{path})
-	if err != nil {
-		return nil, fmt.Errorf("unable to get bucket ids for early reshuffle path; %v", err)
 	}
 	for i := len(buckets) - 1; i >= 0; i-- {
 		writtenBlocks, err := o.storageHandler.WriteBucket(buckets[i], storageID, blocksFromReadBucket[buckets[i]], receivedBlocksCopy, true)
@@ -159,8 +154,8 @@ func (o *oramNodeServer) writeBackBlocksToAllLevels(path int, storageID int, blo
 	return receivedBlocksIsWritten, nil
 }
 
-func (o *oramNodeServer) evict(path int, storageID int) error {
-	beginEvictionCommand, err := newReplicateBeginEvictionCommand(path, storageID)
+func (o *oramNodeServer) evict(paths []int, storageID int) error {
+	beginEvictionCommand, err := newReplicateBeginEvictionCommand(paths, storageID)
 	if err != nil {
 		return fmt.Errorf("unable to marshal begin eviction command; %s", err)
 	}
@@ -169,19 +164,23 @@ func (o *oramNodeServer) evict(path int, storageID int) error {
 		return fmt.Errorf("could not apply log to the FSM; %s", err)
 	}
 
-	blocksFromReadBucket, err := o.readBucketAllLevels(path, storageID)
+	buckets, err := o.storageHandler.GetBucketsInPaths(paths)
+	if err != nil {
+		return fmt.Errorf("unable to get buckets for paths; %v", err)
+	}
+	blocksFromReadBucket, err := o.readAllBuckets(buckets, storageID)
 	if err != nil {
 		return fmt.Errorf("unable to perform ReadBucket on all levels")
 	}
 
 	// TODO: get blocks from multiple random shard nodes
 	randomShardNode := o.shardNodeRPCClients[0]
-	receivedBlocks, err := o.readBlocksFromShardNode(path, storageID, randomShardNode)
+	receivedBlocks, err := o.readBlocksFromShardNode(paths, storageID, randomShardNode)
 	if err != nil {
 		return err
 	}
 
-	receivedBlocksIsWritten, err := o.writeBackBlocksToAllLevels(path, storageID, blocksFromReadBucket, receivedBlocks)
+	receivedBlocksIsWritten, err := o.writeBackBlocksToAllBuckets(buckets, storageID, blocksFromReadBucket, receivedBlocks)
 	if err != nil {
 		return fmt.Errorf("unable to perform WriteBucket on all levels; %s", err)
 	}
@@ -339,7 +338,7 @@ func StartServer(oramNodeServerID int, rpcPort int, replicaID int, raftPort int,
 			}
 			oramNodeServer.readPathCounterMu.Unlock()
 			if needEviction {
-				oramNodeServer.evict(0, 0) // TODO: make it lexicographic
+				oramNodeServer.evict([]int{0, 1, 2}, 0) // TODO: make it lexicographic
 			}
 		}
 	}()

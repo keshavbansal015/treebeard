@@ -247,7 +247,7 @@ func TestGetBlocksForSendReturnsAtMostMaxBlocksFromTheStash(t *testing.T) {
 	s.shardNodeFSM.positionMap["block5"] = positionState{path: 0, storageID: 0}
 	s.shardNodeFSM.positionMap["block6"] = positionState{path: 0, storageID: 0}
 
-	_, blocks := s.getBlocksForSend(4, 0, 0)
+	_, blocks := s.getBlocksForSend(4, []int{0}, 0)
 	if len(blocks) != 4 {
 		t.Errorf("expected 4 blocks but got: %d blocks", len(blocks))
 	}
@@ -264,7 +264,7 @@ func TestGetBlocksForSendReturnsOnlyBlocksForPathAndStorageID(t *testing.T) {
 	s.shardNodeFSM.positionMap["block2"] = positionState{path: 1, storageID: 2}
 	s.shardNodeFSM.positionMap["block3"] = positionState{path: 0, storageID: 0}
 
-	_, blocks := s.getBlocksForSend(4, 0, 0)
+	_, blocks := s.getBlocksForSend(4, []int{0}, 0)
 	for _, block := range blocks {
 		if block == "block2" {
 			t.Errorf("getBlocks should only return blocks for the path and storageID")
@@ -283,7 +283,7 @@ func TestGetBlocksForSendDoesNotReturnsWaitingBlocks(t *testing.T) {
 	s.shardNodeFSM.positionMap["block2"] = positionState{path: 0, storageID: 0}
 	s.shardNodeFSM.positionMap["block3"] = positionState{path: 0, storageID: 0}
 
-	_, blocks := s.getBlocksForSend(4, 0, 0)
+	_, blocks := s.getBlocksForSend(4, []int{0}, 0)
 	for _, block := range blocks {
 		if block == "block1" {
 			t.Errorf("getBlocks should only return blocks with the waitingStatus equal to false")
@@ -299,10 +299,10 @@ func TestSendBlocksReturnsStashBlocks(t *testing.T) {
 		"block3": {value: "block3", logicalTime: 0, waitingStatus: false},
 	}
 	s.shardNodeFSM.positionMap["block1"] = positionState{path: 0, storageID: 0}
-	s.shardNodeFSM.positionMap["block2"] = positionState{path: 0, storageID: 0}
+	s.shardNodeFSM.positionMap["block2"] = positionState{path: 1, storageID: 0}
 	s.shardNodeFSM.positionMap["block3"] = positionState{path: 0, storageID: 0}
 
-	blocks, err := s.SendBlocks(context.Background(), &shardnodepb.SendBlocksRequest{MaxBlocks: 3, Path: 0, StorageId: 0})
+	blocks, err := s.SendBlocks(context.Background(), &shardnodepb.SendBlocksRequest{MaxBlocks: 3, Paths: []int32{0, 1}, StorageId: 0})
 	if err != nil {
 		t.Errorf("Expected successful execution of SendBlocks")
 	}
@@ -322,7 +322,7 @@ func TestSendBlocksMarksSentBlocksAsWaitingAndZeroLogicalTime(t *testing.T) {
 	s.shardNodeFSM.positionMap["block2"] = positionState{path: 0, storageID: 0}
 	s.shardNodeFSM.positionMap["block3"] = positionState{path: 0, storageID: 0}
 
-	blocks, _ := s.SendBlocks(context.Background(), &shardnodepb.SendBlocksRequest{MaxBlocks: 3, Path: 0, StorageId: 0})
+	blocks, _ := s.SendBlocks(context.Background(), &shardnodepb.SendBlocksRequest{MaxBlocks: 3, Paths: []int32{0}, StorageId: 0})
 	s.shardNodeFSM.mu.Lock()
 	for _, block := range blocks.Blocks {
 		if s.shardNodeFSM.stash[block.Block].waitingStatus == false {

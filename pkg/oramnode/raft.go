@@ -17,7 +17,7 @@ import (
 )
 
 type beginEvictionData struct {
-	path      int
+	paths     []int
 	storageID int
 }
 
@@ -40,11 +40,11 @@ func newOramNodeFSM() *oramNodeFSM {
 	return &oramNodeFSM{}
 }
 
-func (fsm *oramNodeFSM) handleBeginEvictionCommand(path int, storageID int) {
+func (fsm *oramNodeFSM) handleBeginEvictionCommand(paths []int, storageID int) {
 	fsm.mu.Lock()
 	defer fsm.mu.Unlock()
 
-	fsm.unfinishedEviction = &beginEvictionData{path, storageID}
+	fsm.unfinishedEviction = &beginEvictionData{paths, storageID}
 }
 
 func (fsm *oramNodeFSM) handleEndEvictionCommand() {
@@ -68,7 +68,7 @@ func (fsm *oramNodeFSM) Apply(rLog *raft.Log) interface{} {
 			if err != nil {
 				return fmt.Errorf("could not unmarshall the offsetList replication command; %s", err)
 			}
-			fsm.handleBeginEvictionCommand(payload.Path, payload.StorageID)
+			fsm.handleBeginEvictionCommand(payload.Paths, payload.StorageID)
 		} else if command.Type == ReplicateEndEviction {
 			log.Println("got replication command for replicate end eviction")
 			fsm.handleEndEvictionCommand()

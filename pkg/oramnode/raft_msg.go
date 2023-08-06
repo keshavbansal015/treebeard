@@ -14,9 +14,8 @@ const (
 )
 
 type Command struct {
-	Type      CommandType
-	RequestID string
-	Payload   []byte
+	Type    CommandType
+	Payload []byte
 }
 
 type ReplicateOffsetListPayload struct {
@@ -24,14 +23,14 @@ type ReplicateOffsetListPayload struct {
 }
 
 type ReplicateBeginEvictionPayload struct {
-	Path      int
+	Paths     []int
 	StorageID int
 }
 
-func newReplicateBeginEvictionCommand(path int, storageID int) ([]byte, error) {
+func newReplicateBeginEvictionCommand(paths []int, storageID int) ([]byte, error) {
 	payload, err := msgpack.Marshal(
 		&ReplicateBeginEvictionPayload{
-			Path:      path,
+			Paths:     paths,
 			StorageID: storageID,
 		},
 	)
@@ -41,9 +40,8 @@ func newReplicateBeginEvictionCommand(path int, storageID int) ([]byte, error) {
 
 	command, err := msgpack.Marshal(
 		&Command{
-			Type:      ReplicateBeginEviction,
-			RequestID: "", // I should move requestID from the command to the payload
-			Payload:   payload,
+			Type:    ReplicateBeginEviction,
+			Payload: payload,
 		},
 	)
 	if err != nil {
@@ -55,9 +53,8 @@ func newReplicateBeginEvictionCommand(path int, storageID int) ([]byte, error) {
 func newReplicateEndEvictionCommand() ([]byte, error) {
 	command, err := msgpack.Marshal(
 		&Command{
-			Type:      ReplicateEndEviction,
-			RequestID: "",
-			Payload:   []byte{},
+			Type:    ReplicateEndEviction,
+			Payload: []byte{},
 		},
 	)
 	if err != nil {

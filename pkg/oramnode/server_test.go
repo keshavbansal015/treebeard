@@ -117,7 +117,7 @@ func newMockStorageHandler(levelCount int, maxAccessCount int) *mockStorageHandl
 		levelCount:      levelCount,
 		maxAccessCount:  maxAccessCount,
 		latestReadBlock: 0,
-		writeBucketFunc: func(bucketID int, storageID int, ReadBucketBlocks map[string]string, shardNodeBlocks map[string]string, isAtomic bool) (writtenBlocks map[string]string, err error) {
+		writeBucketFunc: func(_ int, _ int, ReadBucketBlocks map[string]string, shardNodeBlocks map[string]string, _ bool) (writtenBlocks map[string]string, err error) {
 			writtenBlocks = make(map[string]string)
 			for block, value := range ReadBucketBlocks {
 				writtenBlocks[block] = value
@@ -150,6 +150,7 @@ func (m *mockStorageHandler) GetAccessCount(bucketID int, storageID int) (count 
 	return 0, nil
 }
 
+// It returns four blocks with block id m.latestReadBlock to m.latestReadBlock+3
 func (m *mockStorageHandler) ReadBucket(bucketID int, storageID int) (blocks map[string]string, err error) {
 	blocks = make(map[string]string)
 	for i := m.latestReadBlock; i < m.latestReadBlock+4; i++ {
@@ -201,16 +202,16 @@ func (o *oramNodeServer) withMockStorageHandler(storageHandler *mockStorageHandl
 	return o
 }
 
-func TestReadBucketAllLevelsReturnsAllTreeBlocks(t *testing.T) {
+func TestReadAllBucketsReturnsAllTreeBlocks(t *testing.T) {
 	o := startLeaderRaftNodeServer(t).withMockStorageHandler(newMockStorageHandler(12, 4))
-	blocks, err := o.readBucketAllLevels(0, 1)
+	blocks, err := o.readAllBuckets([]int{0, 1, 2}, 1)
 	if err != nil {
 		t.Errorf("Expected successful execution of readBucketAllLevels")
 	}
 
-	for level := 0; level < 12; level++ {
-		for i := 4 * level; i < 4*level+4; i++ {
-			if _, exists := blocks[level]; !exists {
+	for idx := range []int{0, 1, 2} {
+		for i := 4 * idx; i < 4*idx+4; i++ {
+			if _, exists := blocks[idx]; !exists {
 				t.Errorf("all tree values should be in the blocksFromReadBucket")
 			}
 		}
@@ -219,7 +220,7 @@ func TestReadBucketAllLevelsReturnsAllTreeBlocks(t *testing.T) {
 
 func TestReadBlocksFromShardNodeReturnsAllShardNodeBlocks(t *testing.T) {
 	o := startLeaderRaftNodeServer(t)
-	blocks, err := o.readBlocksFromShardNode(0, 1, o.shardNodeRPCClients[0])
+	blocks, err := o.readBlocksFromShardNode([]int{4, 7, 11}, 1, o.shardNodeRPCClients[0])
 	if err != nil {
 		t.Errorf("expected Successful execution of readBlocksFromShardNode")
 	}
@@ -231,9 +232,9 @@ func TestReadBlocksFromShardNodeReturnsAllShardNodeBlocks(t *testing.T) {
 	}
 }
 
-func TestWriteBackBlocksToAllLevelsPushesReceivedBlocksToTree(t *testing.T) {
+func TestWriteBackBlocksToAllBucketsPushesReceivedBlocksToTree(t *testing.T) {
 	o := startLeaderRaftNodeServer(t).withMockStorageHandler(newMockStorageHandler(3, 4))
-	receivedBlocksIsWritten, err := o.writeBackBlocksToAllLevels(0,
+	receivedBlocksIsWritten, err := o.writeBackBlocksToAllBuckets([]int{0, 1, 2},
 		1,
 		map[int]map[string]string{
 			0: {
@@ -257,14 +258,14 @@ func TestWriteBackBlocksToAllLevelsPushesReceivedBlocksToTree(t *testing.T) {
 	}
 	for _, block := range []string{"a", "b", "c"} {
 		if receivedBlocksIsWritten[block] == false {
-			t.Errorf("expected is written to be true for block %s", block)
+			t.Errorf("expected IsWritten to be true for block %s", block)
 		}
 	}
 }
 
-func TestWriteBackBlocksToAllLevelsReturnsFalseForNotPushedReceivedBlocks(t *testing.T) {
+func TestWriteBackBlocksToAllBucketsReturnsFalseForNotPushedReceivedBlocks(t *testing.T) {
 	o := startLeaderRaftNodeServer(t).withMockStorageHandler(newMockStorageHandler(3, 4).withCustomWriteFunc(
-		func(bucketID int, storageID int, ReadBucketBlocks map[string]string, shardNodeBlocks map[string]string, isAtomic bool) (writtenBlocks map[string]string, err error) {
+		func(_ int, _ int, _ map[string]string, shardNodeBlocks map[string]string, _ bool) (writtenBlocks map[string]string, err error) {
 			writtenBlocks = make(map[string]string)
 			for block, val := range shardNodeBlocks {
 				if block != "a" {
@@ -274,7 +275,7 @@ func TestWriteBackBlocksToAllLevelsReturnsFalseForNotPushedReceivedBlocks(t *tes
 			return writtenBlocks, nil
 		},
 	))
-	receivedBlocksIsWritten, err := o.writeBackBlocksToAllLevels(0,
+	receivedBlocksIsWritten, err := o.writeBackBlocksToAllBuckets([]int{0, 1, 2},
 		1,
 		map[int]map[string]string{
 			0: {
@@ -303,7 +304,7 @@ func TestWriteBackBlocksToAllLevelsReturnsFalseForNotPushedReceivedBlocks(t *tes
 
 func TestEvictCleansUpBeginEvictionAfterSuccessfulExecution(t *testing.T) {
 	o := startLeaderRaftNodeServer(t)
-	o.evict(0, 0)
+	o.evict([]int{1, 7, 16}, 0)
 	o.oramNodeFSM.mu.Lock()
 	defer o.oramNodeFSM.mu.Unlock()
 
@@ -314,7 +315,7 @@ func TestEvictCleansUpBeginEvictionAfterSuccessfulExecution(t *testing.T) {
 
 func TestEvictKeepsBeginEvictionInFailureScenario(t *testing.T) {
 	o := startLeaderRaftNodeServer(t).withFailedShardNodeClients()
-	o.evict(0, 0)
+	o.evict([]int{1, 7, 16}, 0)
 	o.oramNodeFSM.mu.Lock()
 	defer o.oramNodeFSM.mu.Unlock()
 	if o.oramNodeFSM.unfinishedEviction == nil {
@@ -324,7 +325,7 @@ func TestEvictKeepsBeginEvictionInFailureScenario(t *testing.T) {
 
 func TestEvictResetsReadPathCounter(t *testing.T) {
 	o := startLeaderRaftNodeServer(t)
-	o.evict(0, 0)
+	o.evict([]int{1, 7, 16}, 0)
 	o.readPathCounterMu.Lock()
 	defer o.readPathCounterMu.Unlock()
 	if o.readPathCounter != 0 {

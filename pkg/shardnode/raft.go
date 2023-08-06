@@ -32,6 +32,15 @@ type positionState struct {
 	storageID int
 }
 
+func (p positionState) isPathForPaths(paths []int) bool {
+	for _, path := range paths {
+		if p.path == path {
+			return true
+		}
+	}
+	return false
+}
+
 type shardNodeFSM struct {
 	// I'm starting with simple maps and one mutex to handle race conditions.
 	// However, there are other ways to design this that might be better regarding performance:

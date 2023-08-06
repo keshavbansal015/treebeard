@@ -12,6 +12,7 @@ import (
 	"github.com/dsg-uwaterloo/oblishard/pkg/config"
 	"github.com/dsg-uwaterloo/oblishard/pkg/rpc"
 	"github.com/dsg-uwaterloo/oblishard/pkg/storage"
+	"github.com/dsg-uwaterloo/oblishard/pkg/utils"
 	"github.com/hashicorp/raft"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
@@ -162,13 +163,13 @@ func (s *shardNodeServer) Write(ctx context.Context, writeRequest *pb.WriteReque
 
 // It gets maxBlocks from the stash to send to the requesting oram node.
 // The blocks should be for the same path and storageID.
-func (s *shardNodeServer) getBlocksForSend(maxBlocks int, path int, storageID int) (blocksToReturn []*pb.Block, blocks []string) {
+func (s *shardNodeServer) getBlocksForSend(maxBlocks int, paths []int, storageID int) (blocksToReturn []*pb.Block, blocks []string) {
 	s.shardNodeFSM.mu.Lock()
 	defer s.shardNodeFSM.mu.Unlock()
 
 	counter := 0
 	for block, stashState := range s.shardNodeFSM.stash {
-		if (s.shardNodeFSM.positionMap[block].path != path) || (s.shardNodeFSM.positionMap[block].storageID != storageID) {
+		if (!s.shardNodeFSM.positionMap[block].isPathForPaths(paths)) || (s.shardNodeFSM.positionMap[block].storageID != storageID) {
 			continue
 		}
 
@@ -190,7 +191,7 @@ func (s *shardNodeServer) getBlocksForSend(maxBlocks int, path int, storageID in
 // It sends blocks to the oram node for eviction.
 func (s *shardNodeServer) SendBlocks(ctx context.Context, request *pb.SendBlocksRequest) (*pb.SendBlocksReply, error) {
 
-	blocksToReturn, blocks := s.getBlocksForSend(int(request.MaxBlocks), int(request.Path), int(request.StorageId))
+	blocksToReturn, blocks := s.getBlocksForSend(int(request.MaxBlocks), utils.ConvertInt32SliceToIntSlice(request.Paths), int(request.StorageId))
 
 	sentBlocksReplicationCommand, err := newSentBlocksReplicationCommand(blocks)
 	if err != nil {
