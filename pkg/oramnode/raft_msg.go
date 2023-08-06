@@ -11,6 +11,8 @@ type CommandType int
 const (
 	ReplicateBeginEviction CommandType = iota
 	ReplicateEndEviction
+	ReplicateBeginReadPath
+	ReplicateEndReadPath
 )
 
 type Command struct {
@@ -18,11 +20,12 @@ type Command struct {
 	Payload []byte
 }
 
-type ReplicateOffsetListPayload struct {
-	OffsetList []int
+type ReplicateBeginEvictionPayload struct {
+	Paths     []int
+	StorageID int
 }
 
-type ReplicateBeginEvictionPayload struct {
+type ReplicateBeginReadPathPayload struct {
 	Paths     []int
 	StorageID int
 }
@@ -59,6 +62,42 @@ func newReplicateEndEvictionCommand() ([]byte, error) {
 	)
 	if err != nil {
 		return nil, fmt.Errorf("could not marshal the end eviction command; %s", err)
+	}
+	return command, nil
+}
+
+func newReplicateBeginReadPathCommand(paths []int, storageID int) ([]byte, error) {
+	payload, err := msgpack.Marshal(
+		&ReplicateBeginReadPathPayload{
+			Paths:     paths,
+			StorageID: storageID,
+		},
+	)
+	if err != nil {
+		return nil, fmt.Errorf("could not marshall payload for the begin read path command; %s", err)
+	}
+
+	command, err := msgpack.Marshal(
+		&Command{
+			Type:    ReplicateBeginReadPath,
+			Payload: payload,
+		},
+	)
+	if err != nil {
+		return nil, fmt.Errorf("could not marshal the begin read path command; %s", err)
+	}
+	return command, nil
+}
+
+func newReplicateEndReadPathCommand() ([]byte, error) {
+	command, err := msgpack.Marshal(
+		&Command{
+			Type:    ReplicateEndReadPath,
+			Payload: []byte{},
+		},
+	)
+	if err != nil {
+		return nil, fmt.Errorf("could not marshal the end read path command; %s", err)
 	}
 	return command, nil
 }

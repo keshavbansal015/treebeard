@@ -21,10 +21,16 @@ type beginEvictionData struct {
 	storageID int
 }
 
+type beginReadPathData struct {
+	paths     []int
+	storageID int
+}
+
 type oramNodeFSM struct {
 	mu sync.Mutex
 
 	unfinishedEviction *beginEvictionData // unfinished eviction
+	unfinishedReadPath *beginReadPathData // unfinished read path
 }
 
 func (fsm *oramNodeFSM) String() string {
@@ -53,6 +59,19 @@ func (fsm *oramNodeFSM) handleEndEvictionCommand() {
 	fsm.unfinishedEviction = nil
 }
 
+func (fsm *oramNodeFSM) handleBeginReadPathCommand(paths []int, storageID int) {
+	fsm.mu.Lock()
+	defer fsm.mu.Unlock()
+
+	fsm.unfinishedReadPath = &beginReadPathData{paths, storageID}
+}
+
+func (fsm *oramNodeFSM) handleEndReadPathCommand() {
+	fsm.mu.Lock()
+	defer fsm.mu.Unlock()
+	fsm.unfinishedReadPath = nil
+}
+
 func (fsm *oramNodeFSM) Apply(rLog *raft.Log) interface{} {
 	switch rLog.Type {
 	case raft.LogCommand:
@@ -66,12 +85,23 @@ func (fsm *oramNodeFSM) Apply(rLog *raft.Log) interface{} {
 			var payload ReplicateBeginEvictionPayload
 			err := msgpack.Unmarshal(command.Payload, &payload)
 			if err != nil {
-				return fmt.Errorf("could not unmarshall the offsetList replication command; %s", err)
+				return fmt.Errorf("could not unmarshall the begin eviction replication command; %s", err)
 			}
 			fsm.handleBeginEvictionCommand(payload.Paths, payload.StorageID)
 		} else if command.Type == ReplicateEndEviction {
 			log.Println("got replication command for replicate end eviction")
 			fsm.handleEndEvictionCommand()
+		} else if command.Type == ReplicateBeginReadPath {
+			log.Println("got replication command for replicate begin read path")
+			var payload ReplicateBeginReadPathPayload
+			err := msgpack.Unmarshal(command.Payload, &payload)
+			if err != nil {
+				return fmt.Errorf("could not unmarshall the begin read path replication command; %s", err)
+			}
+			fsm.handleBeginReadPathCommand(payload.Paths, payload.StorageID)
+		} else if command.Type == ReplicateEndReadPath {
+			log.Println("got replication command for replicate end read path")
+			fsm.handleEndReadPathCommand()
 		} else {
 			fmt.Println("wrong command type")
 		}

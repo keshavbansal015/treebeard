@@ -55,11 +55,12 @@ func newOramNodeServer(oramNodeServerID int, replicaID int, raftNode *raft.Raft,
 	}
 }
 
-// It runs the failed eviction as the new leader.
-func (o *oramNodeServer) performFailedEviction() error {
+// It runs the failed eviction and read path as the new leader.
+func (o *oramNodeServer) performFailedOperations() error {
 	<-o.raftNode.LeaderCh()
 	o.oramNodeFSM.mu.Lock()
 	needsEviction := o.oramNodeFSM.unfinishedEviction
+	needsReadPath := o.oramNodeFSM.unfinishedReadPath
 	o.oramNodeFSM.mu.Unlock()
 	if needsEviction != nil {
 		o.oramNodeFSM.mu.Lock()
@@ -67,6 +68,14 @@ func (o *oramNodeServer) performFailedEviction() error {
 		storageID := o.oramNodeFSM.unfinishedEviction.storageID
 		o.oramNodeFSM.mu.Unlock()
 		o.evict(paths, storageID)
+	}
+	if needsReadPath != nil {
+		o.oramNodeFSM.mu.Lock()
+		paths := o.oramNodeFSM.unfinishedReadPath.paths
+		storageID := o.oramNodeFSM.unfinishedReadPath.storageID
+		o.oramNodeFSM.mu.Unlock()
+		buckets, _ := o.storageHandler.GetBucketsInPaths(paths)
+		o.earlyReshuffle(buckets, storageID)
 	}
 	return nil
 }
@@ -228,7 +237,17 @@ func (o *oramNodeServer) ReadPath(ctx context.Context, request *pb.ReadPathReque
 	offsetList := make(map[int]int)                // map of bucket id to offset
 	realBlockBucketMapping := make(map[int]string) // map of bucket id to block
 
-	buckets, err := o.storageHandler.GetBucketsInPaths(o.getDistinctPathsInBatch(request.Requests))
+	paths := o.getDistinctPathsInBatch(request.Requests)
+	beginReadPathCommand, err := newReplicateBeginReadPathCommand(paths, int(request.StorageId))
+	if err != nil {
+		return nil, fmt.Errorf("unable to create begin read path replication command; %v", err)
+	}
+	err = o.raftNode.Apply(beginReadPathCommand, 2*time.Second).Error()
+	if err != nil {
+		return nil, fmt.Errorf("could not apply log to the FSM; %s", err)
+	}
+
+	buckets, err := o.storageHandler.GetBucketsInPaths(paths)
 	if err != nil {
 		return nil, fmt.Errorf("could not get bucket ids in the paths; %v", err)
 	}
@@ -264,6 +283,15 @@ func (o *oramNodeServer) ReadPath(ctx context.Context, request *pb.ReadPathReque
 	o.readPathCounterMu.Lock()
 	o.readPathCounter++
 	o.readPathCounterMu.Unlock()
+
+	endReadPathCommand, err := newReplicateEndReadPathCommand()
+	if err != nil {
+		return nil, fmt.Errorf("unable to create end read path replication command; %s", err)
+	}
+	err = o.raftNode.Apply(endReadPathCommand, 2*time.Second).Error()
+	if err != nil {
+		return nil, fmt.Errorf("could not apply log to the FSM; %s", err)
+	}
 
 	var response []*pb.BlockResponse
 	for block, value := range returnValues {
@@ -344,7 +372,7 @@ func StartServer(oramNodeServerID int, rpcPort int, replicaID int, raftPort int,
 	}()
 	go func() {
 		for {
-			oramNodeServer.performFailedEviction()
+			oramNodeServer.performFailedOperations()
 		}
 	}()
 	grpcServer := grpc.NewServer(grpc.UnaryInterceptor(rpc.ContextPropagationUnaryServerInterceptor()))
