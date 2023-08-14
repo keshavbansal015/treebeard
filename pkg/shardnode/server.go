@@ -9,8 +9,10 @@ import (
 	"time"
 
 	pb "github.com/dsg-uwaterloo/oblishard/api/shardnode"
+	"github.com/dsg-uwaterloo/oblishard/pkg/config"
 	"github.com/dsg-uwaterloo/oblishard/pkg/rpc"
 	"github.com/dsg-uwaterloo/oblishard/pkg/storage"
+	"github.com/dsg-uwaterloo/oblishard/pkg/utils"
 	"github.com/hashicorp/raft"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
@@ -24,9 +26,10 @@ type shardNodeServer struct {
 	shardNodeFSM      *shardNodeFSM
 	oramNodeClients   RPCClientMap
 	storageHandler    *storage.StorageHandler
+	batchManager      *batchManager
 }
 
-func newShardNodeServer(shardNodeServerID int, replicaID int, raftNode *raft.Raft, fsm *shardNodeFSM, oramNodeRPCClients RPCClientMap, storageHandler *storage.StorageHandler) *shardNodeServer {
+func newShardNodeServer(shardNodeServerID int, replicaID int, raftNode *raft.Raft, fsm *shardNodeFSM, oramNodeRPCClients RPCClientMap, storageHandler *storage.StorageHandler, batchManager *batchManager) *shardNodeServer {
 	return &shardNodeServer{
 		shardNodeServerID: shardNodeServerID,
 		replicaID:         replicaID,
@@ -34,6 +37,7 @@ func newShardNodeServer(shardNodeServerID int, replicaID int, raftNode *raft.Raf
 		shardNodeFSM:      fsm,
 		oramNodeClients:   oramNodeRPCClients,
 		storageHandler:    storageHandler,
+		batchManager:      batchManager,
 	}
 }
 
@@ -44,6 +48,8 @@ const (
 	Write
 )
 
+// For the initial request of a block, it returns the path and storageID from the position map.
+// For other requests, it returns a random path and storageID.
 func (s *shardNodeServer) getPathAndStorageBasedOnRequest(block string, requestID string) (path int, storageID int) {
 	if !s.shardNodeFSM.isInitialRequest(block, requestID) {
 		return s.storageHandler.GetRandomPathAndStorageID()
@@ -54,12 +60,36 @@ func (s *shardNodeServer) getPathAndStorageBasedOnRequest(block string, requestI
 	}
 }
 
+// It creates a channel for receiving the response from the raft FSM for the current requestID.
 func (s *shardNodeServer) createResponseChannelForRequestID(requestID string) chan string {
 	s.shardNodeFSM.mu.Lock()
 	defer s.shardNodeFSM.mu.Unlock()
 	ch := make(chan string)
 	s.shardNodeFSM.responseChannel[requestID] = ch
 	return ch
+}
+
+// It periodically sends batches.
+func (s *shardNodeServer) sendBatchesForever() {
+	for {
+		s.sendCurrentBatches()
+		time.Sleep(50 * time.Millisecond) // TODO: choose this based on the number of the requests
+	}
+}
+
+// For queues that have more than batchSize requests, it sends the batch and waits for the responses.
+func (s *shardNodeServer) sendCurrentBatches() {
+	s.batchManager.mu.Lock()
+	defer s.batchManager.mu.Unlock()
+	for storageID, requests := range s.batchManager.storageQueues {
+		if len(requests) >= s.batchManager.batchSize {
+			oramNodeReplicaMap := s.oramNodeClients.getRandomOramNodeReplicaMap()
+			reply, _ := oramNodeReplicaMap.readPathFromAllOramNodeReplicas(context.Background(), requests, storageID)
+			for _, readPathReply := range reply.Responses {
+				s.batchManager.responseChannel[readPathReply.Block] <- readPathReply.Value
+			}
+		}
+	}
 }
 
 func (s *shardNodeServer) query(ctx context.Context, op OperationType, block string, value string) (string, error) {
@@ -82,15 +112,25 @@ func (s *shardNodeServer) query(ctx context.Context, op OperationType, block str
 	}
 
 	path, storageID := s.getPathAndStorageBasedOnRequest(block, requestID)
-	oramNodeReplicaMap := s.oramNodeClients.getRandomOramNodeReplicaMap()
-	reply, err := oramNodeReplicaMap.readPathFromAllOramNodeReplicas(ctx, block, path, storageID)
 
-	if err != nil {
-		return "", fmt.Errorf("could not call the ReadPath RPC on the oram node. %s", err)
+	isInStash := false
+	s.shardNodeFSM.mu.Lock()
+	if _, exists := s.shardNodeFSM.stash[block]; exists {
+		isInStash = true
 	}
+	s.shardNodeFSM.mu.Unlock()
+
+	var replyValue string
+	if isInStash || !s.shardNodeFSM.isInitialRequest(block, requestID) {
+		s.batchManager.addRequestToStorageQueueWithoutWaiting(blockRequest{block: block, path: path}, storageID)
+	} else {
+		oramReplyChan := s.batchManager.addRequestToStorageQueueAndWait(blockRequest{block: block, path: path}, storageID)
+		replyValue = <-oramReplyChan
+	}
+
 	responseChannel := s.createResponseChannelForRequestID(requestID)
 	if s.shardNodeFSM.isInitialRequest(block, requestID) {
-		responseReplicationCommand, err := newResponseReplicationCommand(reply.Value, requestID, block, value, op)
+		responseReplicationCommand, err := newResponseReplicationCommand(replyValue, requestID, block, value, op)
 		if err != nil {
 			return "", fmt.Errorf("could not create response replication command; %s", err)
 		}
@@ -121,13 +161,15 @@ func (s *shardNodeServer) Write(ctx context.Context, writeRequest *pb.WriteReque
 	return &pb.WriteReply{Success: val == writeRequest.Value}, nil
 }
 
-func (s *shardNodeServer) getBlocksForSend(maxBlocks int, path int, storageID int) (blocksToReturn []*pb.Block, blocks []string) {
+// It gets maxBlocks from the stash to send to the requesting oram node.
+// The blocks should be for the same path and storageID.
+func (s *shardNodeServer) getBlocksForSend(maxBlocks int, paths []int, storageID int) (blocksToReturn []*pb.Block, blocks []string) {
 	s.shardNodeFSM.mu.Lock()
 	defer s.shardNodeFSM.mu.Unlock()
 
 	counter := 0
 	for block, stashState := range s.shardNodeFSM.stash {
-		if (s.shardNodeFSM.positionMap[block].path != path) || (s.shardNodeFSM.positionMap[block].storageID != storageID) {
+		if (!s.shardNodeFSM.positionMap[block].isPathForPaths(paths)) || (s.shardNodeFSM.positionMap[block].storageID != storageID) {
 			continue
 		}
 
@@ -146,9 +188,10 @@ func (s *shardNodeServer) getBlocksForSend(maxBlocks int, path int, storageID in
 	return blocksToReturn, blocks
 }
 
+// It sends blocks to the oram node for eviction.
 func (s *shardNodeServer) SendBlocks(ctx context.Context, request *pb.SendBlocksRequest) (*pb.SendBlocksReply, error) {
 
-	blocksToReturn, blocks := s.getBlocksForSend(int(request.MaxBlocks), int(request.Path), int(request.StorageId))
+	blocksToReturn, blocks := s.getBlocksForSend(int(request.MaxBlocks), utils.ConvertInt32SliceToIntSlice(request.Paths), int(request.StorageId))
 
 	sentBlocksReplicationCommand, err := newSentBlocksReplicationCommand(blocks)
 	if err != nil {
@@ -162,6 +205,8 @@ func (s *shardNodeServer) SendBlocks(ctx context.Context, request *pb.SendBlocks
 	return &pb.SendBlocksReply{Blocks: blocksToReturn}, nil
 }
 
+// It gets the acks and nacks from the oram node.
+// Ackes and Nackes get replicated to be handled in the raft layer.
 func (s *shardNodeServer) AckSentBlocks(ctx context.Context, reply *pb.AckSentBlocksRequest) (*pb.AckSentBlocksReply, error) {
 	var ackedBlocks []string
 	var nackedBlocks []string
@@ -203,7 +248,7 @@ func (s *shardNodeServer) JoinRaftVoter(ctx context.Context, joinRaftVoterReques
 	return &pb.JoinRaftVoterReply{Success: true}, nil
 }
 
-func StartServer(shardNodeServerID int, rpcPort int, replicaID int, raftPort int, joinAddr string, oramNodeRPCClients map[int]ReplicaRPCClientMap) {
+func StartServer(shardNodeServerID int, rpcPort int, replicaID int, raftPort int, joinAddr string, oramNodeRPCClients map[int]ReplicaRPCClientMap, parameters config.Parameters) {
 	isFirst := joinAddr == ""
 	shardNodeFSM := newShardNodeFSM()
 	r, err := startRaftServer(isFirst, replicaID, raftPort, shardNodeFSM)
@@ -243,7 +288,9 @@ func StartServer(shardNodeServerID int, rpcPort int, replicaID int, raftPort int
 	if err != nil {
 		log.Fatalf("failed to listen: %v", err)
 	}
-	shardnodeServer := newShardNodeServer(shardNodeServerID, replicaID, r, shardNodeFSM, oramNodeRPCClients, storage.NewStorageHandler())
+	shardnodeServer := newShardNodeServer(shardNodeServerID, replicaID, r, shardNodeFSM, oramNodeRPCClients, storage.NewStorageHandler(), newBatchManager(parameters.BatchSize))
+	go shardnodeServer.sendBatchesForever()
+
 	grpcServer := grpc.NewServer(grpc.UnaryInterceptor(rpc.ContextPropagationUnaryServerInterceptor()))
 	pb.RegisterShardNodeServer(grpcServer, shardnodeServer)
 	grpcServer.Serve(lis)

@@ -32,6 +32,15 @@ type positionState struct {
 	storageID int
 }
 
+func (p positionState) isPathForPaths(paths []int) bool {
+	for _, path := range paths {
+		if p.path == path {
+			return true
+		}
+	}
+	return false
+}
+
 type shardNodeFSM struct {
 	// I'm starting with simple maps and one mutex to handle race conditions.
 	// However, there are other ways to design this that might be better regarding performance:
@@ -110,6 +119,8 @@ func (fsm *shardNodeFSM) handleReplicateRequestAndPathAndStorage(requestID strin
 
 type localReplicaChangeHandlerFunc func(requestID string, r ReplicateResponsePayload)
 
+// It handles the response replication changes locally on each raft replica.
+// The leader doesn't wait for this to finish to return success for the response replication command.
 func (fsm *shardNodeFSM) handleLocalResponseReplicationChanges(requestID string, r ReplicateResponsePayload) {
 	fsm.mu.Lock()
 	defer fsm.mu.Unlock()
@@ -134,7 +145,7 @@ func (fsm *shardNodeFSM) handleLocalResponseReplicationChanges(requestID string,
 	}
 	if fsm.raftNode.State() == raft.Leader {
 		for _, waitingRequestID := range fsm.requestLog[r.RequestedBlock] {
-			timout := time.After(1 * time.Second)
+			timout := time.After(1 * time.Second) // TODO: think about this in the batching scenario
 			select {
 			case <-timout:
 				continue
@@ -171,6 +182,8 @@ func (fsm *shardNodeFSM) handleReplicateSentBlocks(r ReplicateSentBlocksPayload)
 	}
 }
 
+// It keeps the nacked blocks and deletes not changed acked blocks.
+// If an acked block was changed during the eviction, it will keep it.
 func (fsm *shardNodeFSM) handleLocalAcksNacksReplicationChanges(requestID string) {
 	fsm.mu.Lock()
 	defer fsm.mu.Unlock()

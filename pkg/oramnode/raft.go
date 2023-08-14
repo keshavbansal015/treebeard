@@ -17,15 +17,20 @@ import (
 )
 
 type beginEvictionData struct {
-	path      int
+	paths     []int
+	storageID int
+}
+
+type beginReadPathData struct {
+	paths     []int
 	storageID int
 }
 
 type oramNodeFSM struct {
 	mu sync.Mutex
 
-	offsetListMap      map[string][]int   // map of block to offsetList
 	unfinishedEviction *beginEvictionData // unfinished eviction
+	unfinishedReadPath *beginReadPathData // unfinished read path
 }
 
 func (fsm *oramNodeFSM) String() string {
@@ -33,40 +38,38 @@ func (fsm *oramNodeFSM) String() string {
 	defer fsm.mu.Unlock()
 
 	out := fmt.Sprintln("oramNodeFSM")
-	out = out + fmt.Sprintf("offsetListMap: %v\n", fsm.offsetListMap)
 	out = out + fmt.Sprintf("unfinishedEviction: %v\n", fsm.unfinishedEviction)
 	return out
 }
 
 func newOramNodeFSM() *oramNodeFSM {
-	return &oramNodeFSM{offsetListMap: make(map[string][]int)}
+	return &oramNodeFSM{}
 }
 
-func (fsm *oramNodeFSM) handleOffsetListReplicationCommand(block string, offsetList []int) {
+func (fsm *oramNodeFSM) handleBeginEvictionCommand(paths []int, storageID int) {
 	fsm.mu.Lock()
 	defer fsm.mu.Unlock()
 
-	fsm.offsetListMap[block] = offsetList
-}
-
-func (fsm *oramNodeFSM) handleDeleteOffsetListReplicationCommand(block string) {
-	fsm.mu.Lock()
-	defer fsm.mu.Unlock()
-
-	delete(fsm.offsetListMap, block)
-}
-
-func (fsm *oramNodeFSM) handleBeginEvictionCommand(path int, storageID int) {
-	fsm.mu.Lock()
-	defer fsm.mu.Unlock()
-
-	fsm.unfinishedEviction = &beginEvictionData{path, storageID}
+	fsm.unfinishedEviction = &beginEvictionData{paths, storageID}
 }
 
 func (fsm *oramNodeFSM) handleEndEvictionCommand() {
 	fsm.mu.Lock()
 	defer fsm.mu.Unlock()
 	fsm.unfinishedEviction = nil
+}
+
+func (fsm *oramNodeFSM) handleBeginReadPathCommand(paths []int, storageID int) {
+	fsm.mu.Lock()
+	defer fsm.mu.Unlock()
+
+	fsm.unfinishedReadPath = &beginReadPathData{paths, storageID}
+}
+
+func (fsm *oramNodeFSM) handleEndReadPathCommand() {
+	fsm.mu.Lock()
+	defer fsm.mu.Unlock()
+	fsm.unfinishedReadPath = nil
 }
 
 func (fsm *oramNodeFSM) Apply(rLog *raft.Log) interface{} {
@@ -77,29 +80,28 @@ func (fsm *oramNodeFSM) Apply(rLog *raft.Log) interface{} {
 		if err != nil {
 			return fmt.Errorf("could not unmarshall the command; %s", err)
 		}
-		requestID := command.RequestID
-		if command.Type == ReplicateOffsetList {
-			log.Println("got replication command for replicate offsetList")
-			var payload ReplicateOffsetListPayload
-			err := msgpack.Unmarshal(command.Payload, &payload)
-			if err != nil {
-				return fmt.Errorf("could not unmarshall the offsetList replication command; %s", err)
-			}
-			fsm.handleOffsetListReplicationCommand(requestID, payload.OffsetList)
-		} else if command.Type == ReplicateDeleteOffsetList {
-			log.Println("got replication command for replicate delete offsetList")
-			fsm.handleDeleteOffsetListReplicationCommand(requestID)
-		} else if command.Type == ReplicateBeginEviction {
+		if command.Type == ReplicateBeginEviction {
 			log.Println("got replication command for replicate begin eviction")
 			var payload ReplicateBeginEvictionPayload
 			err := msgpack.Unmarshal(command.Payload, &payload)
 			if err != nil {
-				return fmt.Errorf("could not unmarshall the offsetList replication command; %s", err)
+				return fmt.Errorf("could not unmarshall the begin eviction replication command; %s", err)
 			}
-			fsm.handleBeginEvictionCommand(payload.Path, payload.StorageID)
+			fsm.handleBeginEvictionCommand(payload.Paths, payload.StorageID)
 		} else if command.Type == ReplicateEndEviction {
 			log.Println("got replication command for replicate end eviction")
 			fsm.handleEndEvictionCommand()
+		} else if command.Type == ReplicateBeginReadPath {
+			log.Println("got replication command for replicate begin read path")
+			var payload ReplicateBeginReadPathPayload
+			err := msgpack.Unmarshal(command.Payload, &payload)
+			if err != nil {
+				return fmt.Errorf("could not unmarshall the begin read path replication command; %s", err)
+			}
+			fsm.handleBeginReadPathCommand(payload.Paths, payload.StorageID)
+		} else if command.Type == ReplicateEndReadPath {
+			log.Println("got replication command for replicate end read path")
+			fsm.handleEndReadPathCommand()
 		} else {
 			fmt.Println("wrong command type")
 		}

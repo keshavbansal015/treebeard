@@ -9,67 +9,31 @@ import (
 type CommandType int
 
 const (
-	ReplicateOffsetList CommandType = iota
-	ReplicateDeleteOffsetList
-	ReplicateBeginEviction
+	ReplicateBeginEviction CommandType = iota
 	ReplicateEndEviction
+	ReplicateBeginReadPath
+	ReplicateEndReadPath
 )
 
 type Command struct {
-	Type      CommandType
-	RequestID string
-	Payload   []byte
-}
-
-type ReplicateOffsetListPayload struct {
-	OffsetList []int
-}
-
-func newReplicateOffsetListCommand(requestID string, offsetList []int) ([]byte, error) {
-	payload, err := msgpack.Marshal(
-		&ReplicateOffsetListPayload{
-			OffsetList: offsetList,
-		},
-	)
-	if err != nil {
-		return nil, fmt.Errorf("could not marshal the offsetList replication payload %s", err)
-	}
-	command, err := msgpack.Marshal(
-		&Command{
-			Type:      ReplicateOffsetList,
-			RequestID: requestID,
-			Payload:   payload,
-		},
-	)
-	if err != nil {
-		return nil, fmt.Errorf("could not marshal the offsetList replication command %s", err)
-	}
-	return command, nil
-}
-
-func newReplicateDeleteOffsetListCommand(requestID string) ([]byte, error) {
-	command, err := msgpack.Marshal(
-		&Command{
-			Type:      ReplicateDeleteOffsetList,
-			RequestID: requestID,
-			Payload:   []byte{},
-		},
-	)
-	if err != nil {
-		return nil, fmt.Errorf("could not marshal the delete offsetList command; %s", err)
-	}
-	return command, nil
+	Type    CommandType
+	Payload []byte
 }
 
 type ReplicateBeginEvictionPayload struct {
-	Path      int
+	Paths     []int
 	StorageID int
 }
 
-func newReplicateBeginEvictionCommand(path int, storageID int) ([]byte, error) {
+type ReplicateBeginReadPathPayload struct {
+	Paths     []int
+	StorageID int
+}
+
+func newReplicateBeginEvictionCommand(paths []int, storageID int) ([]byte, error) {
 	payload, err := msgpack.Marshal(
 		&ReplicateBeginEvictionPayload{
-			Path:      path,
+			Paths:     paths,
 			StorageID: storageID,
 		},
 	)
@@ -79,9 +43,8 @@ func newReplicateBeginEvictionCommand(path int, storageID int) ([]byte, error) {
 
 	command, err := msgpack.Marshal(
 		&Command{
-			Type:      ReplicateBeginEviction,
-			RequestID: "", // I should move requestID from the command to the payload
-			Payload:   payload,
+			Type:    ReplicateBeginEviction,
+			Payload: payload,
 		},
 	)
 	if err != nil {
@@ -93,13 +56,48 @@ func newReplicateBeginEvictionCommand(path int, storageID int) ([]byte, error) {
 func newReplicateEndEvictionCommand() ([]byte, error) {
 	command, err := msgpack.Marshal(
 		&Command{
-			Type:      ReplicateEndEviction,
-			RequestID: "",
-			Payload:   []byte{},
+			Type:    ReplicateEndEviction,
+			Payload: []byte{},
 		},
 	)
 	if err != nil {
 		return nil, fmt.Errorf("could not marshal the end eviction command; %s", err)
+	}
+	return command, nil
+}
+
+func newReplicateBeginReadPathCommand(paths []int, storageID int) ([]byte, error) {
+	payload, err := msgpack.Marshal(
+		&ReplicateBeginReadPathPayload{
+			Paths:     paths,
+			StorageID: storageID,
+		},
+	)
+	if err != nil {
+		return nil, fmt.Errorf("could not marshall payload for the begin read path command; %s", err)
+	}
+
+	command, err := msgpack.Marshal(
+		&Command{
+			Type:    ReplicateBeginReadPath,
+			Payload: payload,
+		},
+	)
+	if err != nil {
+		return nil, fmt.Errorf("could not marshal the begin read path command; %s", err)
+	}
+	return command, nil
+}
+
+func newReplicateEndReadPathCommand() ([]byte, error) {
+	command, err := msgpack.Marshal(
+		&Command{
+			Type:    ReplicateEndReadPath,
+			Payload: []byte{},
+		},
+	)
+	if err != nil {
+		return nil, fmt.Errorf("could not marshal the end read path command; %s", err)
 	}
 	return command, nil
 }

@@ -47,7 +47,9 @@ func TestReadPathFromAllOramNodeReplicasReturnsResponseFromLeader(t *testing.T) 
 			0: {
 				ClientAPI: &mockOramNodeClient{
 					replyFunc: func() (*oramnodepb.ReadPathReply, error) {
-						return &oramnodepb.ReadPathReply{Value: "response_from_leader"}, nil
+						return &oramnodepb.ReadPathReply{Responses: []*oramnodepb.BlockResponse{
+							{Block: "a", Value: "response_from_leader"},
+						}}, nil
 					},
 				},
 			},
@@ -61,12 +63,12 @@ func TestReadPathFromAllOramNodeReplicasReturnsResponseFromLeader(t *testing.T) 
 		},
 	}
 	replicaMap := oramNodeClients[0]
-	reply, err := replicaMap.readPathFromAllOramNodeReplicas(context.Background(), "", 0, 0)
+	reply, err := replicaMap.readPathFromAllOramNodeReplicas(context.Background(), []blockRequest{{block: "a", path: 0}}, 0)
 	if err != nil {
 		t.Errorf("could not get the response that the leader returned. Error: %s", err)
 	}
-	if reply.Value != "response_from_leader" {
-		t.Errorf("expected to get \"response_from_leader\" but got %s", reply.Value)
+	if reply.Responses[0].Value != "response_from_leader" {
+		t.Errorf("expected to get \"response_from_leader\" but got %s", reply.Responses[0].Value)
 	}
 }
 
@@ -90,7 +92,7 @@ func TestReadPathFromAllOramNodeReplicasTimeoutsIfNoResponseIsReceived(t *testin
 		},
 	}
 	replicaMap := oramNodeClients[0]
-	_, err := replicaMap.readPathFromAllOramNodeReplicas(context.Background(), "", 0, 0)
+	_, err := replicaMap.readPathFromAllOramNodeReplicas(context.Background(), []blockRequest{{block: "a", path: 0}}, 0)
 	if err == nil {
 		t.Errorf("expected timeout error, but no error occurred.")
 	}

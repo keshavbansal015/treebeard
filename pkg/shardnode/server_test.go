@@ -16,7 +16,7 @@ import (
 )
 
 func TestGetPathAndStorageBasedOnRequestWhenInitialRequestReturnsRealPathAndStorage(t *testing.T) {
-	s := newShardNodeServer(0, 0, &raft.Raft{}, newShardNodeFSM(), nil, storage.NewStorageHandler())
+	s := newShardNodeServer(0, 0, &raft.Raft{}, newShardNodeFSM(), nil, storage.NewStorageHandler(), newBatchManager(1))
 	s.shardNodeFSM.requestLog["block1"] = []string{"request1", "request2"}
 	s.shardNodeFSM.positionMap["block1"] = positionState{path: 23, storageID: 3}
 
@@ -30,7 +30,7 @@ func TestGetPathAndStorageBasedOnRequestWhenInitialRequestReturnsRealPathAndStor
 }
 
 func TestCreateResponseChannelForRequestIDAddsChannelToResponseChannel(t *testing.T) {
-	s := newShardNodeServer(0, 0, &raft.Raft{}, newShardNodeFSM(), nil, storage.NewStorageHandler())
+	s := newShardNodeServer(0, 0, &raft.Raft{}, newShardNodeFSM(), nil, storage.NewStorageHandler(), newBatchManager(1))
 	s.createResponseChannelForRequestID("req1")
 	if _, exists := s.shardNodeFSM.responseChannel["req1"]; !exists {
 		t.Errorf("Expected a new channel for key req1 but nothing found!")
@@ -38,7 +38,7 @@ func TestCreateResponseChannelForRequestIDAddsChannelToResponseChannel(t *testin
 }
 
 func TestQueryReturnsErrorForNonLeaderRaftPeer(t *testing.T) {
-	s := newShardNodeServer(0, 0, &raft.Raft{}, newShardNodeFSM(), nil, storage.NewStorageHandler())
+	s := newShardNodeServer(0, 0, &raft.Raft{}, newShardNodeFSM(), nil, storage.NewStorageHandler(), newBatchManager(1))
 	_, err := s.query(context.Background(), Read, "block", "")
 	if err == nil {
 		t.Errorf("A non-leader raft peer should return error after call to query.")
@@ -55,7 +55,9 @@ func getMockOramNodeClients() map[int]ReplicaRPCClientMap {
 			0: {
 				ClientAPI: &mockOramNodeClient{
 					replyFunc: func() (*oramnodepb.ReadPathReply, error) {
-						return &oramnodepb.ReadPathReply{Value: "response_from_leader"}, nil
+						return &oramnodepb.ReadPathReply{Responses: []*oramnodepb.BlockResponse{
+							{Block: "a", Value: "response_from_leader"},
+						}}, nil
 					},
 				},
 			},
@@ -86,15 +88,48 @@ func startLeaderRaftNodeServer(t *testing.T) *shardNodeServer {
 	fsm.raftNode = r
 	fsm.mu.Unlock()
 	<-r.LeaderCh() // wait to become the leader
-	return newShardNodeServer(0, 0, r, fsm, getMockOramNodeClients(), storage.NewStorageHandler())
+	s := newShardNodeServer(0, 0, r, fsm, getMockOramNodeClients(), storage.NewStorageHandler(), newBatchManager(1))
+	go s.sendBatchesForever()
+	return s
 }
 
+// TODO: write a test with batch size more than one
+func TestSendCurrentBatchesSendsQueuesExceedingBatchSizeRequests(t *testing.T) {
+	s := newShardNodeServer(0, 0, &raft.Raft{}, &shardNodeFSM{}, getMockOramNodeClients(), storage.NewStorageHandler(), newBatchManager(1))
+	s.batchManager.responseChannel["a"] = make(chan string)
+	s.batchManager.storageQueues[1] = []blockRequest{{block: "a", path: 1}}
+	go s.sendCurrentBatches()
+	timout := time.After(3 * time.Second)
+	select {
+	case <-timout:
+		t.Errorf("the batches were not sent")
+	case <-s.batchManager.responseChannel["a"]:
+	}
+}
+
+// TODO: write query tests, where batch size is more than one
 func TestQueryReturnsResponseRecievedFromOramNode(t *testing.T) {
 	s := startLeaderRaftNodeServer(t)
+
 	ctx := metadata.NewIncomingContext(context.Background(), metadata.Pairs("requestid", "request1"))
-	response, err := s.query(ctx, Read, "block1", "")
+	response, err := s.query(ctx, Read, "a", "")
 	if response != "response_from_leader" {
 		t.Errorf("expected the response to be \"response_from_leader\" but it is: %s", response)
+	}
+	if err != nil {
+		t.Errorf("expected no error in call to query")
+	}
+}
+
+func TestQueryPrioritizesStashValueToOramNodeResponse(t *testing.T) {
+	s := startLeaderRaftNodeServer(t)
+	ctx := metadata.NewIncomingContext(context.Background(), metadata.Pairs("requestid", "request1"))
+	s.shardNodeFSM.mu.Lock()
+	s.shardNodeFSM.stash["block1"] = stashState{value: "stash_value", logicalTime: 0, waitingStatus: false}
+	s.shardNodeFSM.mu.Unlock()
+	response, err := s.query(ctx, Read, "block1", "")
+	if response != "stash_value" {
+		t.Errorf("expected the response to be \"stash_value\" but it is: %s", response)
 	}
 	if err != nil {
 		t.Errorf("expected no error in call to query")
@@ -104,7 +139,7 @@ func TestQueryReturnsResponseRecievedFromOramNode(t *testing.T) {
 func TestQueryReturnsSentValueForWriteRequests(t *testing.T) {
 	s := startLeaderRaftNodeServer(t)
 	ctx := metadata.NewIncomingContext(context.Background(), metadata.Pairs("requestid", "request1"))
-	response, err := s.query(ctx, Write, "block1", "val")
+	response, err := s.query(ctx, Write, "a", "val")
 	if response != "val" {
 		t.Errorf("expected the response to be \"val\" but it is: %s", response)
 	}
@@ -116,7 +151,7 @@ func TestQueryReturnsSentValueForWriteRequests(t *testing.T) {
 func TestQueryCleansTempValuesInFSMAfterExecution(t *testing.T) {
 	s := startLeaderRaftNodeServer(t)
 	ctx := metadata.NewIncomingContext(context.Background(), metadata.Pairs("requestid", "request1"))
-	s.query(ctx, Write, "block1", "val")
+	s.query(ctx, Write, "a", "val")
 	s.shardNodeFSM.mu.Lock()
 	defer s.shardNodeFSM.mu.Unlock()
 	if _, exists := s.shardNodeFSM.pathMap["request1"]; exists {
@@ -139,10 +174,10 @@ func TestQueryCleansTempValuesInFSMAfterExecution(t *testing.T) {
 func TestQueryAddsReadValueToStash(t *testing.T) {
 	s := startLeaderRaftNodeServer(t)
 	ctx := metadata.NewIncomingContext(context.Background(), metadata.Pairs("requestid", "request1"))
-	s.query(ctx, Read, "block1", "")
+	s.query(ctx, Read, "a", "")
 	s.shardNodeFSM.mu.Lock()
 	defer s.shardNodeFSM.mu.Unlock()
-	if s.shardNodeFSM.stash["block1"].value != "response_from_leader" {
+	if s.shardNodeFSM.stash["a"].value != "response_from_leader" {
 		t.Errorf("The response from the oramnode should be added to the stash")
 	}
 }
@@ -150,10 +185,10 @@ func TestQueryAddsReadValueToStash(t *testing.T) {
 func TestQueryAddsWriteValueToStash(t *testing.T) {
 	s := startLeaderRaftNodeServer(t)
 	ctx := metadata.NewIncomingContext(context.Background(), metadata.Pairs("requestid", "request1"))
-	s.query(ctx, Write, "block1", "valW")
+	s.query(ctx, Write, "a", "valW")
 	s.shardNodeFSM.mu.Lock()
 	defer s.shardNodeFSM.mu.Unlock()
-	if s.shardNodeFSM.stash["block1"].value != "valW" {
+	if s.shardNodeFSM.stash["a"].value != "valW" {
 		t.Errorf("The write value should be added to the stash")
 	}
 }
@@ -161,11 +196,11 @@ func TestQueryAddsWriteValueToStash(t *testing.T) {
 func TestQueryUpdatesPositionMap(t *testing.T) {
 	s := startLeaderRaftNodeServer(t)
 	ctx := metadata.NewIncomingContext(context.Background(), metadata.Pairs("requestid", "request1"))
-	s.shardNodeFSM.positionMap["block1"] = positionState{path: 13423432, storageID: 3223113}
-	s.query(ctx, Write, "block1", "valW")
+	s.shardNodeFSM.positionMap["a"] = positionState{path: 13423432, storageID: 3223113}
+	s.query(ctx, Write, "a", "valW")
 	s.shardNodeFSM.mu.Lock()
 	defer s.shardNodeFSM.mu.Unlock()
-	if s.shardNodeFSM.positionMap["block1"].path == 13423432 || s.shardNodeFSM.positionMap["block1"].storageID == 3223113 {
+	if s.shardNodeFSM.positionMap["a"].path == 13423432 || s.shardNodeFSM.positionMap["a"].storageID == 3223113 {
 		t.Errorf("position map should get updated after request")
 	}
 }
@@ -176,7 +211,7 @@ func TestQueryReturnsResponseToAllWaitingRequests(t *testing.T) {
 	for i := 0; i < 3; i++ {
 		go func(idx int) {
 			ctx := metadata.NewIncomingContext(context.Background(), metadata.Pairs("requestid", fmt.Sprintf("request%d", idx)))
-			response, _ := s.query(ctx, Read, "block1", "")
+			response, _ := s.query(ctx, Read, "a", "")
 			responseChannel <- response
 		}(i)
 	}
@@ -196,7 +231,7 @@ func TestQueryReturnsResponseToAllWaitingRequests(t *testing.T) {
 }
 
 func TestGetBlocksForSendReturnsAtMostMaxBlocksFromTheStash(t *testing.T) {
-	s := newShardNodeServer(0, 0, &raft.Raft{}, newShardNodeFSM(), make(RPCClientMap), storage.NewStorageHandler())
+	s := newShardNodeServer(0, 0, &raft.Raft{}, newShardNodeFSM(), make(RPCClientMap), storage.NewStorageHandler(), newBatchManager(1))
 	s.shardNodeFSM.stash = map[string]stashState{
 		"block1": {value: "block1", logicalTime: 0, waitingStatus: false},
 		"block2": {value: "block2", logicalTime: 0, waitingStatus: false},
@@ -212,14 +247,14 @@ func TestGetBlocksForSendReturnsAtMostMaxBlocksFromTheStash(t *testing.T) {
 	s.shardNodeFSM.positionMap["block5"] = positionState{path: 0, storageID: 0}
 	s.shardNodeFSM.positionMap["block6"] = positionState{path: 0, storageID: 0}
 
-	_, blocks := s.getBlocksForSend(4, 0, 0)
+	_, blocks := s.getBlocksForSend(4, []int{0}, 0)
 	if len(blocks) != 4 {
 		t.Errorf("expected 4 blocks but got: %d blocks", len(blocks))
 	}
 }
 
 func TestGetBlocksForSendReturnsOnlyBlocksForPathAndStorageID(t *testing.T) {
-	s := newShardNodeServer(0, 0, &raft.Raft{}, newShardNodeFSM(), make(RPCClientMap), storage.NewStorageHandler())
+	s := newShardNodeServer(0, 0, &raft.Raft{}, newShardNodeFSM(), make(RPCClientMap), storage.NewStorageHandler(), newBatchManager(1))
 	s.shardNodeFSM.stash = map[string]stashState{
 		"block1": {value: "block1", logicalTime: 0, waitingStatus: false},
 		"block2": {value: "block2", logicalTime: 0, waitingStatus: false},
@@ -229,7 +264,7 @@ func TestGetBlocksForSendReturnsOnlyBlocksForPathAndStorageID(t *testing.T) {
 	s.shardNodeFSM.positionMap["block2"] = positionState{path: 1, storageID: 2}
 	s.shardNodeFSM.positionMap["block3"] = positionState{path: 0, storageID: 0}
 
-	_, blocks := s.getBlocksForSend(4, 0, 0)
+	_, blocks := s.getBlocksForSend(4, []int{0}, 0)
 	for _, block := range blocks {
 		if block == "block2" {
 			t.Errorf("getBlocks should only return blocks for the path and storageID")
@@ -238,7 +273,7 @@ func TestGetBlocksForSendReturnsOnlyBlocksForPathAndStorageID(t *testing.T) {
 }
 
 func TestGetBlocksForSendDoesNotReturnsWaitingBlocks(t *testing.T) {
-	s := newShardNodeServer(0, 0, &raft.Raft{}, newShardNodeFSM(), make(RPCClientMap), storage.NewStorageHandler())
+	s := newShardNodeServer(0, 0, &raft.Raft{}, newShardNodeFSM(), make(RPCClientMap), storage.NewStorageHandler(), newBatchManager(1))
 	s.shardNodeFSM.stash = map[string]stashState{
 		"block1": {value: "block1", logicalTime: 0, waitingStatus: true},
 		"block2": {value: "block2", logicalTime: 0, waitingStatus: false},
@@ -248,7 +283,7 @@ func TestGetBlocksForSendDoesNotReturnsWaitingBlocks(t *testing.T) {
 	s.shardNodeFSM.positionMap["block2"] = positionState{path: 0, storageID: 0}
 	s.shardNodeFSM.positionMap["block3"] = positionState{path: 0, storageID: 0}
 
-	_, blocks := s.getBlocksForSend(4, 0, 0)
+	_, blocks := s.getBlocksForSend(4, []int{0}, 0)
 	for _, block := range blocks {
 		if block == "block1" {
 			t.Errorf("getBlocks should only return blocks with the waitingStatus equal to false")
@@ -264,10 +299,10 @@ func TestSendBlocksReturnsStashBlocks(t *testing.T) {
 		"block3": {value: "block3", logicalTime: 0, waitingStatus: false},
 	}
 	s.shardNodeFSM.positionMap["block1"] = positionState{path: 0, storageID: 0}
-	s.shardNodeFSM.positionMap["block2"] = positionState{path: 0, storageID: 0}
+	s.shardNodeFSM.positionMap["block2"] = positionState{path: 1, storageID: 0}
 	s.shardNodeFSM.positionMap["block3"] = positionState{path: 0, storageID: 0}
 
-	blocks, err := s.SendBlocks(context.Background(), &shardnodepb.SendBlocksRequest{MaxBlocks: 3, Path: 0, StorageId: 0})
+	blocks, err := s.SendBlocks(context.Background(), &shardnodepb.SendBlocksRequest{MaxBlocks: 3, Paths: []int32{0, 1}, StorageId: 0})
 	if err != nil {
 		t.Errorf("Expected successful execution of SendBlocks")
 	}
@@ -287,7 +322,7 @@ func TestSendBlocksMarksSentBlocksAsWaitingAndZeroLogicalTime(t *testing.T) {
 	s.shardNodeFSM.positionMap["block2"] = positionState{path: 0, storageID: 0}
 	s.shardNodeFSM.positionMap["block3"] = positionState{path: 0, storageID: 0}
 
-	blocks, _ := s.SendBlocks(context.Background(), &shardnodepb.SendBlocksRequest{MaxBlocks: 3, Path: 0, StorageId: 0})
+	blocks, _ := s.SendBlocks(context.Background(), &shardnodepb.SendBlocksRequest{MaxBlocks: 3, Paths: []int32{0}, StorageId: 0})
 	s.shardNodeFSM.mu.Lock()
 	for _, block := range blocks.Blocks {
 		if s.shardNodeFSM.stash[block.Block].waitingStatus == false {

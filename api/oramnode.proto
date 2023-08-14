@@ -9,14 +9,23 @@ service OramNode {
     rpc JoinRaftVoter (JoinRaftVoterRequest) returns (JoinRaftVoterReply) {}
 }
 
-message ReadPathRequest {
+message BlockRequest {
     string block = 1;
     int32 path = 2;
+}
+
+message ReadPathRequest {
+    repeated BlockRequest requests = 1;
     int32 storage_id = 3;
 }
 
+message BlockResponse {
+    string block = 1;
+    string value = 2;
+}
+
 message ReadPathReply {
-    string value = 1;
+    repeated BlockResponse responses = 1;
 }
 
 message JoinRaftVoterRequest {

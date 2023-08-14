@@ -40,7 +40,7 @@ message JoinRaftVoterReply {
 
 message SendBlocksRequest {
     int32 maxBlocks = 1;
-    int32 path = 2;
+    repeated int32 paths = 2;
     int32 storage_id = 3;
 }
 

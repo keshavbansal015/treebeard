@@ -38,6 +38,12 @@ type OramNodeConfig struct {
 	Endpoints []OramNodeEndpoint
 }
 
+type Parameters struct {
+	MaxBlocksToSend int `yaml:"max-blocks-to-send"`
+	EvictionRate    int `yaml:"eviction-rate"`
+	BatchSize       int `yaml:"batch-size"`
+}
+
 func ReadRouterEndpoints(path string) ([]RouterEndpoint, error) {
 	yamlFile, err := os.ReadFile(path)
 	if err != nil {
@@ -78,4 +84,18 @@ func ReadOramNodeEndpoints(path string) ([]OramNodeEndpoint, error) {
 		return nil, err
 	}
 	return config.Endpoints, nil
+}
+
+func ReadParameters(path string) (Parameters, error) {
+	yamlFile, err := os.ReadFile(path)
+	if err != nil {
+		return Parameters{}, err
+	}
+
+	var params Parameters
+	err = yaml.Unmarshal(yamlFile, &params)
+	if err != nil {
+		return Parameters{}, err
+	}
+	return params, nil
 }

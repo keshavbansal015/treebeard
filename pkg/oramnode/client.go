@@ -7,6 +7,7 @@ import (
 	shardnodepb "github.com/dsg-uwaterloo/oblishard/api/shardnode"
 	"github.com/dsg-uwaterloo/oblishard/pkg/config"
 	"github.com/dsg-uwaterloo/oblishard/pkg/rpc"
+	"github.com/dsg-uwaterloo/oblishard/pkg/utils"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 )
@@ -15,8 +16,6 @@ type ShardNodeRPCClient struct {
 	ClientAPI shardnodepb.ShardNodeClient
 	Conn      *grpc.ClientConn
 }
-
-const MaxBlocksToSend int32 = 5
 
 type ReplicaRPCClientMap map[int]ShardNodeRPCClient
 
@@ -47,7 +46,7 @@ func (r *ReplicaRPCClientMap) sendAcksToShardNode(acks []*shardnodepb.Ack) error
 	return nil
 }
 
-func (r *ReplicaRPCClientMap) getBlocksFromShardNode(path int, storageID int) ([]*shardnodepb.Block, error) {
+func (r *ReplicaRPCClientMap) getBlocksFromShardNode(paths []int, storageID int, maxBlocksToSend int) ([]*shardnodepb.Block, error) {
 
 	var replicaFuncs []rpc.CallFunc
 	var clients []interface{}
@@ -65,8 +64,8 @@ func (r *ReplicaRPCClientMap) getBlocksFromShardNode(path int, storageID int) ([
 		clients,
 		replicaFuncs,
 		&shardnodepb.SendBlocksRequest{
-			MaxBlocks: MaxBlocksToSend,
-			Path:      int32(path),
+			MaxBlocks: int32(maxBlocksToSend),
+			Paths:     utils.ConvertIntSliceToInt32Slice(paths),
 			StorageId: int32(storageID),
 		},
 	)

@@ -32,5 +32,10 @@ func main() {
 		log.Fatalf("Failed to create client connections with oarm node servers; %v", err)
 	}
 
-	shardnode.StartServer(*shardNodeID, *rpcPort, *replicaID, *raftPort, *joinAddr, rpcClients)
+	parameters, err := config.ReadParameters("../../configs/parameters.yaml")
+	if err != nil {
+		log.Fatalf("Failed to read parameters from yaml file; %v", err)
+	}
+
+	shardnode.StartServer(*shardNodeID, *rpcPort, *replicaID, *raftPort, *joinAddr, rpcClients, parameters)
 }
