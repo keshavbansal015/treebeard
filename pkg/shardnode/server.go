@@ -86,8 +86,12 @@ func (s *shardNodeServer) sendCurrentBatches() {
 			oramNodeReplicaMap := s.oramNodeClients.getRandomOramNodeReplicaMap()
 			reply, _ := oramNodeReplicaMap.readPathFromAllOramNodeReplicas(context.Background(), requests, storageID)
 			for _, readPathReply := range reply.Responses {
-				s.batchManager.responseChannel[readPathReply.Block] <- readPathReply.Value
+				if _, exists := s.batchManager.responseChannel[readPathReply.Block]; exists {
+					s.batchManager.responseChannel[readPathReply.Block] <- readPathReply.Value
+					delete(s.batchManager.responseChannel, readPathReply.Block)
+				}
 			}
+			delete(s.batchManager.storageQueues, storageID)
 		}
 	}
 }

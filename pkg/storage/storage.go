@@ -30,7 +30,7 @@ func (s *StorageHandler) GetRandomPathAndStorageID() (path int, storageID int) {
 // If non of the "blocks" are in the bucket, it returns isReal=false
 func (s *StorageHandler) GetBlockOffset(bucketID int, storageID int, blocks []string) (offset int, isReal bool, blockFound string, err error) {
 	// TODO: implement
-	return 0, true, "a", nil
+	return 0, true, blocks[0], nil
 }
 
 // It returns the number of times a bucket was accessed.

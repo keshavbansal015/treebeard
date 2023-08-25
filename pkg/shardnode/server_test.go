@@ -107,6 +107,20 @@ func TestSendCurrentBatchesSendsQueuesExceedingBatchSizeRequests(t *testing.T) {
 	}
 }
 
+func TestSendCurrentBatchesRemovesSentQueueAndResponseChannel(t *testing.T) {
+	s := newShardNodeServer(0, 0, &raft.Raft{}, &shardNodeFSM{}, getMockOramNodeClients(), storage.NewStorageHandler(), newBatchManager(1))
+	s.batchManager.responseChannel["a"] = make(chan string)
+	s.batchManager.storageQueues[1] = []blockRequest{{block: "a", path: 1}}
+	go s.sendCurrentBatches()
+	<-s.batchManager.responseChannel["a"]
+	if _, exists := s.batchManager.storageQueues[1]; exists {
+		t.Errorf("SendCurrentBatches should remove queue after sending it")
+	}
+	if _, exists := s.batchManager.responseChannel["a"]; exists {
+		t.Errorf("SendCurrentBatches should remove block from response channel after sending it")
+	}
+}
+
 // TODO: write query tests, where batch size is more than one
 func TestQueryReturnsResponseRecievedFromOramNode(t *testing.T) {
 	s := startLeaderRaftNodeServer(t)
