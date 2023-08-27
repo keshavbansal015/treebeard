@@ -24,17 +24,17 @@ func main() {
 		log.Fatalf("Failed to read trace file; %v", err)
 	}
 
-	testRouterRPCClient := rpcClients[0] // TODO: randomly choose a router
+	routerRPCClient := rpcClients.GetRandomRouter()
 	for _, request := range requests {
 		if request.OperationType == client.Read {
-			value, err := testRouterRPCClient.Read(request.Block)
+			value, err := routerRPCClient.Read(request.Block)
 			if err != nil {
-				log.Printf("Failed to call Read on router; %v\n", err)
+				log.Printf("Failed to call Read on router; %v", err)
 				return
 			}
-			fmt.Printf("Sucess in Read. Got value: %v", value)
+			fmt.Printf("Sucess in Read. Got value: %v\n", value)
 		} else {
-			value, err := testRouterRPCClient.Write(request.Block, request.NewValue)
+			value, err := routerRPCClient.Write(request.Block, request.NewValue)
 			if err != nil {
 				log.Printf("Failed to call Write on router; %v", err)
 				return
