@@ -117,13 +117,11 @@ func (sn snapshotNoop) Persist(_ raft.SnapshotSink) error { return nil }
 func (sn snapshotNoop) Release()                          {}
 
 func (fsm *oramNodeFSM) Snapshot() (raft.FSMSnapshot, error) {
-	// TODO: implement
 	return snapshotNoop{}, nil
 }
 
 func (fsm *oramNodeFSM) Restore(rc io.ReadCloser) error {
-	// TODO: implement
-	return fmt.Errorf("not implemented yet") //TODO: implement
+	return fmt.Errorf("not implemented yet")
 }
 
 // TODO: the logic for startRaftServer is the same for both shardNode and OramNode.
