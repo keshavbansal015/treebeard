@@ -4,79 +4,45 @@ import (
 	"context"
 	"fmt"
 	"log"
-	"math"
 	"net"
+	"time"
 
 	pb "github.com/dsg-uwaterloo/oblishard/api/router"
-	shardnodepb "github.com/dsg-uwaterloo/oblishard/api/shardnode"
 	"github.com/dsg-uwaterloo/oblishard/pkg/rpc"
-	utils "github.com/dsg-uwaterloo/oblishard/pkg/utils"
 	"google.golang.org/grpc"
 )
 
 type routerServer struct {
 	pb.UnimplementedRouterServer
-	shardNodeRPCClients map[int]ReplicaRPCClientMap
-	routerID            int
-	hasher              utils.Hasher
+	routerID     int
+	epochManager *epochManager
 }
 
-func newRouterServer(shardNodeRPCClients map[int]ReplicaRPCClientMap, routerID int) routerServer {
+func newRouterServer(routerID int, epochManager *epochManager) routerServer {
 	return routerServer{
-		shardNodeRPCClients: shardNodeRPCClients,
-		routerID:            routerID,
-		hasher:              utils.Hasher{KnownHashes: make(map[string]uint32)},
+		routerID:     routerID,
+		epochManager: epochManager,
 	}
-}
-
-func (r *routerServer) whereToForward(block string) (shardNodeID int) {
-	h := r.hasher.Hash(block)
-	return int(math.Mod(float64(h), float64(len(r.shardNodeRPCClients))))
 }
 
 func (r *routerServer) Read(ctx context.Context, readRequest *pb.ReadRequest) (*pb.ReadReply, error) {
-	whereToForward := r.whereToForward(readRequest.Block)
-	shardNodeRPCClient := r.shardNodeRPCClients[whereToForward]
-
-	var replicaFuncs []rpc.CallFunc
-	var clients []interface{}
-	for _, c := range shardNodeRPCClient {
-		replicaFuncs = append(replicaFuncs,
-			func(ctx context.Context, client interface{}, request interface{}, opts ...grpc.CallOption) (interface{}, error) {
-				return client.(ShardNodeRPCClient).ClientAPI.Read(ctx, request.(*shardnodepb.ReadRequest), opts...)
-			},
-		)
-		clients = append(clients, c)
+	responseChannel := r.epochManager.addRequestToCurrentEpoch(&request{ctx: ctx, operationType: Read, block: readRequest.Block})
+	response := <-responseChannel
+	readResponse := response.(readResponse)
+	if readResponse.err != nil {
+		return nil, fmt.Errorf("could not read value from the shardnode; %s", readResponse.err)
 	}
-	reply, err := rpc.CallAllReplicas(ctx, clients, replicaFuncs, &shardnodepb.ReadRequest{Block: readRequest.Block})
-	if err != nil {
-		return nil, fmt.Errorf("could not read value from the shardnode; %s", err)
-	}
-	shardNodeReply := reply.(*shardnodepb.ReadReply)
-	return &pb.ReadReply{Value: shardNodeReply.Value}, nil
+	return &pb.ReadReply{Value: readResponse.value}, nil
 }
 
 func (r *routerServer) Write(ctx context.Context, writeRequest *pb.WriteRequest) (*pb.WriteReply, error) {
-	whereToForward := r.whereToForward(writeRequest.Block)
-	shardNodeRPCClient := r.shardNodeRPCClients[whereToForward]
-
-	var replicaFuncs []rpc.CallFunc
-	var clients []interface{}
-	for _, c := range shardNodeRPCClient {
-		replicaFuncs = append(replicaFuncs,
-			func(ctx context.Context, client interface{}, request interface{}, opts ...grpc.CallOption) (interface{}, error) {
-				return client.(ShardNodeRPCClient).ClientAPI.Write(ctx, request.(*shardnodepb.WriteRequest), opts...)
-			},
-		)
-		clients = append(clients, c)
+	responseChannel := r.epochManager.addRequestToCurrentEpoch(&request{ctx: ctx, operationType: Write, block: writeRequest.Block, value: writeRequest.Value})
+	response := <-responseChannel
+	writeResponse := response.(writeResponse)
+	if writeResponse.err != nil {
+		return nil, fmt.Errorf("could not write value to the shardnode; %s", writeResponse.err)
 	}
-
-	reply, err := rpc.CallAllReplicas(ctx, clients, replicaFuncs, &shardnodepb.WriteRequest{Block: writeRequest.Block, Value: writeRequest.Value})
-	if err != nil {
-		return nil, fmt.Errorf("could not write value to the shardnode; %s", err)
-	}
-	shardNodeReply := reply.(*shardnodepb.WriteReply)
-	return &pb.WriteReply{Success: shardNodeReply.Success}, nil
+	return &pb.WriteReply{Success: writeResponse.success}, nil
 }
 
 func StartRPCServer(shardNodeRPCClients map[int]ReplicaRPCClientMap, routerID int, port int) {
@@ -86,7 +52,9 @@ func StartRPCServer(shardNodeRPCClients map[int]ReplicaRPCClientMap, routerID in
 	}
 	grpcServer := grpc.NewServer(grpc.UnaryInterceptor(rpc.ContextPropagationUnaryServerInterceptor()))
 
-	routerServer := newRouterServer(shardNodeRPCClients, routerID)
+	epochManager := newEpochManager(shardNodeRPCClients, 5*time.Second) //TODO: change duration
+	go epochManager.run()
+	routerServer := newRouterServer(routerID, epochManager)
 	pb.RegisterRouterServer(grpcServer, &routerServer)
 	grpcServer.Serve(lis)
 }
