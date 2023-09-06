@@ -22,7 +22,7 @@ func (s IntSet) Contains(item int) bool {
 
 // need to implement incrementation of dummyIndex after read
 func (info *client) getDummyObject(pathId int) (key string, value string, err error) {
-	key, err = info.GetMetadata(pathId, Z + S)
+	key, err = info.GetMetadata(pathId, "nextDummy")
 	if err != nil {
 		fmt.Println("error fetching dummy index metadata")
 		return "", "", err
@@ -32,7 +32,7 @@ func (info *client) getDummyObject(pathId int) (key string, value string, err er
 		fmt.Println("Unable to convert dummyIndex to int; something went wrong with indexing")
 		return "", "", err
 	}
-	key, err = info.GetMetadata(pathId, dummyIndex)
+	key, err = info.GetMetadata(pathId, strconv.Itoa(dummyIndex))
 	if err != nil {
 		fmt.Println("error fetching metadata")
 		return "", "", err
@@ -62,7 +62,7 @@ func (info *client) readPath(pathId int, blockIndex string) (map[string]string, 
 			value_map[key] = value
 		} else {
 			for i := 0; i < Z; i++ {
-				key, err := info.GetMetadata(posId, i)
+				key, err := info.GetMetadata(posId, strconv.Itoa(i))
 				if err != nil {
 					fmt.Println("error fetching metadata")
 					return nil, err

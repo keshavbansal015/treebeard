@@ -2,16 +2,34 @@ package storage
 
 // TODO: It might need to handle multiple storage shards.
 
+import (
+	"context"
+	"strconv"
+)
+
 // MaxAccessCount is the maximum times we can access a bucket safely.
-const MaxAccessCount int = 8
+const (
+	MaxAccessCount int = 8
+	Z = 1
+    S = 9
+	shift = 1 // 2^shift children per node
+)
 
 // StorageHandler is responsible for handling one or multiple storage shards.
 type StorageHandler struct {
 	maxAccessCount int
+	host string
+	db   int
+	key  []byte
 }
 
-func NewStorageHandler() *StorageHandler {
-	return &StorageHandler{maxAccessCount: MaxAccessCount}
+func NewStorageHandler(host string, db int, key []byte) *StorageHandler {
+	return &StorageHandler{
+		maxAccessCount: MaxAccessCount,
+		host: host,
+		db:   db,
+		key:  key,
+	}
 }
 
 func (s *StorageHandler) GetMaxAccessCount() int {
@@ -30,7 +48,21 @@ func (s *StorageHandler) GetRandomPathAndStorageID() (path int, storageID int) {
 // If non of the "blocks" are in the bucket, it returns isReal=false
 func (s *StorageHandler) GetBlockOffset(bucketID int, storageID int, blocks []string) (offset int, isReal bool, blockFound string, err error) {
 	// TODO: implement
-	return 0, true, "a", nil
+	blockMap := make(map[string]int)
+	for i := 0; i < Z; i++ {
+		block, err := s.GetMetadata(bucketID, strconv.Itoa(i))
+		if err != nil {
+			return -1, false, "", err
+		}
+		blockMap[block] = i
+	}
+	for _, block := range(blocks) {
+		val, exist := blockMap[block]
+		if exist {
+			return val, true, block, nil
+		}
+	}
+	return -1, false, "", err
 }
 
 // It returns the number of times a bucket was accessed.
@@ -45,10 +77,13 @@ func (s *StorageHandler) GetAccessCount(bucketID int, storageID int) (count int,
 // blocks is a map of block id to block values.
 func (s *StorageHandler) ReadBucket(bucketID int, storageID int) (blocks map[string]string, err error) {
 	// TODO: implement
-	return map[string]string{
-		"a": "storage_value_a",
-		"b": "storage_value_b",
-	}, nil
+	client := s.getClient()
+	ctx := context.Background()
+	blocks, err = client.HGetAll(ctx, strconv.Itoa(bucketID)).Result()
+	if err != nil {
+		return nil, err
+	}
+	return blocks, nil
 }
 
 // WriteBucket writes readBucketBlocks and shardNodeBlocks to the storage shard.
@@ -69,14 +104,40 @@ func (s *StorageHandler) WriteBucket(bucketID int, storageID int, readBucketBloc
 
 // ReadBlock reads a single block using an its offset.
 func (s *StorageHandler) ReadBlock(bucketID int, storageID int, offset int) (value string, err error) {
-	// TODO: implement
 	// TODO: it should invalidate and increase counter
-	value = "test_read_block_from_storage"
+	client := s.getClient()
+	ctx := context.Background()
+	value, err = client.HGet(ctx, strconv.Itoa(bucketID), strconv.Itoa(offset)).Result()
+	if err != nil {
+		return "", err
+	}
+	// invalidate value (set it to null)
+	err = client.HSet(ctx, strconv.Itoa(bucketID), strconv.Itoa(offset), "__null__").Err()
+	if err != nil {
+		return "", err
+	}
 	return value, nil
 }
 
 // GetBucketsInPaths return all the bucket ids for the passed paths.
 func (s *StorageHandler) GetBucketsInPaths(paths []int) (bucketIDs []int, err error) {
 	// TODO: implement
-	return []int{0, 1, 2}, nil
+	buckets := make(IntSet)
+	for i := 0; i < len(paths); i++ {
+		for bucketId := paths[i]; bucketId > 0; bucketId = bucketId >> shift {
+			if buckets.Contains(bucketId) {
+				break;
+			} else {
+				buckets.Add(bucketId)
+				// fmt.Println(bucketId)
+			}
+		}
+	}
+	bucketIDs = make([]int, len(buckets))
+	i := 0
+	for key := range buckets {
+		bucketIDs[i] = key
+		i++
+	}
+	return bucketIDs, nil
 }

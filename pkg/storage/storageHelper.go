@@ -1,4 +1,4 @@
-package main
+package storage
 
 import (
 	"bufio"
@@ -13,68 +13,21 @@ import (
 	"github.com/redis/go-redis/v9"
 )
 
-type client struct {
-	host string
-	db   int
-	key  []byte
+func (s *StorageHandler) getClient() *redis.Client {
+	return redis.NewClient(&redis.Options{
+		Addr:     s.host,
+		Password: "",
+		DB:       s.db,
+	})
 }
 
-type data struct {
-	name  string
-	value int
-}
-
-const (
-	Z     = 1
-	S     = 9
-	shift = 1 // 2^shift children per node
-)
-
-func NewClient(host string, db int, key []byte) *client {
-	return &client{
-		host: host,
-		db:   db,
-		key:  key,
-	}
-}
-
-func (info *client) CloseClient() (err error) {
-	client := info.getClient()
+func (s *StorageHandler) CloseClient() (err error) {
+	client := s.getClient()
 	err = client.Close()
 	if err != nil {
 		return err
 	}
 	return nil
-}
-
-func (info *client) getClient() *redis.Client {
-	return redis.NewClient(&redis.Options{
-		Addr:     info.host,
-		Password: "",
-		DB:       info.db,
-	})
-}
-
-// garbage func
-func (info *client) Set(key string, value string) (err error) {
-	client := info.getClient()
-	ctx := context.Background()
-	err = client.Set(ctx, key, value, 0).Err()
-	if err != nil {
-		return err
-	}
-	return nil
-}
-
-func (info *client) Get(bucketId int, bit int) (value string, err error) {
-	client := info.getClient()
-	ctx := context.Background()
-	value, err = client.HGet(ctx, strconv.Itoa(bucketId), strconv.Itoa(bit)).Result()
-
-	if err != nil {
-		return "", err
-	}
-	return value, nil
 }
 
 func shuffleArray(arr []int) {
@@ -85,7 +38,7 @@ func shuffleArray(arr []int) {
 	}
 }
 
-func (info *client) databaseInit(filepath string) (position_map map[string]int, err error) {
+func (s *StorageHandler) databaseInit(filepath string) (position_map map[string]int, err error) {
 	file, err := os.Open(filepath)
 	if err != nil {
 		fmt.Println("Error opening file:", err)
@@ -114,7 +67,7 @@ func (info *client) databaseInit(filepath string) (position_map map[string]int, 
 		parts := strings.Fields(line)
 		userID := parts[1]
 		value := parts[2]
-		value, err = Encrypt(value, info.key)
+		value, err = Encrypt(value, s.key)
 		if err != nil {
 			fmt.Println("Error encrypting data")
 			return nil, err
@@ -131,7 +84,7 @@ func (info *client) databaseInit(filepath string) (position_map map[string]int, 
 			for ; i < Z+S; i++ {
 				dummyID := "dummy" + strconv.Itoa(dummyCount)
 				dummyString := "b" + strconv.Itoa(bucketCount) + "d" + strconv.Itoa(i)
-				dummyString, err = Encrypt(dummyString, info.key)
+				dummyString, err = Encrypt(dummyString, s.key)
 				if err != nil {
 					fmt.Println("Error encrypting data")
 					return nil, err
@@ -143,12 +96,12 @@ func (info *client) databaseInit(filepath string) (position_map map[string]int, 
 				dummyCount++
 			}
 			// push content of value array and meta data array
-			err = info.Push(bucketCount, values)
+			err = s.Push(bucketCount, values)
 			if err != nil {
 				fmt.Println("Error pushing values to db:", err)
 				return nil, err
 			}
-			err = info.PushMetadata(bucketCount, metadatas)
+			err = s.PushMetadata(bucketCount, metadatas)
 			if err != nil {
 				fmt.Println("Error pushing metadatas to db:", err)
 				return nil, err
@@ -162,28 +115,8 @@ func (info *client) databaseInit(filepath string) (position_map map[string]int, 
 	return position_map, nil
 }
 
-func (info *client) DatabaseClear() (err error) {
-	client := info.getClient()
-	ctx := context.Background()
-	err = client.FlushAll(ctx).Err()
-	if err != nil {
-		return err
-	}
-	return nil
-}
-
-func (info *client) GetMetadata(bucketId int, bit string) (value string, err error) {
-	client := info.getClient()
-	ctx := context.Background()
-	value, err = client.HGet(ctx, strconv.Itoa(-1*bucketId), bit).Result()
-	if err != nil {
-		return "", err
-	}
-	return value, nil
-}
-
-func (info *client) Push(bucketId int, value []string) (err error) {
-	client := info.getClient()
+func (s *StorageHandler) Push(bucketId int, value []string) (err error) {
+	client := s.getClient()
 	ctx := context.Background()
 	kvpMap := make(map[string]interface{})
 	for i := 0; i < len(value); i++ {
@@ -196,8 +129,8 @@ func (info *client) Push(bucketId int, value []string) (err error) {
 	return nil
 }
 
-func (info *client) PushMetadata(bucketId int, value []string) (err error) {
-	client := info.getClient()
+func (s *StorageHandler) PushMetadata(bucketId int, value []string) (err error) {
+	client := s.getClient()
 	ctx := context.Background()
 	kvpMap := make(map[string]interface{})
 	for i := 0; i < len(value); i++ {
@@ -211,31 +144,26 @@ func (info *client) PushMetadata(bucketId int, value []string) (err error) {
 	return nil
 }
 
-func main() {
-	key := []byte("passphrasewhichneedstobe32bytes!")
-	info := NewClient("localhost:6379", 1, key)
-	path := "./data.txt"
-
-	posmap, err := info.databaseInit(path)
+func (s *StorageHandler) GetMetadata(bucketId int, bit string) (value string, err error) {
+	client := s.getClient()
+	ctx := context.Background()
+	value, err = client.HGet(ctx, strconv.Itoa(-1*bucketId), bit).Result()
 	if err != nil {
-		fmt.Println("error initializing database")
+		return "", err
 	}
-	pathId := posmap["user5241976879437760820"]
-	fmt.Println(pathId)
+	return value, nil
+}
 
-	vmap, err := info.readPath(pathId, "user5241976879437760820")
-	for key, value := range vmap {
-		fmt.Printf("Key: %s, Value: %s \n", key, value)
-	}
-	paths := make([]int, 4)
-	paths[0] = 16
-	paths[1] = 18
-	paths[2] = 21
-	paths[3] = 31
-	arr := info.GetBucketsInPaths(paths)
-	for i := 0; i < len(arr); i++ {
-		fmt.Println(arr[i])
-	}
-	info.DatabaseClear()
-	info.CloseClient()
+type IntSet map[int]struct{}
+func (s IntSet) Add(item int) {
+	s[item] = struct{}{}
+}
+
+func (s IntSet) Remove(item int) {
+	delete(s, item)
+}
+
+func (s IntSet) Contains(item int) bool {
+	_, found := s[item]
+	return found
 }
