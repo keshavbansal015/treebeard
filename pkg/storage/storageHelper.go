@@ -1,4 +1,4 @@
-package storage
+package main
 
 import (
 	"bufio"
@@ -137,6 +137,7 @@ func (s *StorageHandler) PushMetadata(bucketId int, value []string) (err error) 
 		kvpMap[strconv.Itoa(i)] = value[i]
 	}
 	kvpMap["nextDummy"] = Z
+	kvpMap["accessCount"] = 0
 	err = client.HMSet(ctx, strconv.Itoa(-1*bucketId), kvpMap).Err()
 	if err != nil {
 		return err
@@ -144,14 +145,28 @@ func (s *StorageHandler) PushMetadata(bucketId int, value []string) (err error) 
 	return nil
 }
 
-func (s *StorageHandler) GetMetadata(bucketId int, bit string) (value string, err error) {
+// return pos + key as one string stored in metadata at bit
+func (s *StorageHandler) GetMetadata(bucketId int, bit string) (pos int, key string, err error) {
 	client := s.getClient()
 	ctx := context.Background()
-	value, err = client.HGet(ctx, strconv.Itoa(-1*bucketId), bit).Result()
+	block, err := client.HGet(ctx, strconv.Itoa(-1*bucketId), bit).Result()
 	if err != nil {
-		return "", err
+		return -1, "", err
 	}
-	return value, nil
+	// parse block into pos + key
+	index := 0
+	for j, char := range block {
+		if char < '0' || char > '9' {
+			index = j
+			break
+		}
+	}
+	pos, err = strconv.Atoi(block[:index])
+	if err != nil {
+		return -1, "", err
+	}
+	key = block[index:]
+	return pos, key, nil
 }
 
 type IntSet map[int]struct{}

@@ -1,4 +1,4 @@
-package storage
+package main
 
 // TODO: It might need to handle multiple storage shards.
 
@@ -50,16 +50,16 @@ func (s *StorageHandler) GetBlockOffset(bucketID int, storageID int, blocks []st
 	// TODO: implement
 	blockMap := make(map[string]int)
 	for i := 0; i < Z; i++ {
-		block, err := s.GetMetadata(bucketID, strconv.Itoa(i))
+		pos, key, err := s.GetMetadata(bucketID, strconv.Itoa(i))
 		if err != nil {
 			return -1, false, "", err
 		}
-		blockMap[block] = i
+		blockMap[key] = pos
 	}
 	for _, block := range(blocks) {
-		val, exist := blockMap[block]
+		pos, exist := blockMap[block]
 		if exist {
-			return val, true, block, nil
+			return pos, true, block, nil
 		}
 	}
 	return -1, false, "", err
@@ -68,8 +68,17 @@ func (s *StorageHandler) GetBlockOffset(bucketID int, storageID int, blocks []st
 // It returns the number of times a bucket was accessed.
 // This is helpful to know when to do an early reshuffle.
 func (s *StorageHandler) GetAccessCount(bucketID int, storageID int) (count int, err error) {
-	// TODO: implement
-	return 0, nil
+	client := s.getClient()
+	ctx := context.Background()
+	accessCountS, err := client.HGet(ctx, strconv.Itoa(-1*bucketID), "accessCount").Result()
+	if err != nil {
+		return 0, err
+	}
+	accessCount, err := strconv.Atoi(accessCountS)
+	if err != nil {
+		return 0, err
+	}
+	return accessCount, nil
 }
 
 // ReadBucket reads exactly Z blocks from the bucket.
@@ -79,7 +88,24 @@ func (s *StorageHandler) ReadBucket(bucketID int, storageID int) (blocks map[str
 	// TODO: implement
 	client := s.getClient()
 	ctx := context.Background()
-	blocks, err = client.HGetAll(ctx, strconv.Itoa(bucketID)).Result()
+	blocks = make(map[string]string)
+	i := 0
+	bit := 0
+	for ; i < Z; {
+		pos, _, err := s.GetMetadata(bucketID, strconv.Itoa(bit))
+		if err != nil {
+			return nil, err
+		}
+		value, err := client.HGet(ctx, strconv.Itoa(bucketID), strconv.Itoa(pos)).Result()
+		if err != nil {
+			return nil, err
+		}
+		if value != "__null__" {
+			blocks[strconv.Itoa(pos)] = value
+			i++
+		}
+		bit++
+	}
 	if err != nil {
 		return nil, err
 	}
@@ -92,12 +118,47 @@ func (s *StorageHandler) ReadBucket(bucketID int, storageID int) (blocks map[str
 func (s *StorageHandler) WriteBucket(bucketID int, storageID int, readBucketBlocks map[string]string, shardNodeBlocks map[string]string, isAtomic bool) (writtenBlocks map[string]string, err error) {
 	// TODO: implement
 	// TODO: It should make the counter zero
+	client := s.getClient()
+	ctx := context.Background()
 	writtenBlocks = make(map[string]string)
-	for block, value := range readBucketBlocks {
-		writtenBlocks[block] = value
-	}
-	for block, value := range shardNodeBlocks {
-		writtenBlocks[block] = value
+	bit := 0
+	for ;bit < Z; bit++ {
+		pos, _, err := s.GetMetadata(bucketID, strconv.Itoa(bit))
+		value, err := client.HGet(ctx, strconv.Itoa(bucketID), strconv.Itoa(pos)).Result()
+		if err != nil {
+			return nil, err
+		}
+		if value == "__null__" {
+			if len(readBucketBlocks) != 0 {
+				for block, value := range readBucketBlocks {
+					err = client.HSet(ctx, strconv.Itoa(-1 * bucketID), strconv.Itoa(bit), strconv.Itoa(pos) + block).Err()
+					if err != nil {
+						return nil, err
+					}
+					err = client.HSet(ctx, strconv.Itoa(bucketID), strconv.Itoa(pos), "__null__").Err()
+					if err != nil {
+						return nil, err
+					}
+					writtenBlocks[block] = value
+					delete(readBucketBlocks, block)
+					break
+				}
+			} else if len(shardNodeBlocks) != 0 {
+				for block, value := range shardNodeBlocks {
+					err = client.HSet(ctx, strconv.Itoa(-1 * bucketID), strconv.Itoa(bit), strconv.Itoa(pos) + block).Err()
+					if err != nil {
+						return nil, err
+					}
+					err = client.HSet(ctx, strconv.Itoa(bucketID), strconv.Itoa(pos), "__null__").Err()
+					if err != nil {
+						return nil, err
+					}
+					writtenBlocks[block] = value
+					delete(readBucketBlocks, block)
+					break
+				}
+			}
+		}
 	}
 	return writtenBlocks, nil
 }
@@ -116,12 +177,24 @@ func (s *StorageHandler) ReadBlock(bucketID int, storageID int, offset int) (val
 	if err != nil {
 		return "", err
 	}
+	// increment access count
+	accessCountS, err := client.HGet(ctx, strconv.Itoa(-1*bucketID), "accessCount").Result()
+	if err != nil {
+		return "", err
+	}
+	accessCount, err := strconv.Atoi(accessCountS)
+	if err != nil {
+		return "", err
+	}
+	err = client.HSet(ctx, strconv.Itoa(-1*bucketID), "accessCount", accessCount+1).Err()
+	if err != nil {
+		return "", err
+	}
 	return value, nil
 }
 
 // GetBucketsInPaths return all the bucket ids for the passed paths.
 func (s *StorageHandler) GetBucketsInPaths(paths []int) (bucketIDs []int, err error) {
-	// TODO: implement
 	buckets := make(IntSet)
 	for i := 0; i < len(paths); i++ {
 		for bucketId := paths[i]; bucketId > 0; bucketId = bucketId >> shift {
@@ -129,7 +202,6 @@ func (s *StorageHandler) GetBucketsInPaths(paths []int) (bucketIDs []int, err er
 				break;
 			} else {
 				buckets.Add(bucketId)
-				// fmt.Println(bucketId)
 			}
 		}
 	}
