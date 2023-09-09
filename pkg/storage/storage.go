@@ -1,17 +1,18 @@
-package main
+package storage
 
 // TODO: It might need to handle multiple storage shards.
 
 import (
 	"context"
 	"strconv"
+	"errors"
 )
 
 // MaxAccessCount is the maximum times we can access a bucket safely.
 const (
 	MaxAccessCount int = 8
-	Z = 1
-    S = 9
+	Z = 4
+    S = 6
 	shift = 1 // 2^shift children per node
 )
 
@@ -92,7 +93,7 @@ func (s *StorageHandler) ReadBucket(bucketID int, storageID int) (blocks map[str
 	i := 0
 	bit := 0
 	for ; i < Z; {
-		pos, _, err := s.GetMetadata(bucketID, strconv.Itoa(bit))
+		pos, key, err := s.GetMetadata(bucketID, strconv.Itoa(bit))
 		if err != nil {
 			return nil, err
 		}
@@ -101,7 +102,8 @@ func (s *StorageHandler) ReadBucket(bucketID int, storageID int) (blocks map[str
 			return nil, err
 		}
 		if value != "__null__" {
-			blocks[strconv.Itoa(pos)] = value
+			value, err = Decrypt(value, s.key)
+			blocks[key] = value
 			i++
 		}
 		bit++
@@ -135,7 +137,11 @@ func (s *StorageHandler) WriteBucket(bucketID int, storageID int, readBucketBloc
 					if err != nil {
 						return nil, err
 					}
-					err = client.HSet(ctx, strconv.Itoa(bucketID), strconv.Itoa(pos), "__null__").Err()
+					encryptVal, err := Encrypt(value, s.key)
+					if err != nil {
+						return nil, err
+					}
+					err = client.HSet(ctx, strconv.Itoa(bucketID), strconv.Itoa(pos), encryptVal).Err()
 					if err != nil {
 						return nil, err
 					}
@@ -149,7 +155,11 @@ func (s *StorageHandler) WriteBucket(bucketID int, storageID int, readBucketBloc
 					if err != nil {
 						return nil, err
 					}
-					err = client.HSet(ctx, strconv.Itoa(bucketID), strconv.Itoa(pos), "__null__").Err()
+					encryptVal, err := Encrypt(value, s.key)
+					if err != nil {
+						return nil, err
+					}
+					err = client.HSet(ctx, strconv.Itoa(bucketID), strconv.Itoa(pos), encryptVal).Err()
 					if err != nil {
 						return nil, err
 					}
@@ -169,6 +179,15 @@ func (s *StorageHandler) ReadBlock(bucketID int, storageID int, offset int) (val
 	client := s.getClient()
 	ctx := context.Background()
 	value, err = client.HGet(ctx, strconv.Itoa(bucketID), strconv.Itoa(offset)).Result()
+	if err != nil {
+		return "", err
+	}
+	if value == "__null__" {
+		err = errors.New("you are accessing invalidate value")
+		return "", err
+	}
+	// decode value
+	value, err = Decrypt(value, s.key)
 	if err != nil {
 		return "", err
 	}
