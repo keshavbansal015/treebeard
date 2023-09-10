@@ -2,6 +2,7 @@ package client
 
 import (
 	"fmt"
+	"math/rand"
 
 	routerpb "github.com/dsg-uwaterloo/oblishard/api/router"
 	"github.com/dsg-uwaterloo/oblishard/pkg/config"
@@ -13,6 +14,15 @@ import (
 type RouterRPCClient struct {
 	ClientAPI routerpb.RouterClient
 	Conn      *grpc.ClientConn
+}
+
+type RouterClients map[int]RouterRPCClient
+
+func (r RouterClients) GetRandomRouter() RouterRPCClient {
+	routersLen := len(r)
+	randomRouterIndex := rand.Intn(routersLen)
+	randomRouter := r[randomRouterIndex]
+	return randomRouter
 }
 
 func (c *RouterRPCClient) Read(block string) (value string, err error) {
@@ -33,7 +43,7 @@ func (c *RouterRPCClient) Write(block string, value string) (success bool, err e
 	return reply.Success, nil
 }
 
-func StartRouterRPCClients(endpoints []config.RouterEndpoint) (map[int]RouterRPCClient, error) {
+func StartRouterRPCClients(endpoints []config.RouterEndpoint) (RouterClients, error) {
 	clients := make(map[int]RouterRPCClient)
 	for _, endpoint := range endpoints {
 		serverAddr := fmt.Sprintf("%s:%d", endpoint.IP, endpoint.Port)

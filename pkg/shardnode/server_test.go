@@ -72,7 +72,32 @@ func getMockOramNodeClients() map[int]ReplicaRPCClientMap {
 	}
 }
 
-func startLeaderRaftNodeServer(t *testing.T) *shardNodeServer {
+func getMockOramNodeClientsWithBatchResponses() map[int]ReplicaRPCClientMap {
+	return map[int]ReplicaRPCClientMap{
+		0: map[int]oramNodeRPCClient{
+			0: {
+				ClientAPI: &mockOramNodeClient{
+					replyFunc: func() (*oramnodepb.ReadPathReply, error) {
+						return &oramnodepb.ReadPathReply{Responses: []*oramnodepb.BlockResponse{
+							{Block: "a", Value: "response_from_leader"},
+							{Block: "b", Value: "response_from_leader"},
+							{Block: "c", Value: "response_from_leader"},
+						}}, nil
+					},
+				},
+			},
+			1: {
+				ClientAPI: &mockOramNodeClient{
+					replyFunc: func() (*oramnodepb.ReadPathReply, error) {
+						return nil, fmt.Errorf("not the leader")
+					},
+				},
+			},
+		},
+	}
+}
+
+func startLeaderRaftNodeServer(t *testing.T, batchSize int, withBatchReponses bool) *shardNodeServer {
 	cleanRaftDataDirectory("data-replicaid-0")
 
 	fsm := newShardNodeFSM()
@@ -88,28 +113,61 @@ func startLeaderRaftNodeServer(t *testing.T) *shardNodeServer {
 	fsm.raftNode = r
 	fsm.mu.Unlock()
 	<-r.LeaderCh() // wait to become the leader
-	s := newShardNodeServer(0, 0, r, fsm, getMockOramNodeClients(), storage.NewStorageHandler(), newBatchManager(1))
+	oramNodeClients := getMockOramNodeClients()
+	if withBatchReponses {
+		oramNodeClients = getMockOramNodeClientsWithBatchResponses()
+	}
+	s := newShardNodeServer(0, 0, r, fsm, oramNodeClients, storage.NewStorageHandler(), newBatchManager(batchSize))
 	go s.sendBatchesForever()
 	return s
 }
 
-// TODO: write a test with batch size more than one
 func TestSendCurrentBatchesSendsQueuesExceedingBatchSizeRequests(t *testing.T) {
+	s := newShardNodeServer(0, 0, &raft.Raft{}, &shardNodeFSM{}, getMockOramNodeClientsWithBatchResponses(), storage.NewStorageHandler(), newBatchManager(3))
+	s.batchManager.responseChannel["a"] = make(chan string)
+	s.batchManager.storageQueues[1] = []blockRequest{{block: "a", path: 1}}
+	s.batchManager.responseChannel["b"] = make(chan string)
+	s.batchManager.storageQueues[1] = append(s.batchManager.storageQueues[1], blockRequest{block: "b", path: 1})
+	s.batchManager.responseChannel["c"] = make(chan string)
+	s.batchManager.storageQueues[1] = append(s.batchManager.storageQueues[1], blockRequest{block: "c", path: 1})
+	go s.sendCurrentBatches()
+	timout := time.After(3 * time.Second)
+	receivedResponsesCount := 0
+	for {
+		if receivedResponsesCount == 3 {
+			break
+		}
+		select {
+		case <-timout:
+			t.Errorf("the batches were not sent")
+			return
+		case <-s.batchManager.responseChannel["a"]:
+			receivedResponsesCount++
+		case <-s.batchManager.responseChannel["b"]:
+			receivedResponsesCount++
+		case <-s.batchManager.responseChannel["c"]:
+			receivedResponsesCount++
+		}
+	}
+
+}
+
+func TestSendCurrentBatchesRemovesSentQueueAndResponseChannel(t *testing.T) {
 	s := newShardNodeServer(0, 0, &raft.Raft{}, &shardNodeFSM{}, getMockOramNodeClients(), storage.NewStorageHandler(), newBatchManager(1))
 	s.batchManager.responseChannel["a"] = make(chan string)
 	s.batchManager.storageQueues[1] = []blockRequest{{block: "a", path: 1}}
 	go s.sendCurrentBatches()
-	timout := time.After(3 * time.Second)
-	select {
-	case <-timout:
-		t.Errorf("the batches were not sent")
-	case <-s.batchManager.responseChannel["a"]:
+	<-s.batchManager.responseChannel["a"]
+	if _, exists := s.batchManager.storageQueues[1]; exists {
+		t.Errorf("SendCurrentBatches should remove queue after sending it")
+	}
+	if _, exists := s.batchManager.responseChannel["a"]; exists {
+		t.Errorf("SendCurrentBatches should remove block from response channel after sending it")
 	}
 }
 
-// TODO: write query tests, where batch size is more than one
 func TestQueryReturnsResponseRecievedFromOramNode(t *testing.T) {
-	s := startLeaderRaftNodeServer(t)
+	s := startLeaderRaftNodeServer(t, 1, false)
 
 	ctx := metadata.NewIncomingContext(context.Background(), metadata.Pairs("requestid", "request1"))
 	response, err := s.query(ctx, Read, "a", "")
@@ -121,8 +179,37 @@ func TestQueryReturnsResponseRecievedFromOramNode(t *testing.T) {
 	}
 }
 
+func TestQueryReturnsResponseRecievedFromOramNodeWithBatching(t *testing.T) {
+	s := startLeaderRaftNodeServer(t, 3, true)
+
+	responseChan := make(chan string)
+	for _, el := range []string{"a", "b", "c"} {
+		go func(block string) {
+			ctx := metadata.NewIncomingContext(context.Background(), metadata.Pairs("requestid", fmt.Sprintf("request:%s", block)))
+			response, err := s.query(ctx, Read, block, "")
+			if err == nil {
+				responseChan <- response
+			}
+		}(el)
+	}
+	timeout := time.After(3 * time.Second)
+	for i := 0; i < 3; i++ {
+		var response string
+		select {
+		case <-timeout:
+			t.Errorf("expected response for all blocks in the batch")
+			return
+		case response = <-responseChan:
+		}
+
+		if response != "response_from_leader" {
+			t.Errorf("expected the response to be \"response_from_leader\" but it is: %s", response)
+		}
+	}
+}
+
 func TestQueryPrioritizesStashValueToOramNodeResponse(t *testing.T) {
-	s := startLeaderRaftNodeServer(t)
+	s := startLeaderRaftNodeServer(t, 1, false)
 	ctx := metadata.NewIncomingContext(context.Background(), metadata.Pairs("requestid", "request1"))
 	s.shardNodeFSM.mu.Lock()
 	s.shardNodeFSM.stash["block1"] = stashState{value: "stash_value", logicalTime: 0, waitingStatus: false}
@@ -137,7 +224,7 @@ func TestQueryPrioritizesStashValueToOramNodeResponse(t *testing.T) {
 }
 
 func TestQueryReturnsSentValueForWriteRequests(t *testing.T) {
-	s := startLeaderRaftNodeServer(t)
+	s := startLeaderRaftNodeServer(t, 1, false)
 	ctx := metadata.NewIncomingContext(context.Background(), metadata.Pairs("requestid", "request1"))
 	response, err := s.query(ctx, Write, "a", "val")
 	if response != "val" {
@@ -149,7 +236,7 @@ func TestQueryReturnsSentValueForWriteRequests(t *testing.T) {
 }
 
 func TestQueryCleansTempValuesInFSMAfterExecution(t *testing.T) {
-	s := startLeaderRaftNodeServer(t)
+	s := startLeaderRaftNodeServer(t, 1, false)
 	ctx := metadata.NewIncomingContext(context.Background(), metadata.Pairs("requestid", "request1"))
 	s.query(ctx, Write, "a", "val")
 	s.shardNodeFSM.mu.Lock()
@@ -172,7 +259,7 @@ func TestQueryCleansTempValuesInFSMAfterExecution(t *testing.T) {
 }
 
 func TestQueryAddsReadValueToStash(t *testing.T) {
-	s := startLeaderRaftNodeServer(t)
+	s := startLeaderRaftNodeServer(t, 1, false)
 	ctx := metadata.NewIncomingContext(context.Background(), metadata.Pairs("requestid", "request1"))
 	s.query(ctx, Read, "a", "")
 	s.shardNodeFSM.mu.Lock()
@@ -183,7 +270,7 @@ func TestQueryAddsReadValueToStash(t *testing.T) {
 }
 
 func TestQueryAddsWriteValueToStash(t *testing.T) {
-	s := startLeaderRaftNodeServer(t)
+	s := startLeaderRaftNodeServer(t, 1, false)
 	ctx := metadata.NewIncomingContext(context.Background(), metadata.Pairs("requestid", "request1"))
 	s.query(ctx, Write, "a", "valW")
 	s.shardNodeFSM.mu.Lock()
@@ -194,7 +281,7 @@ func TestQueryAddsWriteValueToStash(t *testing.T) {
 }
 
 func TestQueryUpdatesPositionMap(t *testing.T) {
-	s := startLeaderRaftNodeServer(t)
+	s := startLeaderRaftNodeServer(t, 1, false)
 	ctx := metadata.NewIncomingContext(context.Background(), metadata.Pairs("requestid", "request1"))
 	s.shardNodeFSM.positionMap["a"] = positionState{path: 13423432, storageID: 3223113}
 	s.query(ctx, Write, "a", "valW")
@@ -206,7 +293,7 @@ func TestQueryUpdatesPositionMap(t *testing.T) {
 }
 
 func TestQueryReturnsResponseToAllWaitingRequests(t *testing.T) {
-	s := startLeaderRaftNodeServer(t)
+	s := startLeaderRaftNodeServer(t, 1, false)
 	responseChannel := make(chan string)
 	for i := 0; i < 3; i++ {
 		go func(idx int) {
@@ -292,7 +379,7 @@ func TestGetBlocksForSendDoesNotReturnsWaitingBlocks(t *testing.T) {
 }
 
 func TestSendBlocksReturnsStashBlocks(t *testing.T) {
-	s := startLeaderRaftNodeServer(t)
+	s := startLeaderRaftNodeServer(t, 1, false)
 	s.shardNodeFSM.stash = map[string]stashState{
 		"block1": {value: "block1", logicalTime: 0, waitingStatus: false},
 		"block2": {value: "block2", logicalTime: 0, waitingStatus: false},
@@ -312,7 +399,7 @@ func TestSendBlocksReturnsStashBlocks(t *testing.T) {
 }
 
 func TestSendBlocksMarksSentBlocksAsWaitingAndZeroLogicalTime(t *testing.T) {
-	s := startLeaderRaftNodeServer(t)
+	s := startLeaderRaftNodeServer(t, 1, false)
 	s.shardNodeFSM.stash = map[string]stashState{
 		"block1": {value: "block1", logicalTime: 0, waitingStatus: false},
 		"block2": {value: "block2", logicalTime: 0, waitingStatus: false},
@@ -336,7 +423,7 @@ func TestSendBlocksMarksSentBlocksAsWaitingAndZeroLogicalTime(t *testing.T) {
 }
 
 func TestAckSentBlocksRemovesAckedBlocksFromStash(t *testing.T) {
-	s := startLeaderRaftNodeServer(t)
+	s := startLeaderRaftNodeServer(t, 1, false)
 	s.shardNodeFSM.stash = map[string]stashState{
 		"block1": {value: "block1", logicalTime: 0, waitingStatus: true},
 		"block2": {value: "block2", logicalTime: 0, waitingStatus: true},
@@ -361,7 +448,7 @@ func TestAckSentBlocksRemovesAckedBlocksFromStash(t *testing.T) {
 }
 
 func TestAckSentBlocksKeepsNAckedBlocksInStashAndRemovesWaiting(t *testing.T) {
-	s := startLeaderRaftNodeServer(t)
+	s := startLeaderRaftNodeServer(t, 1, false)
 	s.shardNodeFSM.stash = map[string]stashState{
 		"block1": {value: "block1", logicalTime: 0, waitingStatus: true},
 		"block2": {value: "block2", logicalTime: 0, waitingStatus: true},
