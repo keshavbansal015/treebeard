@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"log"
 	"net"
-	"time"
 
 	pb "github.com/dsg-uwaterloo/oblishard/api/router"
 	"github.com/dsg-uwaterloo/oblishard/pkg/rpc"
@@ -26,7 +25,7 @@ func newRouterServer(routerID int, epochManager *epochManager) routerServer {
 }
 
 func (r *routerServer) Read(ctx context.Context, readRequest *pb.ReadRequest) (*pb.ReadReply, error) {
-	responseChannel := r.epochManager.addRequestToCurrentEpoch(&request{ctx: ctx, operationType: Read, block: readRequest.Block})
+	responseChannel := r.epochManager.addRequestToCurrentEpoch(&request{ctx: rpc.GetContextWithRequestID(), operationType: Read, block: readRequest.Block})
 	response := <-responseChannel
 	readResponse := response.(readResponse)
 	if readResponse.err != nil {
@@ -36,7 +35,7 @@ func (r *routerServer) Read(ctx context.Context, readRequest *pb.ReadRequest) (*
 }
 
 func (r *routerServer) Write(ctx context.Context, writeRequest *pb.WriteRequest) (*pb.WriteReply, error) {
-	responseChannel := r.epochManager.addRequestToCurrentEpoch(&request{ctx: ctx, operationType: Write, block: writeRequest.Block, value: writeRequest.Value})
+	responseChannel := r.epochManager.addRequestToCurrentEpoch(&request{ctx: rpc.GetContextWithRequestID(), operationType: Write, block: writeRequest.Block, value: writeRequest.Value})
 	response := <-responseChannel
 	writeResponse := response.(writeResponse)
 	if writeResponse.err != nil {
@@ -52,7 +51,7 @@ func StartRPCServer(shardNodeRPCClients map[int]ReplicaRPCClientMap, routerID in
 	}
 	grpcServer := grpc.NewServer(grpc.UnaryInterceptor(rpc.ContextPropagationUnaryServerInterceptor()))
 
-	epochManager := newEpochManager(shardNodeRPCClients, 5*time.Second) //TODO: change duration
+	epochManager := newEpochManager(shardNodeRPCClients, 0) //TODO: change duration
 	go epochManager.run()
 	routerServer := newRouterServer(routerID, epochManager)
 	pb.RegisterRouterServer(grpcServer, &routerServer)
