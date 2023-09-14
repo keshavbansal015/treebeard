@@ -13,19 +13,21 @@ import (
 	"github.com/redis/go-redis/v9"
 )
 
-func (s *StorageHandler) getClient() *redis.Client {
+func (s *StorageHandler) getClient(storageID int) *redis.Client {
 	return redis.NewClient(&redis.Options{
 		Addr:     s.host,
 		Password: "",
-		DB:       s.db,
+		DB:       s.db[storageID],
 	})
 }
 
 func (s *StorageHandler) CloseClient() (err error) {
-	client := s.getClient()
-	err = client.Close()
-	if err != nil {
-		return err
+	for i := 1; i <= numDB; i++ {
+		client := s.getClient(i)
+		err = client.Close()
+		if err != nil {
+			return err
+		}
 	}
 	return nil
 }
@@ -38,7 +40,7 @@ func shuffleArray(arr []int) {
 	}
 }
 
-func (s *StorageHandler) databaseInit(filepath string) (position_map map[string]int, err error) {
+func (s *StorageHandler) databaseInit(filepath string, storageID int) (position_map map[string]int, err error) {
 	file, err := os.Open(filepath)
 	if err != nil {
 		fmt.Println("Error opening file:", err)
@@ -67,7 +69,7 @@ func (s *StorageHandler) databaseInit(filepath string) (position_map map[string]
 		parts := strings.Fields(line)
 		userID := parts[1]
 		value := parts[2]
-		value, err = Encrypt(value, s.key)
+		value, err = Encrypt(value, s.key[storageID])
 		if err != nil {
 			fmt.Println("Error encrypting data")
 			return nil, err
@@ -84,7 +86,7 @@ func (s *StorageHandler) databaseInit(filepath string) (position_map map[string]
 			for ; i < Z+S; i++ {
 				dummyID := "dummy" + strconv.Itoa(dummyCount)
 				dummyString := "b" + strconv.Itoa(bucketCount) + "d" + strconv.Itoa(i)
-				dummyString, err = Encrypt(dummyString, s.key)
+				dummyString, err = Encrypt(dummyString, s.key[storageID])
 				if err != nil {
 					fmt.Println("Error encrypting data")
 					return nil, err
@@ -96,12 +98,12 @@ func (s *StorageHandler) databaseInit(filepath string) (position_map map[string]
 				dummyCount++
 			}
 			// push content of value array and meta data array
-			err = s.Push(bucketCount, values)
+			err = s.Push(bucketCount, values, storageID)
 			if err != nil {
 				fmt.Println("Error pushing values to db:", err)
 				return nil, err
 			}
-			err = s.PushMetadata(bucketCount, metadatas)
+			err = s.PushMetadata(bucketCount, metadatas, storageID)
 			if err != nil {
 				fmt.Println("Error pushing metadatas to db:", err)
 				return nil, err
@@ -117,7 +119,7 @@ func (s *StorageHandler) databaseInit(filepath string) (position_map map[string]
 		for ; i < Z+S; i++ {
 			dummyID := "dummy" + strconv.Itoa(dummyCount)
 			dummyString := "b" + strconv.Itoa(bucketCount) + "d" + strconv.Itoa(i)
-			dummyString, err = Encrypt(dummyString, s.key)
+			dummyString, err = Encrypt(dummyString, s.key[storageID])
 			if err != nil {
 				fmt.Println("Error encrypting data")
 				return nil, err
@@ -129,12 +131,12 @@ func (s *StorageHandler) databaseInit(filepath string) (position_map map[string]
 			dummyCount++
 		}
 		// push content of value array and meta data array
-		err = s.Push(bucketCount, values)
+		err = s.Push(bucketCount, values, storageID)
 		if err != nil {
 			fmt.Println("Error pushing values to db:", err)
 			return nil, err
 		}
-		err = s.PushMetadata(bucketCount, metadatas)
+		err = s.PushMetadata(bucketCount, metadatas, storageID)
 		if err != nil {
 			fmt.Println("Error pushing metadatas to db:", err)
 			return nil, err
@@ -144,17 +146,19 @@ func (s *StorageHandler) databaseInit(filepath string) (position_map map[string]
 }
 
 func (s *StorageHandler) DatabaseClear() (err error) {
-	client := s.getClient()
-	ctx := context.Background()
-	err = client.FlushAll(ctx).Err()
-	if err != nil {
-		return err
+	for i:= 1; i <= numDB; i++ {
+		client := s.getClient(i)
+		ctx := context.Background()
+		err = client.FlushAll(ctx).Err()
+		if err != nil {
+			return err
+		}
 	}
 	return nil
 }
 
-func (s *StorageHandler) Push(bucketId int, value []string) (err error) {
-	client := s.getClient()
+func (s *StorageHandler) Push(bucketId int, value []string, storageID int) (err error) {
+	client := s.getClient(storageID)
 	ctx := context.Background()
 	kvpMap := make(map[string]interface{})
 	for i := 0; i < len(value); i++ {
@@ -167,8 +171,8 @@ func (s *StorageHandler) Push(bucketId int, value []string) (err error) {
 	return nil
 }
 
-func (s *StorageHandler) PushMetadata(bucketId int, value []string) (err error) {
-	client := s.getClient()
+func (s *StorageHandler) PushMetadata(bucketId int, value []string, storageID int) (err error) {
+	client := s.getClient(storageID)
 	ctx := context.Background()
 	kvpMap := make(map[string]interface{})
 	for i := 0; i < len(value); i++ {
@@ -184,8 +188,8 @@ func (s *StorageHandler) PushMetadata(bucketId int, value []string) (err error) 
 }
 
 // return pos + key as one string stored in metadata at bit
-func (s *StorageHandler) GetMetadata(bucketId int, bit string) (pos int, key string, err error) {
-	client := s.getClient()
+func (s *StorageHandler) GetMetadata(bucketId int, bit string, storageID int) (pos int, key string, err error) {
+	client := s.getClient(storageID)
 	ctx := context.Background()
 	block, err := client.HGet(ctx, strconv.Itoa(-1*bucketId), bit).Result()
 	if err != nil {

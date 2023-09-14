@@ -6,6 +6,9 @@ import (
 	"context"
 	"strconv"
 	"errors"
+	"math/rand"
+	"time"
+	"fmt"
 )
 
 // MaxAccessCount is the maximum times we can access a bucket safely.
@@ -14,22 +17,24 @@ const (
 	Z = 4
     S = 6
 	shift = 1 // 2^shift children per node
+	host string = "localhost:6379"
+	numDB = 2
 )
 
 // StorageHandler is responsible for handling one or multiple storage shards.
 type StorageHandler struct {
 	maxAccessCount int
 	host string
-	db   int
-	key  []byte
+	db   []int
+	key  [][]byte
 }
 
-func NewStorageHandler(host string, db int, key []byte) *StorageHandler {
+func NewStorageHandler() *StorageHandler {
 	return &StorageHandler{
 		maxAccessCount: MaxAccessCount,
 		host: host,
-		db:   db,
-		key:  key,
+		db:   []int{1, 2},
+		key:  [][]byte{[]byte("passphrasewhichneedstobe32bytes!"),[]byte("passphrasewhichneedstobe32bytes.")},
 	}
 }
 
@@ -51,7 +56,7 @@ func (s *StorageHandler) GetBlockOffset(bucketID int, storageID int, blocks []st
 	// TODO: implement
 	blockMap := make(map[string]int)
 	for i := 0; i < Z; i++ {
-		pos, key, err := s.GetMetadata(bucketID, strconv.Itoa(i))
+		pos, key, err := s.GetMetadata(bucketID, strconv.Itoa(i), storageID)
 		if err != nil {
 			return -1, false, "", err
 		}
@@ -69,7 +74,7 @@ func (s *StorageHandler) GetBlockOffset(bucketID int, storageID int, blocks []st
 // It returns the number of times a bucket was accessed.
 // This is helpful to know when to do an early reshuffle.
 func (s *StorageHandler) GetAccessCount(bucketID int, storageID int) (count int, err error) {
-	client := s.getClient()
+	client := s.getClient(storageID)
 	ctx := context.Background()
 	accessCountS, err := client.HGet(ctx, strconv.Itoa(-1*bucketID), "accessCount").Result()
 	if err != nil {
@@ -87,13 +92,13 @@ func (s *StorageHandler) GetAccessCount(bucketID int, storageID int) (count int,
 // blocks is a map of block id to block values.
 func (s *StorageHandler) ReadBucket(bucketID int, storageID int) (blocks map[string]string, err error) {
 	// TODO: implement
-	client := s.getClient()
+	client := s.getClient(storageID)
 	ctx := context.Background()
 	blocks = make(map[string]string)
 	i := 0
 	bit := 0
 	for ; i < Z; {
-		pos, key, err := s.GetMetadata(bucketID, strconv.Itoa(bit))
+		pos, key, err := s.GetMetadata(bucketID, strconv.Itoa(bit), storageID)
 		if err != nil {
 			return nil, err
 		}
@@ -102,7 +107,7 @@ func (s *StorageHandler) ReadBucket(bucketID int, storageID int) (blocks map[str
 			return nil, err
 		}
 		if value != "__null__" {
-			value, err = Decrypt(value, s.key)
+			value, err = Decrypt(value, s.key[storageID])
 			blocks[key] = value
 			i++
 		}
@@ -120,55 +125,63 @@ func (s *StorageHandler) ReadBucket(bucketID int, storageID int) (blocks map[str
 func (s *StorageHandler) WriteBucket(bucketID int, storageID int, readBucketBlocks map[string]string, shardNodeBlocks map[string]string, isAtomic bool) (writtenBlocks map[string]string, err error) {
 	// TODO: implement
 	// TODO: It should make the counter zero
-	client := s.getClient()
-	ctx := context.Background()
+	values := make([]string, Z+S)
+	metadatas := make([]string, Z+S)
+	realIndex := make([]int, Z+S)
+	for k := 0; k < Z+S; k++ {
+		// Generate a random number between 0 and 9
+		realIndex[k] = k
+	}
+	shuffleArray(realIndex)
 	writtenBlocks = make(map[string]string)
-	bit := 0
-	for ;bit < Z; bit++ {
-		pos, _, err := s.GetMetadata(bucketID, strconv.Itoa(bit))
-		value, err := client.HGet(ctx, strconv.Itoa(bucketID), strconv.Itoa(pos)).Result()
+	i := 0
+	for key, value := range readBucketBlocks {
+		if len(writtenBlocks) < Z {
+			writtenBlocks[key] = value
+			values[realIndex[i]] = value
+			metadatas[i] = strconv.Itoa(realIndex[i]) + key
+			i++
+			// pos_map is updated in server? 
+		} else {
+			break
+		}
+	}
+	for key, value := range shardNodeBlocks {
+		if len(writtenBlocks) < Z {
+			writtenBlocks[key] = value
+			values[realIndex[i]] = value
+			metadatas[i] = strconv.Itoa(realIndex[i]) + key
+			i++
+		} else {
+			break
+		}
+	}
+	rand.Seed(time.Now().UnixNano())
+	dummyCount := rand.Intn(1000)
+	for ; i < Z+S; i++ {
+		dummyID := "dummy" + strconv.Itoa(dummyCount)
+		dummyString := "b" + strconv.Itoa(bucketID) + "d" + strconv.Itoa(i)
+		dummyString, err = Encrypt(dummyString, s.key[storageID])
 		if err != nil {
+			fmt.Println("Error encrypting data")
 			return nil, err
 		}
-		if value == "__null__" {
-			if len(readBucketBlocks) != 0 {
-				for block, value := range readBucketBlocks {
-					err = client.HSet(ctx, strconv.Itoa(-1 * bucketID), strconv.Itoa(bit), strconv.Itoa(pos) + block).Err()
-					if err != nil {
-						return nil, err
-					}
-					encryptVal, err := Encrypt(value, s.key)
-					if err != nil {
-						return nil, err
-					}
-					err = client.HSet(ctx, strconv.Itoa(bucketID), strconv.Itoa(pos), encryptVal).Err()
-					if err != nil {
-						return nil, err
-					}
-					writtenBlocks[block] = value
-					delete(readBucketBlocks, block)
-					break
-				}
-			} else if len(shardNodeBlocks) != 0 {
-				for block, value := range shardNodeBlocks {
-					err = client.HSet(ctx, strconv.Itoa(-1 * bucketID), strconv.Itoa(bit), strconv.Itoa(pos) + block).Err()
-					if err != nil {
-						return nil, err
-					}
-					encryptVal, err := Encrypt(value, s.key)
-					if err != nil {
-						return nil, err
-					}
-					err = client.HSet(ctx, strconv.Itoa(bucketID), strconv.Itoa(pos), encryptVal).Err()
-					if err != nil {
-						return nil, err
-					}
-					writtenBlocks[block] = value
-					delete(readBucketBlocks, block)
-					break
-				}
-			}
-		}
+		// push dummy to array
+		values[realIndex[i]] = dummyString
+		// push meta data of dummies to array
+		metadatas[i] = strconv.Itoa(realIndex[i]) + dummyID
+		dummyCount++
+	}
+	// push content of value array and meta data array
+	err = s.Push(bucketID, values, storageID)
+	if err != nil {
+		fmt.Println("Error pushing values to db:", err)
+		return nil, err
+	}
+	err = s.PushMetadata(bucketID, metadatas, storageID)
+	if err != nil {
+		fmt.Println("Error pushing metadatas to db:", err)
+		return nil, err
 	}
 	return writtenBlocks, nil
 }
@@ -176,7 +189,7 @@ func (s *StorageHandler) WriteBucket(bucketID int, storageID int, readBucketBloc
 // ReadBlock reads a single block using an its offset.
 func (s *StorageHandler) ReadBlock(bucketID int, storageID int, offset int) (value string, err error) {
 	// TODO: it should invalidate and increase counter
-	client := s.getClient()
+	client := s.getClient(storageID)
 	ctx := context.Background()
 	value, err = client.HGet(ctx, strconv.Itoa(bucketID), strconv.Itoa(offset)).Result()
 	if err != nil {
@@ -187,7 +200,7 @@ func (s *StorageHandler) ReadBlock(bucketID int, storageID int, offset int) (val
 		return "", err
 	}
 	// decode value
-	value, err = Decrypt(value, s.key)
+	value, err = Decrypt(value, s.key[storageID])
 	if err != nil {
 		return "", err
 	}

@@ -5,11 +5,10 @@ import (
 )
 
 func main() {
-	key := []byte("passphrasewhichneedstobe32bytes!")
-	info := NewStorageHandler("localhost:6379", 1, key)
+	info := NewStorageHandler()
 	path := "./data.txt"
-
-	posmap, err := info.databaseInit(path)
+	posmap, err := info.databaseInit(path, 2)
+	posmap, err = info.databaseInit(path, 1)
 	if err != nil {
 		fmt.Println("error initializing database")
 	}
