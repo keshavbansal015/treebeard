@@ -1,0 +1,1 @@
+protoc --plugin=protoc-gen-grpc-java=/path/to/protoc-gen-grpc-java.exe -I=../ --java_out=./java --grpc-java_out=../java router.proto
