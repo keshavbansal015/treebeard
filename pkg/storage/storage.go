@@ -4,37 +4,37 @@ package storage
 
 import (
 	"context"
-	"strconv"
 	"errors"
-	"math/rand"
-	"time"
 	"fmt"
+	"math/rand"
+	"strconv"
+	"time"
 )
 
 // MaxAccessCount is the maximum times we can access a bucket safely.
 const (
-	MaxAccessCount int = 8
-	Z = 4
-    S = 6
-	shift = 1 // 2^shift children per node
-	host string = "localhost:6379"
-	numDB = 2
+	MaxAccessCount int    = 8
+	Z                     = 1
+	S                     = 9
+	shift                 = 1 // 2^shift children per node
+	host           string = "localhost:6379"
+	numDB                 = 2
 )
 
 // StorageHandler is responsible for handling one or multiple storage shards.
 type StorageHandler struct {
 	maxAccessCount int
-	host string
-	db   []int
-	key  [][]byte
+	host           string
+	db             []int
+	key            [][]byte
 }
 
 func NewStorageHandler() *StorageHandler {
 	return &StorageHandler{
 		maxAccessCount: MaxAccessCount,
-		host: host,
-		db:   []int{1, 2},
-		key:  [][]byte{[]byte("passphrasewhichneedstobe32bytes!"),[]byte("passphrasewhichneedstobe32bytes.")},
+		host:           host,
+		db:             []int{1, 2},
+		key:            [][]byte{[]byte("passphrasewhichneedstobe32bytes!"), []byte("passphrasewhichneedstobe32bytes.")},
 	}
 }
 
@@ -62,7 +62,7 @@ func (s *StorageHandler) GetBlockOffset(bucketID int, storageID int, blocks []st
 		}
 		blockMap[key] = pos
 	}
-	for _, block := range(blocks) {
+	for _, block := range blocks {
 		pos, exist := blockMap[block]
 		if exist {
 			return pos, true, block, nil
@@ -97,7 +97,7 @@ func (s *StorageHandler) ReadBucket(bucketID int, storageID int) (blocks map[str
 	blocks = make(map[string]string)
 	i := 0
 	bit := 0
-	for ; i < Z; {
+	for i < Z {
 		pos, key, err := s.GetMetadata(bucketID, strconv.Itoa(bit), storageID)
 		if err != nil {
 			return nil, err
@@ -141,7 +141,7 @@ func (s *StorageHandler) WriteBucket(bucketID int, storageID int, readBucketBloc
 			values[realIndex[i]] = value
 			metadatas[i] = strconv.Itoa(realIndex[i]) + key
 			i++
-			// pos_map is updated in server? 
+			// pos_map is updated in server?
 		} else {
 			break
 		}
@@ -231,7 +231,7 @@ func (s *StorageHandler) GetBucketsInPaths(paths []int) (bucketIDs []int, err er
 	for i := 0; i < len(paths); i++ {
 		for bucketId := paths[i]; bucketId > 0; bucketId = bucketId >> shift {
 			if buckets.Contains(bucketId) {
-				break;
+				break
 			} else {
 				buckets.Add(bucketId)
 			}
