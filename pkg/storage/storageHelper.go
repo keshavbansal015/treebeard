@@ -1,4 +1,4 @@
-package storage
+package main
 
 import (
 	"bufio"
@@ -22,7 +22,7 @@ func (s *StorageHandler) getClient(storageID int) *redis.Client {
 }
 
 func (s *StorageHandler) CloseClient() (err error) {
-	for i := 1; i <= numDB; i++ {
+	for i := 0; i < numDB; i++ {
 		client := s.getClient(i)
 		err = client.Close()
 		if err != nil {
@@ -146,7 +146,7 @@ func (s *StorageHandler) databaseInit(filepath string, storageID int) (position_
 }
 
 func (s *StorageHandler) DatabaseClear() (err error) {
-	for i:= 1; i <= numDB; i++ {
+	for i := 0; i < numDB; i++ {
 		client := s.getClient(i)
 		ctx := context.Background()
 		err = client.FlushAll(ctx).Err()

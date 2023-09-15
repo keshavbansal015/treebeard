@@ -1,4 +1,4 @@
-package storage
+package main
 
 import (
 	"fmt"
@@ -7,8 +7,8 @@ import (
 func main() {
 	info := NewStorageHandler()
 	path := "./data.txt"
-	posmap, err := info.databaseInit(path, 2)
-	posmap, err = info.databaseInit(path, 1)
+	posmap, err := info.databaseInit(path, 1)
+	posmap, err = info.databaseInit(path, 0)
 	if err != nil {
 		fmt.Println("error initializing database")
 	}
@@ -19,12 +19,18 @@ func main() {
 	val, err := info.ReadBlock(pathId, 0, offset)
 	if err == nil {
 		fmt.Println(val)
+	} else {
+		fmt.Println(1)
+		return
 	}
 	blocks = []string{"user3861369316569033754"}
 	offset, _, _, err = info.GetBlockOffset(pathId, 0, blocks)
 	val, err = info.ReadBlock(pathId, 0, offset)
 	if err == nil {
 		fmt.Println(val)
+	} else {
+		fmt.Println(2)
+		return
 	}
 	readBucketBlocks := map[string]string {
 		"userR1" : "read",
@@ -38,12 +44,18 @@ func main() {
 		for k, v := range writtenBlocks {
 			fmt.Println(k, v)
 		}
+	} else {
+		fmt.Println(3)
+		return
 	}
 	rBlocks, err := info.ReadBucket(pathId, 0)
 	if err == nil {
 		for k, v := range rBlocks {
 			fmt.Println(k, v)
 		}
+	} else {
+		fmt.Println(4)
+		return
 	}
 	info.DatabaseClear()
 	info.CloseClient()

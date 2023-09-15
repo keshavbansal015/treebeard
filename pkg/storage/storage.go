@@ -1,4 +1,4 @@
-package storage
+package main
 
 // TODO: It might need to handle multiple storage shards.
 
