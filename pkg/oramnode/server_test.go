@@ -189,7 +189,8 @@ func startLeaderRaftNodeServer(t *testing.T) *oramNodeServer {
 		t.Errorf("unable to start raft server")
 	}
 	<-r.LeaderCh() // wait to become the leader
-	return newOramNodeServer(0, 0, r, fsm, getMockShardNodeClients(), strg.NewStorageHandler(), config.Parameters{MaxBlocksToSend: 5, EvictionRate: 4})
+	storageHandler := newMockStorageHandler(2, 4)
+	return newOramNodeServer(0, 0, r, fsm, getMockShardNodeClients(), storageHandler, config.Parameters{MaxBlocksToSend: 5, EvictionRate: 4})
 }
 
 func (o *oramNodeServer) withFailedShardNodeClients() *oramNodeServer {

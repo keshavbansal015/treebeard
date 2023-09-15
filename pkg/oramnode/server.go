@@ -42,7 +42,7 @@ type oramNodeServer struct {
 	parameters          config.Parameters
 }
 
-func newOramNodeServer(oramNodeServerID int, replicaID int, raftNode *raft.Raft, oramNodeFSM *oramNodeFSM, shardNodeRPCClients map[int]ReplicaRPCClientMap, storageHandler *strg.StorageHandler, parameters config.Parameters) *oramNodeServer {
+func newOramNodeServer(oramNodeServerID int, replicaID int, raftNode *raft.Raft, oramNodeFSM *oramNodeFSM, shardNodeRPCClients map[int]ReplicaRPCClientMap, storageHandler storage, parameters config.Parameters) *oramNodeServer {
 	return &oramNodeServer{
 		oramNodeServerID:    oramNodeServerID,
 		replicaID:           replicaID,
