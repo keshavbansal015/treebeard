@@ -2,15 +2,15 @@ package storage
 
 import (
 	"crypto/aes"
-    "crypto/cipher"
-    "crypto/rand"
-    "encoding/hex"
-    "io"
-    "fmt"
+	"crypto/cipher"
+	"crypto/rand"
+	"encoding/hex"
+	"fmt"
+	"io"
 )
 
 func Encrypt(s string, key []byte) (string, error) {
-    // Generate a random 12-byte nonce
+	// Generate a random 12-byte nonce
 	nonce := make([]byte, 12)
 	if _, err := io.ReadFull(rand.Reader, nonce); err != nil {
 		return "", err
@@ -32,7 +32,7 @@ func Encrypt(s string, key []byte) (string, error) {
 }
 
 func Decrypt(s string, key []byte) (string, error) {
-    ciphertext, err := hex.DecodeString(s)
+	ciphertext, err := hex.DecodeString(s)
 	if err != nil {
 		return "", err
 	}
@@ -58,5 +58,5 @@ func Decrypt(s string, key []byte) (string, error) {
 	if err != nil {
 		return "", err
 	}
-    return string(plaintext), nil
+	return string(plaintext), nil
 }

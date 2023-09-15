@@ -212,6 +212,7 @@ func (s *StorageHandler) GetMetadata(bucketId int, bit string, storageID int) (p
 }
 
 type IntSet map[int]struct{}
+
 func (s IntSet) Add(item int) {
 	s[item] = struct{}{}
 }

@@ -15,7 +15,7 @@ func main() {
 	pathId := posmap["user5241976879437760820"]
 	fmt.Println(pathId)
 	blocks := []string{"user5241976879437760820"}
-	offset, _, _, err:= info.GetBlockOffset(pathId, 0, blocks)
+	offset, _, _, err := info.GetBlockOffset(pathId, 0, blocks)
 	val, err := info.ReadBlock(pathId, 0, offset)
 	if err == nil {
 		fmt.Println(val)
@@ -32,12 +32,12 @@ func main() {
 		fmt.Println(2)
 		return
 	}
-	readBucketBlocks := map[string]string {
-		"userR1" : "read",
+	readBucketBlocks := map[string]string{
+		"userR1": "read",
 	}
-	shardNodeBlocks := map[string]string {
-		"userS1" : "shard",
-		"userS2" : "shard",
+	shardNodeBlocks := map[string]string{
+		"userS1": "shard",
+		"userS2": "shard",
 	}
 	writtenBlocks, err := info.WriteBucket(pathId, 0, readBucketBlocks, shardNodeBlocks, true)
 	if err == nil {
