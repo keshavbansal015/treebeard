@@ -98,7 +98,7 @@ func getMockOramNodeClientsWithBatchResponses() map[int]ReplicaRPCClientMap {
 }
 
 func startLeaderRaftNodeServer(t *testing.T, batchSize int, withBatchReponses bool) *shardNodeServer {
-	cleanRaftDataDirectory("data-replicaid-0")
+	cleanRaftDataDirectory("sh-data-replicaid-0")
 
 	fsm := newShardNodeFSM()
 	raftPort, err := freeport.GetFreePort()

@@ -128,7 +128,7 @@ func (fsm *oramNodeFSM) Restore(rc io.ReadCloser) error {
 // TOOD: it can be moved to a new raft-utils package to reduce code duplication
 
 func startRaftServer(isFirst bool, replicaID int, raftPort int, oramNodeFSM *oramNodeFSM) (*raft.Raft, error) {
-	dataDir := fmt.Sprintf("data-replicaid-%d", replicaID)
+	dataDir := fmt.Sprintf("om-data-replicaid-%d", replicaID)
 	raftConfig := raft.DefaultConfig()
 	raftConfig.LocalID = raft.ServerID(strconv.Itoa(replicaID))
 

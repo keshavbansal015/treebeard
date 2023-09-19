@@ -382,7 +382,7 @@ func (sn shardNodeSnapshot) Persist(sink raft.SnapshotSink) error {
 func (sn shardNodeSnapshot) Release() {}
 
 func startRaftServer(isFirst bool, replicaID int, raftPort int, shardshardNodeFSM *shardNodeFSM) (*raft.Raft, error) {
-	dataDir := fmt.Sprintf("data-replicaid-%d", replicaID)
+	dataDir := fmt.Sprintf("sh-data-replicaid-%d", replicaID)
 	raftConfig := raft.DefaultConfig()
 	raftConfig.LocalID = raft.ServerID(strconv.Itoa(replicaID))
 

@@ -177,7 +177,7 @@ func (m *mockStorageHandler) GetBucketsInPaths(paths []int) (bucketIDs []int, er
 }
 
 func startLeaderRaftNodeServer(t *testing.T) *oramNodeServer {
-	cleanRaftDataDirectory("data-replicaid-0")
+	cleanRaftDataDirectory("om-data-replicaid-0")
 
 	fsm := newOramNodeFSM()
 	raftPort, err := freeport.GetFreePort()
