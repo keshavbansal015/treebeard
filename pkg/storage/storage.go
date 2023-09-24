@@ -6,9 +6,9 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"math"
 	"math/rand"
 	"strconv"
-	"time"
 )
 
 // MaxAccessCount is the maximum times we can access a bucket safely.
@@ -19,6 +19,7 @@ const (
 	shift                 = 1 // 2^shift children per node
 	host           string = "localhost:6379"
 	numDB                 = 2
+	treeHeight     int    = 3
 )
 
 // StorageHandler is responsible for handling one or multiple storage shards.
@@ -30,12 +31,16 @@ type StorageHandler struct {
 }
 
 func NewStorageHandler() *StorageHandler {
-	return &StorageHandler{
+	s := &StorageHandler{
 		maxAccessCount: MaxAccessCount,
 		host:           host,
 		db:             []int{1, 2},
 		key:            [][]byte{[]byte("passphrasewhichneedstobe32bytes!"), []byte("passphrasewhichneedstobe32bytes.")},
 	}
+	for i := 0; i < numDB; i++ {
+		s.databaseInit("../../traces/data.txt", i)
+	}
+	return s
 }
 
 func (s *StorageHandler) GetMaxAccessCount() int {
@@ -44,8 +49,10 @@ func (s *StorageHandler) GetMaxAccessCount() int {
 
 // It returns valid randomly chosen path and storageID.
 func (s *StorageHandler) GetRandomPathAndStorageID() (path int, storageID int) {
-	// TODO: implement
-	return 0, 0
+	paths := int(math.Pow(2, float64(treeHeight-1)))
+	randomPath := rand.Intn(paths) + 1
+	randomDB := rand.Intn(numDB)
+	return randomPath, randomDB
 }
 
 // It returns a block offset based on the blocks argument.
@@ -156,7 +163,6 @@ func (s *StorageHandler) WriteBucket(bucketID int, storageID int, readBucketBloc
 			break
 		}
 	}
-	rand.Seed(time.Now().UnixNano())
 	dummyCount := rand.Intn(1000)
 	for ; i < Z+S; i++ {
 		dummyID := "dummy" + strconv.Itoa(dummyCount)
@@ -229,7 +235,8 @@ func (s *StorageHandler) ReadBlock(bucketID int, storageID int, offset int) (val
 func (s *StorageHandler) GetBucketsInPaths(paths []int) (bucketIDs []int, err error) {
 	buckets := make(IntSet)
 	for i := 0; i < len(paths); i++ {
-		for bucketId := paths[i]; bucketId > 0; bucketId = bucketId >> shift {
+		leafID := int(math.Pow(2, float64(treeHeight-1)) + float64(paths[i]) - 1)
+		for bucketId := leafID; bucketId > 0; bucketId = bucketId >> shift {
 			if buckets.Contains(bucketId) {
 				break
 			} else {
