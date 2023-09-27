@@ -101,7 +101,6 @@ func TestSimpleRequestsReturnCorrectResponses(t *testing.T) {
 	if err != nil {
 		t.Errorf("unable to read data from the system; %v", err)
 	}
-	fmt.Println(readValue)
 	if readValue != "meow" {
 		t.Errorf("expected read value to be meow, but it is %s", readValue)
 	}
