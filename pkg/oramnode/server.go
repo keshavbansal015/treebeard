@@ -263,6 +263,9 @@ func (o *oramNodeServer) ReadPath(ctx context.Context, request *pb.ReadPathReque
 	}
 
 	returnValues := make(map[string]string) // map of block to value
+	for _, block := range blocks {
+		returnValues[block] = ""
+	}
 	for _, bucketID := range buckets {
 		if block, exists := realBlockBucketMapping[bucketID]; exists {
 			value, err := o.storageHandler.ReadBlock(bucketID, int(request.StorageId), offsetList[bucketID])
