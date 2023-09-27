@@ -22,6 +22,9 @@ const (
 	treeHeight     int    = 3
 )
 
+// TODO: at the end, we will need sth like this:
+// map[redis replica id: int] -> replicaInfo{host: "ip:port", redisDBNumber}
+
 // StorageHandler is responsible for handling one or multiple storage shards.
 type StorageHandler struct {
 	maxAccessCount int
