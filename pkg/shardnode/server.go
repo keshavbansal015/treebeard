@@ -292,7 +292,11 @@ func StartServer(shardNodeServerID int, rpcPort int, replicaID int, raftPort int
 	if err != nil {
 		log.Fatalf("failed to listen: %v", err)
 	}
-	shardnodeServer := newShardNodeServer(shardNodeServerID, replicaID, r, shardNodeFSM, oramNodeRPCClients, storage.NewStorageHandler(), newBatchManager(parameters.BatchSize))
+	storageHandler := storage.NewStorageHandler()
+	if isFirst {
+		storageHandler.InitDatabase()
+	}
+	shardnodeServer := newShardNodeServer(shardNodeServerID, replicaID, r, shardNodeFSM, oramNodeRPCClients, storageHandler, newBatchManager(parameters.BatchSize))
 	go shardnodeServer.sendBatchesForever()
 
 	grpcServer := grpc.NewServer(grpc.UnaryInterceptor(rpc.ContextPropagationUnaryServerInterceptor()))

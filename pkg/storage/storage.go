@@ -40,10 +40,13 @@ func NewStorageHandler() *StorageHandler {
 		db:             []int{1, 2},
 		key:            [][]byte{[]byte("passphrasewhichneedstobe32bytes!"), []byte("passphrasewhichneedstobe32bytes.")},
 	}
+	return s
+}
+
+func (s *StorageHandler) InitDatabase() {
 	for i := 0; i < numDB; i++ {
 		s.databaseInit("../../traces/data.txt", i)
 	}
-	return s
 }
 
 func (s *StorageHandler) GetMaxAccessCount() int {
