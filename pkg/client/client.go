@@ -1,12 +1,12 @@
 package client
 
 import (
+	"context"
 	"fmt"
 	"math/rand"
 
 	routerpb "github.com/dsg-uwaterloo/oblishard/api/router"
 	"github.com/dsg-uwaterloo/oblishard/pkg/config"
-	"github.com/dsg-uwaterloo/oblishard/pkg/rpc"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 )
@@ -26,7 +26,7 @@ func (r RouterClients) GetRandomRouter() RouterRPCClient {
 }
 
 func (c *RouterRPCClient) Read(block string) (value string, err error) {
-	reply, err := c.ClientAPI.Read(rpc.GetContextWithRequestID(),
+	reply, err := c.ClientAPI.Read(context.Background(),
 		&routerpb.ReadRequest{Block: block})
 	if err != nil {
 		return "", err
@@ -35,7 +35,7 @@ func (c *RouterRPCClient) Read(block string) (value string, err error) {
 }
 
 func (c *RouterRPCClient) Write(block string, value string) (success bool, err error) {
-	reply, err := c.ClientAPI.Write(rpc.GetContextWithRequestID(),
+	reply, err := c.ClientAPI.Write(context.Background(),
 		&routerpb.WriteRequest{Block: block, Value: value})
 	if err != nil {
 		return false, err
