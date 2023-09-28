@@ -1,11 +1,13 @@
 package main
 
 import (
+	"context"
 	"flag"
 	"log"
 
 	"github.com/dsg-uwaterloo/oblishard/pkg/config"
 	shardnode "github.com/dsg-uwaterloo/oblishard/pkg/shardnode"
+	"github.com/dsg-uwaterloo/oblishard/pkg/tracing"
 )
 
 // Usage: ./shardnode -shardnodeid=<shardnodeid> -rpcport=<rpcport> -replicaid=<replicaid> -raftport=<raftport> -joinaddr=<ip:port>
@@ -36,6 +38,18 @@ func main() {
 	if err != nil {
 		log.Fatalf("Failed to read parameters from yaml file; %v", err)
 	}
+
+	// TODO: add a replica id to this
+	// TODO: read the exporter url from a config file or sth like that
+	tracingProvider, err := tracing.NewProvider(context.Background(), "shardnode", "localhost:4317")
+	if err != nil {
+		log.Fatalf("Failed to create tracing provider; %v", err)
+	}
+	stopTracingProvider, err := tracingProvider.RegisterAsGlobal()
+	if err != nil {
+		log.Fatalf("Failed to register tracing provider; %v", err)
+	}
+	defer stopTracingProvider(context.Background())
 
 	shardnode.StartServer(*shardNodeID, *rpcPort, *replicaID, *raftPort, *joinAddr, rpcClients, parameters)
 }

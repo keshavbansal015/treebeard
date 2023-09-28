@@ -14,6 +14,7 @@ import (
 	"github.com/dsg-uwaterloo/oblishard/pkg/rpc"
 	strg "github.com/dsg-uwaterloo/oblishard/pkg/storage"
 	"github.com/hashicorp/raft"
+	"go.opentelemetry.io/otel"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 )
@@ -228,6 +229,8 @@ func (o *oramNodeServer) ReadPath(ctx context.Context, request *pb.ReadPathReque
 	if o.raftNode.State() != raft.Leader {
 		return nil, fmt.Errorf("not the leader node")
 	}
+	tracer := otel.Tracer("")
+	ctx, span := tracer.Start(ctx, "oramnode read path request")
 
 	var blocks []string
 	for _, request := range request.Requests {
@@ -300,6 +303,7 @@ func (o *oramNodeServer) ReadPath(ctx context.Context, request *pb.ReadPathReque
 	for block, value := range returnValues {
 		response = append(response, &pb.BlockResponse{Block: block, Value: value})
 	}
+	span.End()
 	return &pb.ReadPathReply{Responses: response}, nil
 }
 

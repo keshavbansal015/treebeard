@@ -14,6 +14,7 @@ import (
 	"github.com/dsg-uwaterloo/oblishard/pkg/storage"
 	"github.com/dsg-uwaterloo/oblishard/pkg/utils"
 	"github.com/hashicorp/raft"
+	"go.opentelemetry.io/otel"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 )
@@ -84,7 +85,8 @@ func (s *shardNodeServer) sendCurrentBatches() {
 	for storageID, requests := range s.batchManager.storageQueues {
 		if len(requests) >= s.batchManager.batchSize {
 			oramNodeReplicaMap := s.oramNodeClients.getRandomOramNodeReplicaMap()
-			reply, _ := oramNodeReplicaMap.readPathFromAllOramNodeReplicas(context.Background(), requests, storageID)
+			// TODO: add a note about why we are using the first request's context
+			reply, _ := oramNodeReplicaMap.readPathFromAllOramNodeReplicas(requests[0].ctx, requests, storageID)
 			for _, readPathReply := range reply.Responses {
 				if _, exists := s.batchManager.responseChannel[readPathReply.Block]; exists {
 					s.batchManager.responseChannel[readPathReply.Block] <- readPathReply.Value
@@ -100,6 +102,8 @@ func (s *shardNodeServer) query(ctx context.Context, op OperationType, block str
 	if s.raftNode.State() != raft.Leader {
 		return "", fmt.Errorf("not the leader node")
 	}
+	tracer := otel.Tracer("")
+	ctx, span := tracer.Start(ctx, "shardnode query")
 	requestID, err := rpc.GetRequestIDFromContext(ctx)
 	if err != nil {
 		return "", fmt.Errorf("unable to read requestid from request; %s", err)
@@ -126,9 +130,9 @@ func (s *shardNodeServer) query(ctx context.Context, op OperationType, block str
 
 	var replyValue string
 	if isInStash || !s.shardNodeFSM.isInitialRequest(block, requestID) {
-		s.batchManager.addRequestToStorageQueueWithoutWaiting(blockRequest{block: block, path: path}, storageID)
+		s.batchManager.addRequestToStorageQueueWithoutWaiting(blockRequest{ctx: ctx, block: block, path: path}, storageID)
 	} else {
-		oramReplyChan := s.batchManager.addRequestToStorageQueueAndWait(blockRequest{block: block, path: path}, storageID)
+		oramReplyChan := s.batchManager.addRequestToStorageQueueAndWait(blockRequest{ctx: ctx, block: block, path: path}, storageID)
 		replyValue = <-oramReplyChan
 	}
 
@@ -144,6 +148,7 @@ func (s *shardNodeServer) query(ctx context.Context, op OperationType, block str
 		}
 	}
 	responseValue := <-responseChannel
+	span.End()
 	return responseValue, nil
 }
 

@@ -5,6 +5,7 @@ import (
 
 	shardnodepb "github.com/dsg-uwaterloo/oblishard/api/shardnode"
 	"github.com/dsg-uwaterloo/oblishard/pkg/config"
+	"github.com/dsg-uwaterloo/oblishard/pkg/rpc"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 )
@@ -20,7 +21,10 @@ func StartShardNodeRPCClients(endpoints []config.ShardNodeEndpoint) (map[int]Rep
 	clients := make(map[int]ReplicaRPCClientMap)
 	for _, endpoint := range endpoints {
 		serverAddr := fmt.Sprintf("%s:%d", endpoint.IP, endpoint.Port)
-		conn, err := grpc.Dial(serverAddr, grpc.WithTransportCredentials(insecure.NewCredentials()))
+		conn, err := grpc.Dial(serverAddr,
+			grpc.WithTransportCredentials(insecure.NewCredentials()),
+			grpc.WithUnaryInterceptor(rpc.ContextPropagationUnaryClientInterceptor()),
+		)
 		if err != nil {
 			return nil, err
 		}

@@ -65,7 +65,10 @@ func StartOramNodeRPCClients(endpoints []config.OramNodeEndpoint) (map[int]Repli
 	clients := make(map[int]ReplicaRPCClientMap)
 	for _, endpoint := range endpoints {
 		serverAddr := fmt.Sprintf("%s:%d", endpoint.IP, endpoint.Port)
-		conn, err := grpc.Dial(serverAddr, grpc.WithTransportCredentials(insecure.NewCredentials()))
+		conn, err := grpc.Dial(serverAddr,
+			grpc.WithTransportCredentials(insecure.NewCredentials()),
+			grpc.WithUnaryInterceptor(rpc.ContextPropagationUnaryClientInterceptor()),
+		)
 		if err != nil {
 			return nil, err
 		}

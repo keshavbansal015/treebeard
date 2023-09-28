@@ -1,6 +1,7 @@
 package e2e
 
 import (
+	"context"
 	"fmt"
 	"log"
 	"os"
@@ -89,7 +90,7 @@ func TestSimpleRequestsReturnCorrectResponses(t *testing.T) {
 	}
 	routerRPCClient := rpcClients.GetRandomRouter()
 
-	writeValue, err := routerRPCClient.Write("cat", "meow")
+	writeValue, err := routerRPCClient.Write(context.Background(), "cat", "meow")
 	if err != nil {
 		t.Errorf("unable to write data to the system; %v", err)
 	}
@@ -97,7 +98,7 @@ func TestSimpleRequestsReturnCorrectResponses(t *testing.T) {
 		t.Errorf("wirte should return success: true")
 	}
 
-	readValue, err := routerRPCClient.Read("cat")
+	readValue, err := routerRPCClient.Read(context.Background(), "cat")
 	if err != nil {
 		t.Errorf("unable to read data from the system; %v", err)
 	}

@@ -10,7 +10,7 @@ import (
 )
 
 func TestGetContextWithRequestIDHasUUIDInMetadata(t *testing.T) {
-	ctx := rpc.GetContextWithRequestID()
+	ctx := rpc.GetContextWithRequestID(context.Background())
 	md, _ := metadata.FromOutgoingContext(ctx)
 	if len(md["requestid"]) != 1 {
 		t.Errorf("Expected a value in the requestid metadata for the request but got metadata: %v", md)
@@ -18,8 +18,8 @@ func TestGetContextWithRequestIDHasUUIDInMetadata(t *testing.T) {
 }
 
 func TestGetContextWithRequestIDWhenCalledMultipleTimesGeneratesDistinctRequestIDs(t *testing.T) {
-	ctx1 := rpc.GetContextWithRequestID()
-	ctx2 := rpc.GetContextWithRequestID()
+	ctx1 := rpc.GetContextWithRequestID(context.Background())
+	ctx2 := rpc.GetContextWithRequestID(context.Background())
 	md1, _ := metadata.FromOutgoingContext(ctx1)
 	md2, _ := metadata.FromOutgoingContext(ctx2)
 	if md1["requestid"][0] == md2["requestid"][0] {

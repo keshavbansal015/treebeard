@@ -1,11 +1,14 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"log"
 
 	"github.com/dsg-uwaterloo/oblishard/pkg/client"
 	"github.com/dsg-uwaterloo/oblishard/pkg/config"
+	"github.com/dsg-uwaterloo/oblishard/pkg/tracing"
+	"go.opentelemetry.io/otel"
 )
 
 func main() {
@@ -25,16 +28,33 @@ func main() {
 	}
 
 	routerRPCClient := rpcClients.GetRandomRouter()
+
+	tracingProvider, err := tracing.NewProvider(context.Background(), "client", "localhost:4317")
+	if err != nil {
+		log.Fatalf("Failed to create tracing provider; %v", err)
+	}
+	stopTracingProvider, err := tracingProvider.RegisterAsGlobal()
+	if err != nil {
+		log.Fatalf("Failed to register tracing provider; %v", err)
+	}
+	defer stopTracingProvider(context.Background())
+
+	tracer := otel.Tracer("")
+
 	for _, request := range requests {
 		if request.OperationType == client.Read {
-			value, err := routerRPCClient.Read(request.Block)
+			ctx, span := tracer.Start(context.Background(), "client read request")
+			value, err := routerRPCClient.Read(ctx, request.Block)
+			span.End()
 			if err != nil {
 				log.Printf("Failed to call Read on router; %v", err)
 				return
 			}
 			fmt.Printf("Sucess in Read. Got value: %v\n", value)
 		} else {
-			value, err := routerRPCClient.Write(request.Block, request.NewValue)
+			ctx, span := tracer.Start(context.Background(), "client write request")
+			value, err := routerRPCClient.Write(ctx, request.Block, request.NewValue)
+			span.End()
 			if err != nil {
 				log.Printf("Failed to call Write on router; %v", err)
 				return

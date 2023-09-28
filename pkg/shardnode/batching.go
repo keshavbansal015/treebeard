@@ -1,8 +1,12 @@
 package shardnode
 
-import "sync"
+import (
+	"context"
+	"sync"
+)
 
 type blockRequest struct {
+	ctx   context.Context
 	block string
 	path  int
 }
