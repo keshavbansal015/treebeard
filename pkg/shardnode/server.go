@@ -51,9 +51,9 @@ const (
 
 // For the initial request of a block, it returns the path and storageID from the position map.
 // For other requests, it returns a random path and storageID.
-func (s *shardNodeServer) getPathAndStorageBasedOnRequest(block string, requestID string) (path int, storageID int) {
+func (s *shardNodeServer) getPathAndStorageBasedOnRequest(ctx context.Context, block string, requestID string) (path int, storageID int) {
 	if !s.shardNodeFSM.isInitialRequest(block, requestID) {
-		return s.storageHandler.GetRandomPathAndStorageID()
+		return s.storageHandler.GetRandomPathAndStorageID(ctx)
 	} else {
 		s.shardNodeFSM.mu.Lock()
 		defer s.shardNodeFSM.mu.Unlock()
@@ -103,23 +103,25 @@ func (s *shardNodeServer) query(ctx context.Context, op OperationType, block str
 		return "", fmt.Errorf("not the leader node")
 	}
 	tracer := otel.Tracer("")
-	ctx, span := tracer.Start(ctx, "shardnode query")
+	ctx, querySpan := tracer.Start(ctx, "shardnode query")
 	requestID, err := rpc.GetRequestIDFromContext(ctx)
 	if err != nil {
 		return "", fmt.Errorf("unable to read requestid from request; %s", err)
 	}
 
-	newPath, newStorageID := s.storageHandler.GetRandomPathAndStorageID()
+	newPath, newStorageID := s.storageHandler.GetRandomPathAndStorageID(ctx)
 	requestReplicationCommand, err := newRequestReplicationCommand(block, requestID, newPath, newStorageID)
 	if err != nil {
 		return "", fmt.Errorf("could not create request replication command; %s", err)
 	}
+	_, requestReplicationSpan := tracer.Start(ctx, "apply request replication") // TODO: should I update the context?
 	err = s.raftNode.Apply(requestReplicationCommand, 2*time.Second).Error()
+	requestReplicationSpan.End()
 	if err != nil {
 		return "", fmt.Errorf("could not apply log to the FSM; %s", err)
 	}
 
-	path, storageID := s.getPathAndStorageBasedOnRequest(block, requestID)
+	path, storageID := s.getPathAndStorageBasedOnRequest(ctx, block, requestID)
 
 	isInStash := false
 	s.shardNodeFSM.mu.Lock()
@@ -129,26 +131,29 @@ func (s *shardNodeServer) query(ctx context.Context, op OperationType, block str
 	s.shardNodeFSM.mu.Unlock()
 
 	var replyValue string
+	_, waitOnReplySpan := tracer.Start(ctx, "wait on reply") // TODO: should I update the context?
 	if isInStash || !s.shardNodeFSM.isInitialRequest(block, requestID) {
 		s.batchManager.addRequestToStorageQueueWithoutWaiting(blockRequest{ctx: ctx, block: block, path: path}, storageID)
 	} else {
 		oramReplyChan := s.batchManager.addRequestToStorageQueueAndWait(blockRequest{ctx: ctx, block: block, path: path}, storageID)
 		replyValue = <-oramReplyChan
 	}
-
+	waitOnReplySpan.End()
 	responseChannel := s.createResponseChannelForRequestID(requestID)
 	if s.shardNodeFSM.isInitialRequest(block, requestID) {
 		responseReplicationCommand, err := newResponseReplicationCommand(replyValue, requestID, block, value, op)
 		if err != nil {
 			return "", fmt.Errorf("could not create response replication command; %s", err)
 		}
+		_, responseReplicationSpan := tracer.Start(ctx, "apply response replication")
 		err = s.raftNode.Apply(responseReplicationCommand, 2*time.Second).Error()
+		responseReplicationSpan.End()
 		if err != nil {
 			return "", fmt.Errorf("could not apply log to the FSM; %s", err)
 		}
 	}
 	responseValue := <-responseChannel
-	span.End()
+	querySpan.End()
 	return responseValue, nil
 }
 

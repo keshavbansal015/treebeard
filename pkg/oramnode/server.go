@@ -21,7 +21,7 @@ import (
 
 type storage interface {
 	GetMaxAccessCount() int
-	GetRandomPathAndStorageID() (path int, storageID int)
+	GetRandomPathAndStorageID(context.Context) (path int, storageID int)
 	GetBlockOffset(bucketID int, storageID int, blocks []string) (offset int, isReal bool, blockFound string, err error)
 	GetAccessCount(bucketID int, storageID int) (count int, err error)
 	ReadBucket(bucketID int, storageID int) (blocks map[string]string, err error)
@@ -82,7 +82,9 @@ func (o *oramNodeServer) performFailedOperations() error {
 }
 
 func (o *oramNodeServer) earlyReshuffle(buckets []int, storageID int) error {
+	// TODO: can we make this a background thread?
 	for _, bucket := range buckets {
+		// TODO: check the Redis latency
 		accessCount, err := o.storageHandler.GetAccessCount(bucket, storageID)
 		if err != nil {
 			return fmt.Errorf("unable to get access count from the server; %s", err)

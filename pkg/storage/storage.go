@@ -9,7 +9,11 @@ import (
 	"math"
 	"math/rand"
 	"strconv"
+
+	"go.opentelemetry.io/otel"
 )
+
+// TOOD: check if Redis is in memory
 
 // MaxAccessCount is the maximum times we can access a bucket safely.
 const (
@@ -54,10 +58,13 @@ func (s *StorageHandler) GetMaxAccessCount() int {
 }
 
 // It returns valid randomly chosen path and storageID.
-func (s *StorageHandler) GetRandomPathAndStorageID() (path int, storageID int) {
+func (s *StorageHandler) GetRandomPathAndStorageID(ctx context.Context) (path int, storageID int) {
+	tracer := otel.Tracer("")
+	_, span := tracer.Start(ctx, "get random path and storage id")
 	paths := int(math.Pow(2, float64(treeHeight-1)))
 	randomPath := rand.Intn(paths) + 1
 	randomDB := rand.Intn(numDB)
+	span.End()
 	return randomPath, randomDB
 }
 

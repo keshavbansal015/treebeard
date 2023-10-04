@@ -139,7 +139,7 @@ func (m *mockStorageHandler) GetMaxAccessCount() int {
 	return m.maxAccessCount
 }
 
-func (m *mockStorageHandler) GetRandomPathAndStorageID() (path int, storageID int) {
+func (m *mockStorageHandler) GetRandomPathAndStorageID(context.Context) (path int, storageID int) {
 	return 0, 0
 }
 

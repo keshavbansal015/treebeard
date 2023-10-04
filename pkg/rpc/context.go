@@ -55,10 +55,13 @@ func GetContextWithRequestID(ctx context.Context) context.Context {
 }
 
 func GetRequestIDFromContext(ctx context.Context) (string, error) {
+	tracer := otel.Tracer("")
+	ctx, span := tracer.Start(ctx, "get request id from context")
 	md, _ := metadata.FromIncomingContext(ctx)
 	requestID, exists := md["requestid"]
 	if !exists || len(requestID) == 0 {
 		return "", fmt.Errorf("requestid not found in the request metadata")
 	}
+	span.End()
 	return requestID[0], nil
 }

@@ -20,7 +20,7 @@ func TestGetPathAndStorageBasedOnRequestWhenInitialRequestReturnsRealPathAndStor
 	s.shardNodeFSM.requestLog["block1"] = []string{"request1", "request2"}
 	s.shardNodeFSM.positionMap["block1"] = positionState{path: 23, storageID: 3}
 
-	path, storageID := s.getPathAndStorageBasedOnRequest("block1", "request1")
+	path, storageID := s.getPathAndStorageBasedOnRequest(context.Background(), "block1", "request1")
 	if path != 23 {
 		t.Errorf("Expected path to be a real value from position map equal to 23 but the value is: %d", path)
 	}
