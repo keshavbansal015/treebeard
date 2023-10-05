@@ -133,7 +133,7 @@ func (fsm *oramNodeFSM) Apply(rLog *raft.Log) interface{} {
 			log.Debug().Msgf("got replication command for replicate end read path")
 			fsm.handleEndReadPathCommand()
 		} else {
-			fmt.Println("wrong command type")
+			log.Error().Msgf("wrong command type")
 		}
 	default:
 		return fmt.Errorf("unknown raft log type: %s", rLog.Type)

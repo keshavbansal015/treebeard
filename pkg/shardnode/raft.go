@@ -298,7 +298,7 @@ func (fsm *shardNodeFSM) Apply(rLog *raft.Log) interface{} {
 			}
 			fsm.handleReplicateAcksNacks(payload)
 		} else {
-			fmt.Println("wrong command type")
+			log.Error().Msgf("wrong command type")
 		}
 	default:
 		return fmt.Errorf("unknown raft log type: %s", rLog.Type)

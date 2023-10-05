@@ -346,7 +346,7 @@ func StartServer(oramNodeServerID int, rpcPort int, replicaID int, raftPort int,
 	go func() {
 		for {
 			time.Sleep(5 * time.Second)
-			fmt.Println(oramNodeFSM)
+			log.Debug().Msgf(oramNodeFSM.String())
 		}
 	}()
 
@@ -356,7 +356,6 @@ func StartServer(oramNodeServerID int, rpcPort int, replicaID int, raftPort int,
 			log.Fatal().Msgf("The raft node could not connect to the leader as a new voter; %s", err)
 		}
 		client := pb.NewOramNodeClient(conn)
-		fmt.Println(raftPort)
 		joinRaftVoterReply, err := client.JoinRaftVoter(
 			context.Background(),
 			&pb.JoinRaftVoterRequest{

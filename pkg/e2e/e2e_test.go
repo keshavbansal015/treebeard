@@ -3,7 +3,6 @@ package e2e
 import (
 	"context"
 	"fmt"
-	"log"
 	"os"
 	"testing"
 	"time"
@@ -13,16 +12,17 @@ import (
 	"github.com/dsg-uwaterloo/oblishard/pkg/oramnode"
 	"github.com/dsg-uwaterloo/oblishard/pkg/router"
 	"github.com/dsg-uwaterloo/oblishard/pkg/shardnode"
+	"github.com/rs/zerolog/log"
 )
 
 func startRouter() {
 	shardNodeEndpoints, err := config.ReadShardNodeEndpoints("./configs/shardnode_endpoints.yaml")
 	if err != nil {
-		log.Fatalf("Cannot read shard node endpoints from yaml file; %v", err)
+		log.Fatal().Msgf("Cannot read shard node endpoints from yaml file; %v", err)
 	}
 	rpcClients, err := router.StartShardNodeRPCClients(shardNodeEndpoints)
 	if err != nil {
-		log.Fatalf("Failed to create client connections with shard node servers; %v", err)
+		log.Fatal().Msgf("Failed to create client connections with shard node servers; %v", err)
 	}
 	router.StartRPCServer(rpcClients, 0, 8745)
 }
@@ -31,15 +31,15 @@ func startShardNode(replicaID int, rpcPort int, raftPort int, joinAddr string) {
 	os.RemoveAll(fmt.Sprintf("sh-data-replicaid-%d", replicaID))
 	oramNodeEndpoints, err := config.ReadOramNodeEndpoints("./configs/oramnode_endpoints.yaml")
 	if err != nil {
-		log.Fatalf("Cannot read oram node endpoints from yaml file; %v", err)
+		log.Fatal().Msgf("Cannot read oram node endpoints from yaml file; %v", err)
 	}
 	rpcClients, err := shardnode.StartOramNodeRPCClients(oramNodeEndpoints)
 	if err != nil {
-		log.Fatalf("Failed to create client connections with oram node servers; %v", err)
+		log.Fatal().Msgf("Failed to create client connections with oram node servers; %v", err)
 	}
 	parameters, err := config.ReadParameters("./configs/parameters.yaml")
 	if err != nil {
-		log.Fatalf("Failed to read parameters from yaml file; %v", err)
+		log.Fatal().Msgf("Failed to read parameters from yaml file; %v", err)
 	}
 	shardnode.StartServer(0, rpcPort, replicaID, raftPort, joinAddr, rpcClients, parameters)
 }
@@ -48,15 +48,15 @@ func startOramNode(replicaID int, rpcPort int, raftPort int, joinAddr string) {
 	os.RemoveAll(fmt.Sprintf("om-data-replicaid-%d", replicaID))
 	shardNodeEndpoints, err := config.ReadShardNodeEndpoints("./configs/shardnode_endpoints.yaml")
 	if err != nil {
-		log.Fatalf("Cannot read shard node endpoints from yaml file; %v", err)
+		log.Fatal().Msgf("Cannot read shard node endpoints from yaml file; %v", err)
 	}
 	rpcClients, err := oramnode.StartShardNodeRPCClients(shardNodeEndpoints)
 	if err != nil {
-		log.Fatalf("Failed to create client connections with shard node servers; %v", err)
+		log.Fatal().Msgf("Failed to create client connections with shard node servers; %v", err)
 	}
 	parameters, err := config.ReadParameters("./configs/parameters.yaml")
 	if err != nil {
-		log.Fatalf("Failed to read parameters from yaml file; %v", err)
+		log.Fatal().Msgf("Failed to read parameters from yaml file; %v", err)
 	}
 	oramnode.StartServer(0, rpcPort, replicaID, raftPort, joinAddr, rpcClients, parameters)
 }
@@ -81,12 +81,12 @@ func TestSimpleRequestsReturnCorrectResponses(t *testing.T) {
 	startTestSystem()
 	routerEndpoints, err := config.ReadRouterEndpoints("./configs/router_endpoints.yaml")
 	if err != nil {
-		log.Fatalf("Cannot read router endpoints from yaml file; %v", err)
+		log.Fatal().Msgf("Cannot read router endpoints from yaml file; %v", err)
 	}
 
 	rpcClients, err := client.StartRouterRPCClients(routerEndpoints)
 	if err != nil {
-		log.Fatalf("Failed to start clients; %v", err)
+		log.Fatal().Msgf("Failed to start clients; %v", err)
 	}
 	routerRPCClient := rpcClients.GetRandomRouter()
 

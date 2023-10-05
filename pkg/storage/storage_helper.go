@@ -3,13 +3,13 @@ package storage
 import (
 	"bufio"
 	"context"
-	"fmt"
 	"math/rand"
 	"os"
 	"strconv"
 	"strings"
 
 	"github.com/redis/go-redis/v9"
+	"github.com/rs/zerolog/log"
 )
 
 func (s *StorageHandler) getClient(storageID int) *redis.Client {
@@ -41,7 +41,7 @@ func shuffleArray(arr []int) {
 func (s *StorageHandler) databaseInit(filepath string, storageID int) (position_map map[string]int, err error) {
 	file, err := os.Open(filepath)
 	if err != nil {
-		fmt.Println("Error opening file:", err)
+		log.Error().Msgf("Error opening file: %v", err)
 		return nil, err
 	}
 	defer file.Close()
@@ -69,7 +69,7 @@ func (s *StorageHandler) databaseInit(filepath string, storageID int) (position_
 		value := parts[2]
 		value, err = Encrypt(value, s.key[storageID])
 		if err != nil {
-			fmt.Println("Error encrypting data")
+			log.Error().Msgf("Error encrypting data")
 			return nil, err
 		}
 		// add encrypted value to array
@@ -86,7 +86,7 @@ func (s *StorageHandler) databaseInit(filepath string, storageID int) (position_
 				dummyString := "b" + strconv.Itoa(bucketCount) + "d" + strconv.Itoa(i)
 				dummyString, err = Encrypt(dummyString, s.key[storageID])
 				if err != nil {
-					fmt.Println("Error encrypting data")
+					log.Error().Msgf("Error encrypting data")
 					return nil, err
 				}
 				// push dummy to array
@@ -98,12 +98,12 @@ func (s *StorageHandler) databaseInit(filepath string, storageID int) (position_
 			// push content of value array and meta data array
 			err = s.Push(bucketCount, values, storageID)
 			if err != nil {
-				fmt.Println("Error pushing values to db:", err)
+				log.Error().Msgf("Error pushing values to db: %v", err)
 				return nil, err
 			}
 			err = s.PushMetadata(bucketCount, metadatas, storageID)
 			if err != nil {
-				fmt.Println("Error pushing metadatas to db:", err)
+				log.Error().Msgf("Error pushing metadatas to db: %v", err)
 				return nil, err
 			}
 			i = 0
@@ -119,7 +119,7 @@ func (s *StorageHandler) databaseInit(filepath string, storageID int) (position_
 			dummyString := "b" + strconv.Itoa(bucketCount) + "d" + strconv.Itoa(i)
 			dummyString, err = Encrypt(dummyString, s.key[storageID])
 			if err != nil {
-				fmt.Println("Error encrypting data")
+				log.Error().Msgf("Error encrypting data")
 				return nil, err
 			}
 			// push dummy to array
@@ -131,12 +131,12 @@ func (s *StorageHandler) databaseInit(filepath string, storageID int) (position_
 		// push content of value array and meta data array
 		err = s.Push(bucketCount, values, storageID)
 		if err != nil {
-			fmt.Println("Error pushing values to db:", err)
+			log.Error().Msgf("Error pushing values to db: %v", err)
 			return nil, err
 		}
 		err = s.PushMetadata(bucketCount, metadatas, storageID)
 		if err != nil {
-			fmt.Println("Error pushing metadatas to db:", err)
+			log.Error().Msgf("Error pushing metadatas to db: %v", err)
 			return nil, err
 		}
 	}

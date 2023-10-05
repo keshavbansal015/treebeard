@@ -5,7 +5,6 @@ package storage
 import (
 	"context"
 	"errors"
-	"fmt"
 	"math"
 	"math/rand"
 	"strconv"
@@ -192,7 +191,7 @@ func (s *StorageHandler) WriteBucket(bucketID int, storageID int, readBucketBloc
 		dummyString := "b" + strconv.Itoa(bucketID) + "d" + strconv.Itoa(i)
 		dummyString, err = Encrypt(dummyString, s.key[storageID])
 		if err != nil {
-			fmt.Println("Error encrypting data")
+			log.Error().Msgf("Error encrypting data")
 			return nil, err
 		}
 		// push dummy to array
@@ -204,12 +203,12 @@ func (s *StorageHandler) WriteBucket(bucketID int, storageID int, readBucketBloc
 	// push content of value array and meta data array
 	err = s.Push(bucketID, values, storageID)
 	if err != nil {
-		fmt.Println("Error pushing values to db:", err)
+		log.Error().Msgf("Error pushing values to db: %v", err)
 		return nil, err
 	}
 	err = s.PushMetadata(bucketID, metadatas, storageID)
 	if err != nil {
-		fmt.Println("Error pushing metadatas to db:", err)
+		log.Error().Msgf("Error pushing metadatas to db: %v", err)
 		return nil, err
 	}
 	return writtenBlocks, nil
