@@ -3,7 +3,6 @@ package shardnode
 import (
 	"context"
 	"fmt"
-	"log"
 	"net"
 	"strconv"
 	"time"
@@ -14,6 +13,7 @@ import (
 	"github.com/dsg-uwaterloo/oblishard/pkg/storage"
 	"github.com/dsg-uwaterloo/oblishard/pkg/utils"
 	"github.com/hashicorp/raft"
+	"github.com/rs/zerolog/log"
 	"go.opentelemetry.io/otel"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
@@ -52,6 +52,7 @@ const (
 // For the initial request of a block, it returns the path and storageID from the position map.
 // For other requests, it returns a random path and storageID.
 func (s *shardNodeServer) getPathAndStorageBasedOnRequest(ctx context.Context, block string, requestID string) (path int, storageID int) {
+	log.Debug().Msgf("Getting path and storageID based on request for block %s and requestID %s", block, requestID)
 	if !s.shardNodeFSM.isInitialRequest(block, requestID) {
 		return s.storageHandler.GetRandomPathAndStorageID(ctx)
 	} else {
@@ -63,8 +64,14 @@ func (s *shardNodeServer) getPathAndStorageBasedOnRequest(ctx context.Context, b
 
 // It creates a channel for receiving the response from the raft FSM for the current requestID.
 func (s *shardNodeServer) createResponseChannelForRequestID(requestID string) chan string {
+	log.Debug().Msgf("Aquiring lock for shard node FSM in createResponseChannelForRequestID")
 	s.shardNodeFSM.mu.Lock()
-	defer s.shardNodeFSM.mu.Unlock()
+	log.Debug().Msgf("Aquired lock for shard node FSM in createResponseChannelForRequestID")
+	defer func() {
+		log.Debug().Msgf("Releasing lock for shard node FSM in createResponseChannelForRequestID")
+		s.shardNodeFSM.mu.Unlock()
+		log.Debug().Msgf("Released lock for shard node FSM in createResponseChannelForRequestID")
+	}()
 	ch := make(chan string)
 	s.shardNodeFSM.responseChannel[requestID] = ch
 	return ch
@@ -86,8 +93,10 @@ func (s *shardNodeServer) sendCurrentBatches() {
 		if len(requests) >= s.batchManager.batchSize {
 			oramNodeReplicaMap := s.oramNodeClients.getRandomOramNodeReplicaMap()
 			// TODO: add a note about why we are using the first request's context
+			log.Debug().Msgf("Sending batch of size %d to storageID %d", len(requests), storageID)
 			reply, _ := oramNodeReplicaMap.readPathFromAllOramNodeReplicas(requests[0].ctx, requests, storageID)
 			for _, readPathReply := range reply.Responses {
+				log.Debug().Msgf("Got reply from oram node replica: %v", readPathReply)
 				if _, exists := s.batchManager.responseChannel[readPathReply.Block]; exists {
 					s.batchManager.responseChannel[readPathReply.Block] <- readPathReply.Value
 					delete(s.batchManager.responseChannel, readPathReply.Block)
@@ -133,14 +142,17 @@ func (s *shardNodeServer) query(ctx context.Context, op OperationType, block str
 	var replyValue string
 	_, waitOnReplySpan := tracer.Start(ctx, "wait on reply") // TODO: should I update the context?
 	if isInStash || !s.shardNodeFSM.isInitialRequest(block, requestID) {
+		log.Debug().Msgf("Adding request to storage queue without waiting for block %s", block)
 		s.batchManager.addRequestToStorageQueueWithoutWaiting(blockRequest{ctx: ctx, block: block, path: path}, storageID)
 	} else {
+		log.Debug().Msgf("Adding request to storage queue and waiting for block %s", block)
 		oramReplyChan := s.batchManager.addRequestToStorageQueueAndWait(blockRequest{ctx: ctx, block: block, path: path}, storageID)
 		replyValue = <-oramReplyChan
 	}
 	waitOnReplySpan.End()
 	responseChannel := s.createResponseChannelForRequestID(requestID)
 	if s.shardNodeFSM.isInitialRequest(block, requestID) {
+		log.Debug().Msgf("Adding response to response channel for block %s", block)
 		responseReplicationCommand, err := newResponseReplicationCommand(replyValue, requestID, block, value, op)
 		if err != nil {
 			return "", fmt.Errorf("could not create response replication command; %s", err)
@@ -153,12 +165,13 @@ func (s *shardNodeServer) query(ctx context.Context, op OperationType, block str
 		}
 	}
 	responseValue := <-responseChannel
+	log.Debug().Msgf("Got response from response channel for block %s; value: %s", block, responseValue)
 	querySpan.End()
 	return responseValue, nil
 }
 
 func (s *shardNodeServer) Read(ctx context.Context, readRequest *pb.ReadRequest) (*pb.ReadReply, error) {
-	fmt.Println("Read on shard node is called")
+	log.Debug().Msgf("Received read request for block %s", readRequest.Block)
 	val, err := s.query(ctx, Read, readRequest.Block, "")
 	if err != nil {
 		return nil, err
@@ -167,7 +180,7 @@ func (s *shardNodeServer) Read(ctx context.Context, readRequest *pb.ReadRequest)
 }
 
 func (s *shardNodeServer) Write(ctx context.Context, writeRequest *pb.WriteRequest) (*pb.WriteReply, error) {
-	fmt.Println("Write on shard node is called")
+	log.Debug().Msgf("Received write request for block %s", writeRequest.Block)
 	val, err := s.query(ctx, Write, writeRequest.Block, writeRequest.Value)
 	if err != nil {
 		return nil, err
@@ -178,12 +191,18 @@ func (s *shardNodeServer) Write(ctx context.Context, writeRequest *pb.WriteReque
 // It gets maxBlocks from the stash to send to the requesting oram node.
 // The blocks should be for the same path and storageID.
 func (s *shardNodeServer) getBlocksForSend(maxBlocks int, paths []int, storageID int) (blocksToReturn []*pb.Block, blocks []string) {
+	log.Debug().Msgf("Aquiring lock for shard node FSM in getBlocksForSend")
 	s.shardNodeFSM.mu.Lock()
-	defer s.shardNodeFSM.mu.Unlock()
+	log.Debug().Msgf("Aquired lock for shard node FSM in getBlocksForSend")
+	defer func() {
+		log.Debug().Msgf("Releasing lock for shard node FSM in getBlocksForSend")
+		s.shardNodeFSM.mu.Unlock()
+		log.Debug().Msgf("Released lock for shard node FSM in getBlocksForSend")
+	}()
 
 	counter := 0
 	for block, stashState := range s.shardNodeFSM.stash {
-		if (!s.shardNodeFSM.positionMap[block].isPathForPaths(paths)) || (s.shardNodeFSM.positionMap[block].storageID != storageID) {
+		if (!s.shardNodeFSM.positionMap[block].isPathInPaths(paths)) || (s.shardNodeFSM.positionMap[block].storageID != storageID) {
 			continue
 		}
 
@@ -199,6 +218,7 @@ func (s *shardNodeServer) getBlocksForSend(maxBlocks int, paths []int, storageID
 		counter++
 
 	}
+	log.Debug().Msgf("Sending blocks %v for paths %v and storageID %d", blocks, paths, storageID)
 	return blocksToReturn, blocks
 }
 
@@ -233,6 +253,7 @@ func (s *shardNodeServer) AckSentBlocks(ctx context.Context, reply *pb.AckSentBl
 			nackedBlocks = append(nackedBlocks, block)
 		}
 	}
+	log.Debug().Msgf("Received acks %v and nacks %v", ackedBlocks, nackedBlocks)
 
 	acksNacksReplicationCommand, err := newAcksNacksReplicationCommand(ackedBlocks, nackedBlocks)
 	if err != nil {
@@ -267,7 +288,7 @@ func StartServer(shardNodeServerID int, rpcPort int, replicaID int, raftPort int
 	shardNodeFSM := newShardNodeFSM()
 	r, err := startRaftServer(isFirst, replicaID, raftPort, shardNodeFSM)
 	if err != nil {
-		log.Fatalf("The raft node creation did not succeed; %s", err)
+		log.Fatal().Msgf("The raft node creation did not succeed; %s", err)
 	}
 	shardNodeFSM.mu.Lock()
 	shardNodeFSM.raftNode = r
@@ -276,14 +297,14 @@ func StartServer(shardNodeServerID int, rpcPort int, replicaID int, raftPort int
 	go func() {
 		for {
 			time.Sleep(5 * time.Second)
-			fmt.Println(shardNodeFSM)
+			log.Debug().Msgf(shardNodeFSM.String())
 		}
 	}()
 
 	if !isFirst {
 		conn, err := grpc.Dial(joinAddr, grpc.WithTransportCredentials(insecure.NewCredentials()))
 		if err != nil {
-			log.Fatalf("The raft node could not connect to the leader as a new voter; %s", err)
+			log.Fatal().Msgf("The raft node could not connect to the leader as a new voter; %s", err)
 		}
 		client := pb.NewShardNodeClient(conn)
 		joinRaftVoterReply, err := client.JoinRaftVoter(
@@ -294,13 +315,13 @@ func StartServer(shardNodeServerID int, rpcPort int, replicaID int, raftPort int
 			},
 		)
 		if err != nil || !joinRaftVoterReply.Success {
-			log.Fatalf("The raft node could not connect to the leader as a new voter; %s", err)
+			log.Fatal().Msgf("The raft node could not connect to the leader as a new voter; %s", err)
 		}
 	}
 
 	lis, err := net.Listen("tcp", fmt.Sprintf("localhost:%d", rpcPort))
 	if err != nil {
-		log.Fatalf("failed to listen: %v", err)
+		log.Fatal().Msgf("failed to listen: %v", err)
 	}
 	storageHandler := storage.NewStorageHandler()
 	if isFirst {

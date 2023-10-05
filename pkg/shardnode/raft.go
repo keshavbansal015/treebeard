@@ -3,7 +3,6 @@ package shardnode
 import (
 	"fmt"
 	"io"
-	"log"
 	"net"
 	"os"
 	"path"
@@ -14,6 +13,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/hashicorp/raft"
 	raftboltdb "github.com/hashicorp/raft-boltdb/v2"
+	"github.com/rs/zerolog/log"
 	"github.com/vmihailenco/msgpack/v5"
 )
 
@@ -32,7 +32,7 @@ type positionState struct {
 	storageID int
 }
 
-func (p positionState) isPathForPaths(paths []int) bool {
+func (p positionState) isPathInPaths(paths []int) bool {
 	for _, path := range paths {
 		if p.path == path {
 			return true
@@ -102,15 +102,27 @@ func (fsm *shardNodeFSM) String() string {
 }
 
 func (fsm *shardNodeFSM) isInitialRequest(block string, requestID string) bool {
+	log.Debug().Msgf("Aquiring lock for shardNodeFSM in isInitialRequest")
 	fsm.mu.Lock()
-	defer fsm.mu.Unlock()
+	log.Debug().Msgf("Aquired lock for shardNodeFSM in isInitialRequest")
+	defer func() {
+		log.Debug().Msgf("Releasing lock for shardNodeFSM in isInitialRequest")
+		fsm.mu.Unlock()
+		log.Debug().Msgf("Released lock for shardNodeFSM in isInitialRequest")
+	}()
 
 	return fsm.requestLog[block][0] == requestID
 }
 
 func (fsm *shardNodeFSM) handleReplicateRequestAndPathAndStorage(requestID string, r ReplicateRequestAndPathAndStoragePayload) {
+	log.Debug().Msgf("Aquiring lock for shardNodeFSM in handleReplicateRequestAndPathAndStorage")
 	fsm.mu.Lock()
-	defer fsm.mu.Unlock()
+	log.Debug().Msgf("Aquired lock for shardNodeFSM in handleReplicateRequestAndPathAndStorage")
+	defer func() {
+		log.Debug().Msgf("Releasing lock for shardNodeFSM in handleReplicateRequestAndPathAndStorage")
+		fsm.mu.Unlock()
+		log.Debug().Msgf("Released lock for shardNodeFSM in handleReplicateRequestAndPathAndStorage")
+	}()
 
 	fsm.requestLog[r.RequestedBlock] = append(fsm.requestLog[r.RequestedBlock], requestID)
 	fsm.pathMap[requestID] = r.Path
@@ -122,8 +134,14 @@ type localReplicaChangeHandlerFunc func(requestID string, r ReplicateResponsePay
 // It handles the response replication changes locally on each raft replica.
 // The leader doesn't wait for this to finish to return success for the response replication command.
 func (fsm *shardNodeFSM) handleLocalResponseReplicationChanges(requestID string, r ReplicateResponsePayload) {
+	log.Debug().Msgf("Aquiring lock for shardNodeFSM in handleLocalResponseReplicationChanges")
 	fsm.mu.Lock()
-	defer fsm.mu.Unlock()
+	log.Debug().Msgf("Aquired lock for shardNodeFSM in handleLocalResponseReplicationChanges")
+	defer func() {
+		log.Debug().Msgf("Releasing lock for shardNodeFSM in handleLocalResponseReplicationChanges")
+		fsm.mu.Unlock()
+		log.Debug().Msgf("Released lock for shardNodeFSM in handleLocalResponseReplicationChanges")
+	}()
 
 	stashState, exists := fsm.stash[r.RequestedBlock]
 	if exists {
@@ -163,16 +181,28 @@ func (fsm *shardNodeFSM) handleLocalResponseReplicationChanges(requestID string,
 }
 
 func (fsm *shardNodeFSM) handleReplicateResponse(requestID string, r ReplicateResponsePayload, f localReplicaChangeHandlerFunc) {
+	log.Debug().Msgf("Aquiring lock for shardNodeFSM in handleReplicateResponse")
 	fsm.mu.Lock()
-	defer fsm.mu.Unlock()
+	log.Debug().Msgf("Aquired lock for shardNodeFSM in handleReplicateResponse")
+	defer func() {
+		log.Debug().Msgf("Releasing lock for shardNodeFSM in handleReplicateResponse")
+		fsm.mu.Unlock()
+		log.Debug().Msgf("Released lock for shardNodeFSM in handleReplicateResponse")
+	}()
 
 	fsm.responseMap[requestID] = r.Response
 	go f(requestID, r)
 }
 
 func (fsm *shardNodeFSM) handleReplicateSentBlocks(r ReplicateSentBlocksPayload) {
+	log.Debug().Msgf("Aquiring lock for shardNodeFSM in handleReplicateSentBlocks")
 	fsm.mu.Lock()
-	defer fsm.mu.Unlock()
+	log.Debug().Msgf("Aquired lock for shardNodeFSM in handleReplicateSentBlocks")
+	defer func() {
+		log.Debug().Msgf("Releasing lock for shardNodeFSM in handleReplicateSentBlocks")
+		fsm.mu.Unlock()
+		log.Debug().Msgf("Released lock for shardNodeFSM in handleReplicateSentBlocks")
+	}()
 
 	for _, block := range r.SentBlocks {
 		stashState := fsm.stash[block]
@@ -185,8 +215,14 @@ func (fsm *shardNodeFSM) handleReplicateSentBlocks(r ReplicateSentBlocksPayload)
 // It keeps the nacked blocks and deletes not changed acked blocks.
 // If an acked block was changed during the eviction, it will keep it.
 func (fsm *shardNodeFSM) handleLocalAcksNacksReplicationChanges(requestID string) {
+	log.Debug().Msgf("Aquiring lock for shardNodeFSM in handleLocalAcksNacksReplicationChanges")
 	fsm.mu.Lock()
-	defer fsm.mu.Unlock()
+	log.Debug().Msgf("Aquired lock for shardNodeFSM in handleLocalAcksNacksReplicationChanges")
+	defer func() {
+		log.Debug().Msgf("Releasing lock for shardNodeFSM in handleLocalAcksNacksReplicationChanges")
+		fsm.mu.Unlock()
+		log.Debug().Msgf("Released lock for shardNodeFSM in handleLocalAcksNacksReplicationChanges")
+	}()
 
 	for _, block := range fsm.acks[requestID] {
 		stashState := fsm.stash[block]
@@ -204,8 +240,15 @@ func (fsm *shardNodeFSM) handleLocalAcksNacksReplicationChanges(requestID string
 }
 
 func (fsm *shardNodeFSM) handleReplicateAcksNacks(r ReplicateAcksNacksPayload) {
+	log.Debug().Msgf("Aquiring lock for shardNodeFSM in handleReplicateAcksNacks")
 	fsm.mu.Lock()
-	defer fsm.mu.Unlock()
+	log.Debug().Msgf("Aquired lock for shardNodeFSM in handleReplicateAcksNacks")
+	defer func() {
+		log.Debug().Msgf("Releasing lock for shardNodeFSM in handleReplicateAcksNacks")
+		fsm.mu.Unlock()
+		log.Debug().Msgf("Released lock for shardNodeFSM in handleReplicateAcksNacks")
+	}()
+
 	requestID := uuid.New().String()
 	fsm.acks[requestID] = r.AckedBlocks
 	fsm.nacks[requestID] = r.NackedBlocks
@@ -223,7 +266,7 @@ func (fsm *shardNodeFSM) Apply(rLog *raft.Log) interface{} {
 		}
 		requestID := command.RequestID
 		if command.Type == ReplicateRequestAndPathAndStorageCommand {
-			log.Println("got replication command for replicate request")
+			log.Debug().Msgf("got replication command for replicate request")
 			var requestReplicationPayload ReplicateRequestAndPathAndStoragePayload
 			err := msgpack.Unmarshal(command.Payload, &requestReplicationPayload)
 			if err != nil {
@@ -231,7 +274,7 @@ func (fsm *shardNodeFSM) Apply(rLog *raft.Log) interface{} {
 			}
 			fsm.handleReplicateRequestAndPathAndStorage(requestID, requestReplicationPayload)
 		} else if command.Type == ReplicateResponseCommand {
-			log.Println("got replication command for replicate response")
+			log.Debug().Msgf("got replication command for replicate response")
 			var responseReplicationPayload ReplicateResponsePayload
 			err := msgpack.Unmarshal(command.Payload, &responseReplicationPayload)
 			if err != nil {
@@ -239,7 +282,7 @@ func (fsm *shardNodeFSM) Apply(rLog *raft.Log) interface{} {
 			}
 			fsm.handleReplicateResponse(requestID, responseReplicationPayload, fsm.handleLocalResponseReplicationChanges)
 		} else if command.Type == ReplicateSentBlocksCommand {
-			log.Println("got replication command for replicate sent blocks")
+			log.Debug().Msgf("got replication command for replicate sent blocks")
 			var replicateSentBlocksPayload ReplicateSentBlocksPayload
 			err := msgpack.Unmarshal(command.Payload, &replicateSentBlocksPayload)
 			if err != nil {
@@ -247,7 +290,7 @@ func (fsm *shardNodeFSM) Apply(rLog *raft.Log) interface{} {
 			}
 			fsm.handleReplicateSentBlocks(replicateSentBlocksPayload)
 		} else if command.Type == ReplicateAcksNacksCommand {
-			log.Println("got replication command for replicate acks/nacks")
+			log.Debug().Msgf("got replication command for replicate acks/nacks")
 			var payload ReplicateAcksNacksPayload
 			err := msgpack.Unmarshal(command.Payload, &payload)
 			if err != nil {

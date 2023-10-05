@@ -3,6 +3,7 @@ package tracing
 import (
 	"context"
 
+	"github.com/rs/zerolog/log"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/exporters/otlp/otlptrace"
 	"go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc"
@@ -19,6 +20,7 @@ type Provider struct {
 }
 
 func NewProvider(ctx context.Context, serviceName, exporterURL string) (*Provider, error) {
+	log.Debug().Msgf("Creating new tracing provider with service name %s and exporter url %s", serviceName, exporterURL)
 	e, err := otlptrace.New(ctx, otlptracegrpc.NewClient(
 		otlptracegrpc.WithEndpoint(exporterURL),
 		otlptracegrpc.WithInsecure(),
@@ -49,6 +51,7 @@ func NewProvider(ctx context.Context, serviceName, exporterURL string) (*Provide
 }
 
 func (p *Provider) RegisterAsGlobal() (func(ctx context.Context) error, error) {
+	log.Debug().Msgf("Registering tracing provider as global")
 	// set global provider
 	otel.SetTracerProvider(p.provider)
 

@@ -2,40 +2,42 @@ package main
 
 import (
 	"context"
-	"fmt"
-	"log"
 
 	"github.com/dsg-uwaterloo/oblishard/pkg/client"
 	"github.com/dsg-uwaterloo/oblishard/pkg/config"
 	"github.com/dsg-uwaterloo/oblishard/pkg/tracing"
+	"github.com/dsg-uwaterloo/oblishard/pkg/utils"
+	"github.com/rs/zerolog/log"
 	"go.opentelemetry.io/otel"
 )
 
 func main() {
+	utils.InitLogging(true)
+
 	routerEndpoints, err := config.ReadRouterEndpoints("../../configs/router_endpoints.yaml")
 	if err != nil {
-		log.Fatalf("Cannot read router endpoints from yaml file; %v", err)
+		log.Fatal().Msgf("Cannot read router endpoints from yaml file; %v", err)
 	}
 
 	rpcClients, err := client.StartRouterRPCClients(routerEndpoints)
 	if err != nil {
-		log.Fatalf("Failed to start clients; %v", err)
+		log.Fatal().Msgf("Failed to start clients; %v", err)
 	}
 
 	requests, err := client.ReadTraceFile("../../traces/simple.trace")
 	if err != nil {
-		log.Fatalf("Failed to read trace file; %v", err)
+		log.Fatal().Msgf("Failed to read trace file; %v", err)
 	}
 
 	routerRPCClient := rpcClients.GetRandomRouter()
 
 	tracingProvider, err := tracing.NewProvider(context.Background(), "client", "localhost:4317")
 	if err != nil {
-		log.Fatalf("Failed to create tracing provider; %v", err)
+		log.Fatal().Msgf("Failed to create tracing provider; %v", err)
 	}
 	stopTracingProvider, err := tracingProvider.RegisterAsGlobal()
 	if err != nil {
-		log.Fatalf("Failed to register tracing provider; %v", err)
+		log.Fatal().Msgf("Failed to register tracing provider; %v", err)
 	}
 	defer stopTracingProvider(context.Background())
 
@@ -47,19 +49,19 @@ func main() {
 			value, err := routerRPCClient.Read(ctx, request.Block)
 			span.End()
 			if err != nil {
-				log.Printf("Failed to call Read on router; %v", err)
-				return
+				log.Error().Msgf("Failed to call Read block %s on router; %v", request.Block, err)
+				continue
 			}
-			fmt.Printf("Sucess in Read. Got value: %v\n", value)
+			log.Debug().Msgf("Sucess in Read of block %s. Got value: %v\n", request.Block, value)
 		} else {
 			ctx, span := tracer.Start(context.Background(), "client write request")
 			value, err := routerRPCClient.Write(ctx, request.Block, request.NewValue)
 			span.End()
 			if err != nil {
-				log.Printf("Failed to call Write on router; %v", err)
-				return
+				log.Error().Msgf("Failed to call Write on router; %v", err)
+				continue
 			}
-			fmt.Printf("Sucess in Write. Success: %v\n", value)
+			log.Debug().Msgf("Finished writing block %s. Success: %v\n", request.Block, value)
 		}
 	}
 }

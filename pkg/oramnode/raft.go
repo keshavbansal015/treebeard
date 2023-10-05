@@ -3,7 +3,6 @@ package oramnode
 import (
 	"fmt"
 	"io"
-	"log"
 	"net"
 	"os"
 	"path"
@@ -13,6 +12,7 @@ import (
 
 	"github.com/hashicorp/raft"
 	raftboltdb "github.com/hashicorp/raft-boltdb/v2"
+	"github.com/rs/zerolog/log"
 	"github.com/vmihailenco/msgpack/v5"
 )
 
@@ -34,8 +34,14 @@ type oramNodeFSM struct {
 }
 
 func (fsm *oramNodeFSM) String() string {
+	log.Debug().Msgf("Aquiring lock for oramNodeFSM in String")
 	fsm.mu.Lock()
-	defer fsm.mu.Unlock()
+	log.Debug().Msgf("Aquired lock for oramNodeFSM in String")
+	defer func() {
+		log.Debug().Msgf("Releasing lock for oramNodeFSM in String")
+		fsm.mu.Unlock()
+		log.Debug().Msgf("Released lock for oramNodeFSM in String")
+	}()
 
 	out := fmt.Sprintln("oramNodeFSM")
 	out = out + fmt.Sprintf("unfinishedEviction: %v\n", fsm.unfinishedEviction)
@@ -47,28 +53,52 @@ func newOramNodeFSM() *oramNodeFSM {
 }
 
 func (fsm *oramNodeFSM) handleBeginEvictionCommand(paths []int, storageID int) {
+	log.Debug().Msgf("Aquiring lock for oramNodeFSM in handleBeginEvictionCommand")
 	fsm.mu.Lock()
-	defer fsm.mu.Unlock()
+	log.Debug().Msgf("Aquired lock for oramNodeFSM in handleBeginEvictionCommand")
+	defer func() {
+		log.Debug().Msgf("Releasing lock for oramNodeFSM in handleBeginEvictionCommand")
+		fsm.mu.Unlock()
+		log.Debug().Msgf("Released lock for oramNodeFSM in handleBeginEvictionCommand")
+	}()
 
 	fsm.unfinishedEviction = &beginEvictionData{paths, storageID}
 }
 
 func (fsm *oramNodeFSM) handleEndEvictionCommand() {
+	log.Debug().Msgf("Aquiring lock for oramNodeFSM in handleEndEvictionCommand")
 	fsm.mu.Lock()
-	defer fsm.mu.Unlock()
+	log.Debug().Msgf("Aquired lock for oramNodeFSM in handleEndEvictionCommand")
+	defer func() {
+		log.Debug().Msgf("Releasing lock for oramNodeFSM in handleEndEvictionCommand")
+		fsm.mu.Unlock()
+		log.Debug().Msgf("Released lock for oramNodeFSM in handleEndEvictionCommand")
+	}()
 	fsm.unfinishedEviction = nil
 }
 
 func (fsm *oramNodeFSM) handleBeginReadPathCommand(paths []int, storageID int) {
+	log.Debug().Msgf("Aquiring lock for oramNodeFSM in handleBeginReadPathCommand")
 	fsm.mu.Lock()
-	defer fsm.mu.Unlock()
+	log.Debug().Msgf("Aquired lock for oramNodeFSM in handleBeginReadPathCommand")
+	defer func() {
+		log.Debug().Msgf("Releasing lock for oramNodeFSM in handleBeginReadPathCommand")
+		fsm.mu.Unlock()
+		log.Debug().Msgf("Released lock for oramNodeFSM in handleBeginReadPathCommand")
+	}()
 
 	fsm.unfinishedReadPath = &beginReadPathData{paths, storageID}
 }
 
 func (fsm *oramNodeFSM) handleEndReadPathCommand() {
+	log.Debug().Msgf("Aquiring lock for oramNodeFSM in handleEndReadPathCommand")
 	fsm.mu.Lock()
-	defer fsm.mu.Unlock()
+	log.Debug().Msgf("Aquired lock for oramNodeFSM in handleEndReadPathCommand")
+	defer func() {
+		log.Debug().Msgf("Releasing lock for oramNodeFSM in handleEndReadPathCommand")
+		fsm.mu.Unlock()
+		log.Debug().Msgf("Released lock for oramNodeFSM in handleEndReadPathCommand")
+	}()
 	fsm.unfinishedReadPath = nil
 }
 
@@ -81,7 +111,7 @@ func (fsm *oramNodeFSM) Apply(rLog *raft.Log) interface{} {
 			return fmt.Errorf("could not unmarshall the command; %s", err)
 		}
 		if command.Type == ReplicateBeginEviction {
-			log.Println("got replication command for replicate begin eviction")
+			log.Debug().Msgf("got replication command for replicate begin eviction")
 			var payload ReplicateBeginEvictionPayload
 			err := msgpack.Unmarshal(command.Payload, &payload)
 			if err != nil {
@@ -89,10 +119,10 @@ func (fsm *oramNodeFSM) Apply(rLog *raft.Log) interface{} {
 			}
 			fsm.handleBeginEvictionCommand(payload.Paths, payload.StorageID)
 		} else if command.Type == ReplicateEndEviction {
-			log.Println("got replication command for replicate end eviction")
+			log.Debug().Msgf("got replication command for replicate end eviction")
 			fsm.handleEndEvictionCommand()
 		} else if command.Type == ReplicateBeginReadPath {
-			log.Println("got replication command for replicate begin read path")
+			log.Debug().Msgf("got replication command for replicate begin read path")
 			var payload ReplicateBeginReadPathPayload
 			err := msgpack.Unmarshal(command.Payload, &payload)
 			if err != nil {
@@ -100,7 +130,7 @@ func (fsm *oramNodeFSM) Apply(rLog *raft.Log) interface{} {
 			}
 			fsm.handleBeginReadPathCommand(payload.Paths, payload.StorageID)
 		} else if command.Type == ReplicateEndReadPath {
-			log.Println("got replication command for replicate end read path")
+			log.Debug().Msgf("got replication command for replicate end read path")
 			fsm.handleEndReadPathCommand()
 		} else {
 			fmt.Println("wrong command type")

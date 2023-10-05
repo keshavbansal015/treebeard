@@ -8,6 +8,7 @@ import (
 	routerpb "github.com/dsg-uwaterloo/oblishard/api/router"
 	"github.com/dsg-uwaterloo/oblishard/pkg/config"
 	"github.com/dsg-uwaterloo/oblishard/pkg/rpc"
+	"github.com/rs/zerolog/log"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 )
@@ -20,6 +21,7 @@ type RouterRPCClient struct {
 type RouterClients map[int]RouterRPCClient
 
 func (r RouterClients) GetRandomRouter() RouterRPCClient {
+	log.Debug().Msgf("Getting a random router from %v", r)
 	routersLen := len(r)
 	randomRouterIndex := rand.Intn(routersLen)
 	randomRouter := r[randomRouterIndex]
@@ -27,6 +29,7 @@ func (r RouterClients) GetRandomRouter() RouterRPCClient {
 }
 
 func (c *RouterRPCClient) Read(ctx context.Context, block string) (value string, err error) {
+	log.Debug().Msgf("Sending read request for block %s", block)
 	reply, err := c.ClientAPI.Read(ctx,
 		&routerpb.ReadRequest{Block: block})
 	if err != nil {
@@ -36,6 +39,7 @@ func (c *RouterRPCClient) Read(ctx context.Context, block string) (value string,
 }
 
 func (c *RouterRPCClient) Write(ctx context.Context, block string, value string) (success bool, err error) {
+	log.Debug().Msgf("Sending write request for block %s with value %s", block, value)
 	reply, err := c.ClientAPI.Write(ctx,
 		&routerpb.WriteRequest{Block: block, Value: value})
 	if err != nil {
@@ -45,9 +49,11 @@ func (c *RouterRPCClient) Write(ctx context.Context, block string, value string)
 }
 
 func StartRouterRPCClients(endpoints []config.RouterEndpoint) (RouterClients, error) {
+	log.Debug().Msgf("Starting router RPC clients with endpoints %v", endpoints)
 	clients := make(map[int]RouterRPCClient)
 	for _, endpoint := range endpoints {
 		serverAddr := fmt.Sprintf("%s:%d", endpoint.IP, endpoint.Port)
+		log.Debug().Msgf("Starting router client on %s", serverAddr)
 		conn, err := grpc.Dial(serverAddr,
 			grpc.WithTransportCredentials(insecure.NewCredentials()),
 			grpc.WithUnaryInterceptor(rpc.ContextPropagationUnaryClientInterceptor()),

@@ -3,6 +3,8 @@ package shardnode
 import (
 	"context"
 	"sync"
+
+	"github.com/rs/zerolog/log"
 )
 
 type blockRequest struct {
@@ -19,6 +21,7 @@ type batchManager struct {
 }
 
 func newBatchManager(batchSize int) *batchManager {
+	log.Debug().Msgf("Creating new batch manager with batch size %d", batchSize)
 	batchManager := batchManager{}
 	batchManager.batchSize = batchSize
 	batchManager.storageQueues = make(map[int][]blockRequest)
@@ -29,8 +32,14 @@ func newBatchManager(batchSize int) *batchManager {
 // It add the request to the correct queue and return a response channel.
 // The client uses the response channel to get the result of this request.
 func (b *batchManager) addRequestToStorageQueueAndWait(req blockRequest, storageID int) chan string {
+	log.Debug().Msgf("Aquiring lock for batch manager in addRequestToStorageQueueAndWait")
 	b.mu.Lock()
-	defer b.mu.Unlock()
+	log.Debug().Msgf("Aquired lock for batch manager in addRequestToStorageQueueAndWait")
+	defer func() {
+		log.Debug().Msgf("Releasing lock for batch manager in addRequestToStorageQueueAndWait")
+		b.mu.Unlock()
+		log.Debug().Msgf("Released lock for batch manager in addRequestToStorageQueueAndWait")
+	}()
 
 	b.storageQueues[storageID] = append(b.storageQueues[storageID], req)
 	b.responseChannel[req.block] = make(chan string)
@@ -39,8 +48,14 @@ func (b *batchManager) addRequestToStorageQueueAndWait(req blockRequest, storage
 
 // It simply adds the request to the correct queue.
 func (b *batchManager) addRequestToStorageQueueWithoutWaiting(req blockRequest, storageID int) {
+	log.Debug().Msgf("Aquiring lock for batch manager in addRequestToStorageQueueWithoutWaiting")
 	b.mu.Lock()
-	defer b.mu.Unlock()
+	log.Debug().Msgf("Aquired lock for batch manager in addRequestToStorageQueueWithoutWaiting")
+	defer func() {
+		log.Debug().Msgf("Releasing lock for batch manager in addRequestToStorageQueueWithoutWaiting")
+		b.mu.Unlock()
+		log.Debug().Msgf("Released lock for batch manager in addRequestToStorageQueueWithoutWaiting")
+	}()
 
 	b.storageQueues[storageID] = append(b.storageQueues[storageID], req)
 }

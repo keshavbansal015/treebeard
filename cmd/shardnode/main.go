@@ -8,10 +8,13 @@ import (
 	"github.com/dsg-uwaterloo/oblishard/pkg/config"
 	shardnode "github.com/dsg-uwaterloo/oblishard/pkg/shardnode"
 	"github.com/dsg-uwaterloo/oblishard/pkg/tracing"
+	"github.com/dsg-uwaterloo/oblishard/pkg/utils"
 )
 
 // Usage: ./shardnode -shardnodeid=<shardnodeid> -rpcport=<rpcport> -replicaid=<replicaid> -raftport=<raftport> -joinaddr=<ip:port>
 func main() {
+	utils.InitLogging(true)
+
 	shardNodeID := flag.Int("shardnodeid", 0, "shardnode id, starting consecutively from zero")
 	replicaID := flag.Int("replicaid", 0, "replica id, starting consecutively from zero")
 	rpcPort := flag.Int("rpcport", 0, "node rpc port")

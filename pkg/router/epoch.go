@@ -9,6 +9,7 @@ import (
 	shardnodepb "github.com/dsg-uwaterloo/oblishard/api/shardnode"
 	"github.com/dsg-uwaterloo/oblishard/pkg/rpc"
 	utils "github.com/dsg-uwaterloo/oblishard/pkg/utils"
+	"github.com/rs/zerolog/log"
 	"google.golang.org/grpc"
 )
 
@@ -46,8 +47,15 @@ type request struct {
 }
 
 func (e *epochManager) addRequestToCurrentEpoch(r *request) chan any {
+	log.Debug().Msgf("Aquiring lock for epoch manager in addRequestToCurrentEpoch")
 	e.mu.Lock()
-	defer e.mu.Unlock()
+	log.Debug().Msgf("Aquired lock for epoch manager in addRequestToCurrentEpoch")
+	log.Debug().Msgf("Adding request %v to epoch %d", r, e.currentEpoch)
+	defer func() {
+		log.Debug().Msgf("Releasing lock for epoch manager in addRequestToCurrentEpoch")
+		e.mu.Unlock()
+		log.Debug().Msgf("Released lock for epoch manager in addRequestToCurrentEpoch")
+	}()
 	e.requests[e.currentEpoch] = append(e.requests[e.currentEpoch], r)
 	if _, exists := e.reponseChans[e.currentEpoch]; !exists {
 		e.reponseChans[e.currentEpoch] = make(map[*request]chan any)
@@ -57,8 +65,14 @@ func (e *epochManager) addRequestToCurrentEpoch(r *request) chan any {
 }
 
 func (e *epochManager) whereToForward(block string) (shardNodeID int) {
+	log.Debug().Msgf("Aquiring lock for epoch manager in whereToForward")
 	e.mu.Lock()
-	defer e.mu.Unlock()
+	log.Debug().Msgf("Aquired lock for epoch manager in whereToForward")
+	defer func() {
+		log.Debug().Msgf("Releasing lock for epoch manager in whereToForward")
+		e.mu.Unlock()
+		log.Debug().Msgf("Released lock for epoch manager in whereToForward")
+	}()
 	h := e.hasher.Hash(block)
 	return int(math.Mod(float64(h), float64(len(e.shardNodeRPCClients))))
 }
@@ -79,6 +93,7 @@ type requestResponse struct {
 }
 
 func (e *epochManager) sendReadRequest(req *request, responseChannel chan requestResponse) {
+	log.Debug().Msgf("Sending read request %v", req)
 	whereToForward := e.whereToForward(req.block)
 	shardNodeRPCClient := e.shardNodeRPCClients[whereToForward]
 
@@ -94,14 +109,17 @@ func (e *epochManager) sendReadRequest(req *request, responseChannel chan reques
 	}
 	reply, err := rpc.CallAllReplicas(req.ctx, clients, replicaFuncs, &shardnodepb.ReadRequest{Block: req.block})
 	if err != nil {
+		log.Error().Msgf("Error sending read request %v", err)
 		responseChannel <- requestResponse{req: req, response: readResponse{err: err}}
 	} else {
 		shardNodeReply := reply.(*shardnodepb.ReadReply)
+		log.Debug().Msgf("Received read reply %v", shardNodeReply)
 		responseChannel <- requestResponse{req: req, response: readResponse{value: shardNodeReply.Value, err: err}}
 	}
 }
 
 func (e *epochManager) sendWriteRequest(req *request, responseChannel chan requestResponse) {
+	log.Debug().Msgf("Sending write request %v", req)
 	whereToForward := e.whereToForward(req.block)
 	shardNodeRPCClient := e.shardNodeRPCClients[whereToForward]
 
@@ -118,9 +136,11 @@ func (e *epochManager) sendWriteRequest(req *request, responseChannel chan reque
 
 	reply, err := rpc.CallAllReplicas(req.ctx, clients, replicaFuncs, &shardnodepb.WriteRequest{Block: req.block, Value: req.value})
 	if err != nil {
+		log.Error().Msgf("Error sending write request %v", err)
 		responseChannel <- requestResponse{req: req, response: writeResponse{err: err}}
 	} else {
 		shardNodeReply := reply.(*shardnodepb.WriteReply)
+		log.Debug().Msgf("Received write reply %v", shardNodeReply)
 		responseChannel <- requestResponse{req: req, response: writeResponse{success: shardNodeReply.Success, err: err}}
 	}
 }

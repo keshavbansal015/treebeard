@@ -8,6 +8,7 @@ import (
 	"github.com/dsg-uwaterloo/oblishard/pkg/config"
 	"github.com/dsg-uwaterloo/oblishard/pkg/rpc"
 	"github.com/dsg-uwaterloo/oblishard/pkg/utils"
+	"github.com/rs/zerolog/log"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 )
@@ -31,7 +32,7 @@ func (r *ReplicaRPCClientMap) sendAcksToShardNode(acks []*shardnodepb.Ack) error
 		)
 		clients = append(clients, c)
 	}
-
+	log.Debug().Msgf("Sending acks to shard node %v", acks)
 	_, err := rpc.CallAllReplicas(
 		context.Background(),
 		clients,
@@ -58,7 +59,7 @@ func (r *ReplicaRPCClientMap) getBlocksFromShardNode(paths []int, storageID int,
 		)
 		clients = append(clients, c)
 	}
-
+	log.Debug().Msgf("Sending block request to shard node for paths %v", paths)
 	reply, err := rpc.CallAllReplicas(
 		context.Background(),
 		clients,
@@ -72,6 +73,7 @@ func (r *ReplicaRPCClientMap) getBlocksFromShardNode(paths []int, storageID int,
 	if err != nil {
 		return nil, fmt.Errorf("could not read blocks from the shardnode; %s", err)
 	}
+	log.Debug().Msgf("Got reply from shard node: %v", reply)
 	shardNodeReply := reply.(*shardnodepb.SendBlocksReply)
 	return shardNodeReply.Blocks, nil
 }
@@ -85,9 +87,11 @@ func (r *ReplicaRPCClientMap) sendBackAcksNacks(recievedBlocksStatus map[string]
 }
 
 func StartShardNodeRPCClients(endpoints []config.ShardNodeEndpoint) (map[int]ReplicaRPCClientMap, error) {
+	log.Debug().Msgf("Starting ShardNode RPC clients for endpoints: %v", endpoints)
 	clients := make(map[int]ReplicaRPCClientMap)
 	for _, endpoint := range endpoints {
 		serverAddr := fmt.Sprintf("%s:%d", endpoint.IP, endpoint.Port)
+		log.Debug().Msgf("Starting ShardNode RPC client for endpoint: %s", serverAddr)
 		conn, err := grpc.Dial(serverAddr, grpc.WithTransportCredentials(insecure.NewCredentials()))
 		if err != nil {
 			return nil, err

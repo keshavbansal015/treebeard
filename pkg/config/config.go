@@ -3,6 +3,7 @@ package config
 import (
 	"os"
 
+	"github.com/rs/zerolog/log"
 	yaml "gopkg.in/yaml.v3"
 )
 
@@ -45,6 +46,7 @@ type Parameters struct {
 }
 
 func ReadRouterEndpoints(path string) ([]RouterEndpoint, error) {
+	log.Debug().Msgf("Reading router endpoints from the yaml file")
 	yamlFile, err := os.ReadFile(path)
 	if err != nil {
 		return nil, err
@@ -59,6 +61,7 @@ func ReadRouterEndpoints(path string) ([]RouterEndpoint, error) {
 }
 
 func ReadShardNodeEndpoints(path string) ([]ShardNodeEndpoint, error) {
+	log.Debug().Msgf("Reading shard node endpoints from the yaml file")
 	yamlFile, err := os.ReadFile(path)
 	if err != nil {
 		return nil, err
@@ -73,6 +76,7 @@ func ReadShardNodeEndpoints(path string) ([]ShardNodeEndpoint, error) {
 }
 
 func ReadOramNodeEndpoints(path string) ([]OramNodeEndpoint, error) {
+	log.Debug().Msgf("Reading oram node endpoints from the yaml file")
 	yamlFile, err := os.ReadFile(path)
 	if err != nil {
 		return nil, err
@@ -87,6 +91,7 @@ func ReadOramNodeEndpoints(path string) ([]OramNodeEndpoint, error) {
 }
 
 func ReadParameters(path string) (Parameters, error) {
+	log.Debug().Msgf("Reading parameters from the yaml file")
 	yamlFile, err := os.ReadFile(path)
 	if err != nil {
 		return Parameters{}, err

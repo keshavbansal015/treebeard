@@ -10,6 +10,7 @@ import (
 	"math/rand"
 	"strconv"
 
+	"github.com/rs/zerolog/log"
 	"go.opentelemetry.io/otel"
 )
 
@@ -48,6 +49,7 @@ func NewStorageHandler() *StorageHandler {
 }
 
 func (s *StorageHandler) InitDatabase() {
+	log.Debug().Msgf("Initializing the redis database")
 	for i := 0; i < numDB; i++ {
 		s.databaseInit("../../traces/data.txt", i)
 	}
@@ -59,6 +61,7 @@ func (s *StorageHandler) GetMaxAccessCount() int {
 
 // It returns valid randomly chosen path and storageID.
 func (s *StorageHandler) GetRandomPathAndStorageID(ctx context.Context) (path int, storageID int) {
+	log.Debug().Msgf("Getting random path and storage id")
 	tracer := otel.Tracer("")
 	_, span := tracer.Start(ctx, "get random path and storage id")
 	paths := int(math.Pow(2, float64(treeHeight-1)))
@@ -73,6 +76,7 @@ func (s *StorageHandler) GetRandomPathAndStorageID(ctx context.Context) (path in
 // If a real block is found, it returns isReal=true and the block id.
 // If non of the "blocks" are in the bucket, it returns isReal=false
 func (s *StorageHandler) GetBlockOffset(bucketID int, storageID int, blocks []string) (offset int, isReal bool, blockFound string, err error) {
+	log.Debug().Msgf("Getting block offset for bucket %d and storage %d", bucketID, storageID)
 	// TODO: implement
 	blockMap := make(map[string]int)
 	for i := 0; i < Z; i++ {
@@ -85,15 +89,18 @@ func (s *StorageHandler) GetBlockOffset(bucketID int, storageID int, blocks []st
 	for _, block := range blocks {
 		pos, exist := blockMap[block]
 		if exist {
+			log.Debug().Msgf("Found block %s in bucket %d", block, bucketID)
 			return pos, true, block, nil
 		}
 	}
+	log.Debug().Msgf("Did not find any block in bucket %d", bucketID)
 	return -1, false, "", err
 }
 
 // It returns the number of times a bucket was accessed.
 // This is helpful to know when to do an early reshuffle.
 func (s *StorageHandler) GetAccessCount(bucketID int, storageID int) (count int, err error) {
+	log.Debug().Msgf("Getting access count for bucket %d and storage %d", bucketID, storageID)
 	client := s.getClient(storageID)
 	ctx := context.Background()
 	accessCountS, err := client.HGet(ctx, strconv.Itoa(-1*bucketID), "accessCount").Result()
@@ -104,6 +111,7 @@ func (s *StorageHandler) GetAccessCount(bucketID int, storageID int) (count int,
 	if err != nil {
 		return 0, err
 	}
+	log.Debug().Msgf("Access count for bucket %d and storage %d is %d", bucketID, storageID, accessCount)
 	return accessCount, nil
 }
 
@@ -111,6 +119,7 @@ func (s *StorageHandler) GetAccessCount(bucketID int, storageID int) (count int,
 // It reads all the valid real blocks and random vaid dummy blocks if the bucket contains less than Z valid real blocks.
 // blocks is a map of block id to block values.
 func (s *StorageHandler) ReadBucket(bucketID int, storageID int) (blocks map[string]string, err error) {
+	log.Debug().Msgf("Reading bucket %d from storage %d", bucketID, storageID)
 	// TODO: implement
 	client := s.getClient(storageID)
 	ctx := context.Background()
@@ -143,6 +152,7 @@ func (s *StorageHandler) ReadBucket(bucketID int, storageID int) (blocks map[str
 // It priorotizes readBucketBlocks to shardNodeBlocks.
 // It returns the blocks that were written into the storage shard in the writtenBlocks variable.
 func (s *StorageHandler) WriteBucket(bucketID int, storageID int, readBucketBlocks map[string]string, shardNodeBlocks map[string]string, isAtomic bool) (writtenBlocks map[string]string, err error) {
+	log.Debug().Msgf("Writing bucket %d to storage %d", bucketID, storageID)
 	// TODO: implement
 	// TODO: It should make the counter zero
 	values := make([]string, Z+S)
@@ -207,6 +217,7 @@ func (s *StorageHandler) WriteBucket(bucketID int, storageID int, readBucketBloc
 
 // ReadBlock reads a single block using an its offset.
 func (s *StorageHandler) ReadBlock(bucketID int, storageID int, offset int) (value string, err error) {
+	log.Debug().Msgf("Reading block %d from bucket %d in storage %d", offset, bucketID, storageID)
 	// TODO: it should invalidate and increase counter
 	client := s.getClient(storageID)
 	ctx := context.Background()
@@ -246,6 +257,7 @@ func (s *StorageHandler) ReadBlock(bucketID int, storageID int, offset int) (val
 
 // GetBucketsInPaths return all the bucket ids for the passed paths.
 func (s *StorageHandler) GetBucketsInPaths(paths []int) (bucketIDs []int, err error) {
+	log.Debug().Msgf("Getting buckets in paths %v", paths)
 	buckets := make(IntSet)
 	for i := 0; i < len(paths); i++ {
 		leafID := int(math.Pow(2, float64(treeHeight-1)) + float64(paths[i]) - 1)

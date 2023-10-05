@@ -5,6 +5,7 @@ import (
 	"fmt"
 
 	"github.com/google/uuid"
+	"github.com/rs/zerolog/log"
 	"go.opentelemetry.io/otel"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/metadata"
@@ -51,6 +52,7 @@ func ContextPropagationUnaryServerInterceptor() grpc.UnaryServerInterceptor {
 func GetContextWithRequestID(ctx context.Context) context.Context {
 	requestID := uuid.New().String()
 	ctx = metadata.NewOutgoingContext(ctx, metadata.Pairs("requestid", requestID))
+	log.Debug().Msgf("Added request id %s to context", requestID)
 	return ctx
 }
 
@@ -63,5 +65,6 @@ func GetRequestIDFromContext(ctx context.Context) (string, error) {
 		return "", fmt.Errorf("requestid not found in the request metadata")
 	}
 	span.End()
+	log.Debug().Msgf("Got request id %s from context", requestID[0])
 	return requestID[0], nil
 }

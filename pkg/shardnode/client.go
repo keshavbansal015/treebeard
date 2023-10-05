@@ -8,6 +8,7 @@ import (
 	oramnodepb "github.com/dsg-uwaterloo/oblishard/api/oramnode"
 	"github.com/dsg-uwaterloo/oblishard/pkg/config"
 	"github.com/dsg-uwaterloo/oblishard/pkg/rpc"
+	"github.com/rs/zerolog/log"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 )
@@ -22,6 +23,7 @@ type ReplicaRPCClientMap map[int]oramNodeRPCClient
 type RPCClientMap map[int]ReplicaRPCClientMap
 
 func (r RPCClientMap) getRandomOramNodeReplicaMap() ReplicaRPCClientMap {
+	log.Debug().Msgf("Getting random oram node replica map from RPC client map %v", r)
 	oramNodesLen := len(r)
 	randomOramNodeIndex := rand.Intn(oramNodesLen)
 	randomOramNode := r[randomOramNodeIndex]
@@ -45,6 +47,7 @@ func (r *ReplicaRPCClientMap) readPathFromAllOramNodeReplicas(ctx context.Contex
 		blockRequests = append(blockRequests, &oramnodepb.BlockRequest{Block: request.block, Path: int32(request.path)})
 	}
 
+	log.Debug().Msgf("Calling all oram node replicas with block requests %v", blockRequests)
 	reply, err := rpc.CallAllReplicas(
 		ctx,
 		clients,
@@ -58,13 +61,16 @@ func (r *ReplicaRPCClientMap) readPathFromAllOramNodeReplicas(ctx context.Contex
 		return nil, fmt.Errorf("could not get value from the oramnode; %s", err)
 	}
 	oramNodeReply := reply.(*oramnodepb.ReadPathReply)
+	log.Debug().Msgf("Got reply from oram node replicas: %v", oramNodeReply)
 	return oramNodeReply, nil
 }
 
 func StartOramNodeRPCClients(endpoints []config.OramNodeEndpoint) (map[int]ReplicaRPCClientMap, error) {
+	log.Debug().Msgf("Starting OramNode RPC clients for endpoints: %v", endpoints)
 	clients := make(map[int]ReplicaRPCClientMap)
 	for _, endpoint := range endpoints {
 		serverAddr := fmt.Sprintf("%s:%d", endpoint.IP, endpoint.Port)
+		log.Debug().Msgf("Starting OramNode RPC client for endpoint: %s", serverAddr)
 		conn, err := grpc.Dial(serverAddr,
 			grpc.WithTransportCredentials(insecure.NewCredentials()),
 			grpc.WithUnaryInterceptor(rpc.ContextPropagationUnaryClientInterceptor()),

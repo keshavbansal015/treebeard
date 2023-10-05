@@ -8,10 +8,13 @@ import (
 	"github.com/dsg-uwaterloo/oblishard/pkg/config"
 	oramnode "github.com/dsg-uwaterloo/oblishard/pkg/oramnode"
 	"github.com/dsg-uwaterloo/oblishard/pkg/tracing"
+	"github.com/dsg-uwaterloo/oblishard/pkg/utils"
 )
 
 // Usage: ./oramnode -oramnodeid=<oramnodeid> -rpcport=<rpcport> -replicaid=<replicaid> -raftport=<raftport> -joinaddr=<ip:port>
 func main() {
+	utils.InitLogging(true)
+
 	oramNodeID := flag.Int("oramnodeid", 0, "oramnode id, starting consecutively from zero")
 	replicaID := flag.Int("replicaid", 0, "replica id, starting consecutively from zero")
 	rpcPort := flag.Int("rpcport", 0, "node rpc port")

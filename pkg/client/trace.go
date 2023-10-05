@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"os"
 	"strings"
+
+	"github.com/rs/zerolog/log"
 )
 
 const (
@@ -19,6 +21,7 @@ type request struct {
 }
 
 func ReadTraceFile(traceFilePath string) ([]request, error) {
+	log.Debug().Msgf("Reading trace file")
 	file, err := os.Open(traceFilePath)
 	if err != nil {
 		return nil, err
@@ -30,6 +33,7 @@ func ReadTraceFile(traceFilePath string) ([]request, error) {
 	scanner := bufio.NewScanner(file)
 	for scanner.Scan() {
 		line := scanner.Text()
+		log.Debug().Msgf("Reading trace line: %s", line)
 		tokens := strings.Split(line, " ")
 		if tokens[0] == "READ" {
 			if len(tokens) != 2 {

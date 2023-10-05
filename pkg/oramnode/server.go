@@ -3,7 +3,6 @@ package oramnode
 import (
 	"context"
 	"fmt"
-	"log"
 	"net"
 	"strconv"
 	"sync"
@@ -14,6 +13,7 @@ import (
 	"github.com/dsg-uwaterloo/oblishard/pkg/rpc"
 	strg "github.com/dsg-uwaterloo/oblishard/pkg/storage"
 	"github.com/hashicorp/raft"
+	"github.com/rs/zerolog/log"
 	"go.opentelemetry.io/otel"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
@@ -68,20 +68,24 @@ func (o *oramNodeServer) performFailedOperations() error {
 		paths := o.oramNodeFSM.unfinishedEviction.paths
 		storageID := o.oramNodeFSM.unfinishedEviction.storageID
 		o.oramNodeFSM.mu.Unlock()
+		log.Debug().Msgf("Performing failed eviction with paths %v and storageID %d", paths, storageID)
 		o.evict(paths, storageID)
 	}
 	if needsReadPath != nil {
+		log.Debug().Msgf("Performing failed read path")
 		o.oramNodeFSM.mu.Lock()
 		paths := o.oramNodeFSM.unfinishedReadPath.paths
 		storageID := o.oramNodeFSM.unfinishedReadPath.storageID
 		o.oramNodeFSM.mu.Unlock()
 		buckets, _ := o.storageHandler.GetBucketsInPaths(paths)
+		log.Debug().Msgf("Performing failed read path with paths %v and storageID %d", paths, storageID)
 		o.earlyReshuffle(buckets, storageID)
 	}
 	return nil
 }
 
 func (o *oramNodeServer) earlyReshuffle(buckets []int, storageID int) error {
+	log.Debug().Msgf("Performing early reshuffle with buckets %v and storageID %d", buckets, storageID)
 	// TODO: can we make this a background thread?
 	for _, bucket := range buckets {
 		// TODO: check the Redis latency
@@ -110,6 +114,7 @@ func (o *oramNodeServer) earlyReshuffle(buckets []int, storageID int) error {
 }
 
 func (o *oramNodeServer) readAllBuckets(buckets []int, storageID int) (blocksFromReadBucket map[int]map[string]string, err error) {
+	log.Debug().Msgf("Reading all buckets with buckets %v and storageID %d", buckets, storageID)
 	blocksFromReadBucket = make(map[int]map[string]string) // map of bucket to map of block to value
 	if err != nil {
 		return nil, fmt.Errorf("unable to get bucket ids for early reshuffle path; %v", err)
@@ -130,6 +135,7 @@ func (o *oramNodeServer) readAllBuckets(buckets []int, storageID int) (blocksFro
 }
 
 func (o *oramNodeServer) readBlocksFromShardNode(paths []int, storageID int, randomShardNode ReplicaRPCClientMap) (receivedBlocks map[string]string, err error) {
+	log.Debug().Msgf("Reading blocks from shard node with paths %v and storageID %d", paths, storageID)
 	receivedBlocks = make(map[string]string) // map of received block to value
 
 	shardNodeBlocks, err := randomShardNode.getBlocksFromShardNode(paths, storageID, o.parameters.MaxBlocksToSend)
@@ -143,6 +149,7 @@ func (o *oramNodeServer) readBlocksFromShardNode(paths []int, storageID int, ran
 }
 
 func (o *oramNodeServer) writeBackBlocksToAllBuckets(buckets []int, storageID int, blocksFromReadBucket map[int]map[string]string, receivedBlocks map[string]string) (receivedBlocksIsWritten map[string]bool, err error) {
+	log.Debug().Msgf("Writing back blocks to all buckets with buckets %v and storageID %d", buckets, storageID)
 	receivedBlocksCopy := make(map[string]string)
 	for block, value := range receivedBlocks {
 		receivedBlocksCopy[block] = value
@@ -167,6 +174,7 @@ func (o *oramNodeServer) writeBackBlocksToAllBuckets(buckets []int, storageID in
 }
 
 func (o *oramNodeServer) evict(paths []int, storageID int) error {
+	log.Debug().Msgf("Evicting with paths %v and storageID %d", paths, storageID)
 	beginEvictionCommand, err := newReplicateBeginEvictionCommand(paths, storageID)
 	if err != nil {
 		return fmt.Errorf("unable to marshal begin eviction command; %s", err)
@@ -306,6 +314,7 @@ func (o *oramNodeServer) ReadPath(ctx context.Context, request *pb.ReadPathReque
 		response = append(response, &pb.BlockResponse{Block: block, Value: value})
 	}
 	span.End()
+	log.Debug().Msgf("Returning read path response %v", response)
 	return &pb.ReadPathReply{Responses: response}, nil
 }
 
@@ -331,7 +340,7 @@ func StartServer(oramNodeServerID int, rpcPort int, replicaID int, raftPort int,
 	oramNodeFSM := newOramNodeFSM()
 	r, err := startRaftServer(isFirst, replicaID, raftPort, oramNodeFSM)
 	if err != nil {
-		log.Fatalf("The raft node creation did not succeed; %s", err)
+		log.Fatal().Msgf("The raft node creation did not succeed; %s", err)
 	}
 
 	go func() {
@@ -344,7 +353,7 @@ func StartServer(oramNodeServerID int, rpcPort int, replicaID int, raftPort int,
 	if !isFirst {
 		conn, err := grpc.Dial(joinAddr, grpc.WithTransportCredentials(insecure.NewCredentials()))
 		if err != nil {
-			log.Fatalf("The raft node could not connect to the leader as a new voter; %s", err)
+			log.Fatal().Msgf("The raft node could not connect to the leader as a new voter; %s", err)
 		}
 		client := pb.NewOramNodeClient(conn)
 		fmt.Println(raftPort)
@@ -356,13 +365,13 @@ func StartServer(oramNodeServerID int, rpcPort int, replicaID int, raftPort int,
 			},
 		)
 		if err != nil || !joinRaftVoterReply.Success {
-			log.Fatalf("The raft node could not connect to the leader as a new voter; %s", err)
+			log.Fatal().Msgf("The raft node could not connect to the leader as a new voter; %s", err)
 		}
 	}
 
 	lis, err := net.Listen("tcp", fmt.Sprintf("localhost:%d", rpcPort))
 	if err != nil {
-		log.Fatalf("failed to listen: %v", err)
+		log.Fatal().Msgf("failed to listen: %v", err)
 	}
 	oramNodeServer := newOramNodeServer(oramNodeServerID, replicaID, r, oramNodeFSM, shardNodeRPCClients, strg.NewStorageHandler(), parameters)
 	go func() {

@@ -8,7 +8,6 @@ import (
 	"os"
 	"strconv"
 	"strings"
-	"time"
 
 	"github.com/redis/go-redis/v9"
 )
@@ -33,7 +32,6 @@ func (s *StorageHandler) CloseClient() (err error) {
 }
 
 func shuffleArray(arr []int) {
-	rand.Seed(time.Now().UnixNano())
 	for i := len(arr) - 1; i > 0; i-- {
 		j := rand.Intn(i + 1)
 		arr[i], arr[j] = arr[j], arr[i]
