@@ -9,7 +9,9 @@ A scalable and fault-tolerant Oblivious RAM (ORAM) data store
    2. [Running the Shardnode](#running-the-shardnode)
    3. [Running the ORAM Node](#running-the-oram-node)
    4. [Running the Jaeger Backend](#running-the-jaeger-backend)
-   5. [Sending Requests](#sending-requests)
+   5. [Running Redis](#running-redis)
+   6. [Sending Requests](#sending-requests)
+   7. [Example Execution](#example-execution)
 3. [Configurations](#configurations)
 
 ---
