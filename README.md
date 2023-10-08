@@ -11,8 +11,8 @@ A scalable and fault-tolerant Oblivious RAM (ORAM) data store
    4. [Running the Jaeger Backend](#running-the-jaeger-backend)
    5. [Running Redis](#running-redis)
    6. [Sending Requests](#sending-requests)
-   7. [Example Execution](#example-execution)
-3. [Configurations](#configurations)
+3. [Example Execution](#example-execution)
+4. [Configurations](#configurations)
 
 ---
 ## Protocol Buffers
@@ -40,6 +40,7 @@ To run an ORAM node, use the following command:
 ```bash
 go run -race . -oramnodeid <id> -rpcport <rpcport> -replicaid <replicaid> -raftport <raftport>
 ```
+You can provide a `-joinaddr` for the followers to join the leader.
 ### Running the Jaeger Backend
 To run the Jaeger backend, use Docker Compose:
 ```bash
@@ -53,7 +54,7 @@ To send requests, run the following command in the `cmd/client` directory:
 go run -race .
 ```
 It will send the requests that are in the `traces/simple.trace` file.
-### Example Execution
+## Example Execution
 Run each of the commands in a new terminal:
 ```bash
 go run -race . -routerid 0 -port 8745 #cmd/router directory
