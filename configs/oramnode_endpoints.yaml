@@ -3,11 +3,17 @@ endpoints:
     port: 8751
     id: 0
     replicaid: 0
+    raftport: 3127
+    local_bind_ip: 127.0.0.1
   - ip: 127.0.0.1
     port: 8752
     id: 0
     replicaid: 1
+    raftport: 3128
+    local_bind_ip: 127.0.0.1
   - ip: 127.0.0.1
     port: 8753
     id: 0
     replicaid: 2
+    raftport: 3129
+    local_bind_ip: 127.0.0.1

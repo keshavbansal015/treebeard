@@ -1,2 +1,6 @@
 bolt
 snapshots/
+cmd/client/client
+cmd/router/router
+cmd/shardnode/shardnode
+cmd/oramnode/oramnode

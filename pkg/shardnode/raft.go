@@ -424,27 +424,21 @@ func (sn shardNodeSnapshot) Persist(sink raft.SnapshotSink) error {
 }
 func (sn shardNodeSnapshot) Release() {}
 
-func startRaftServer(isFirst bool, replicaID int, raftPort int, shardshardNodeFSM *shardNodeFSM) (*raft.Raft, error) {
-	dataDir := fmt.Sprintf("sh-data-replicaid-%d", replicaID)
+func startRaftServer(isFirst bool, ip string, replicaID int, raftPort int, raftDir string, shardshardNodeFSM *shardNodeFSM) (*raft.Raft, error) {
 	raftConfig := raft.DefaultConfig()
 	raftConfig.LocalID = raft.ServerID(strconv.Itoa(replicaID))
 
-	err := os.MkdirAll(dataDir, os.ModePerm)
-	if err != nil {
-		return nil, fmt.Errorf("could not create the data directory; %s", err)
-	}
-
-	store, err := raftboltdb.NewBoltStore(path.Join(dataDir, "bolt"))
+	store, err := raftboltdb.NewBoltStore(path.Join(raftDir, "bolt"))
 	if err != nil {
 		return nil, fmt.Errorf("could not create the bolt store; %s", err)
 	}
 
-	snapshots, err := raft.NewFileSnapshotStore(path.Join(dataDir, "snapshot"), 2, os.Stderr)
+	snapshots, err := raft.NewFileSnapshotStore(path.Join(raftDir, "snapshot"), 2, os.Stderr)
 	if err != nil {
 		return nil, fmt.Errorf("could not create the snapshot store; %s", err)
 	}
 
-	raftAddr := fmt.Sprintf("localhost:%d", raftPort)
+	raftAddr := fmt.Sprintf("%s:%d", ip, raftPort)
 	tcpAddr, err := net.ResolveTCPAddr("tcp", raftAddr)
 	if err != nil {
 		return nil, fmt.Errorf("could not resolve tcp addr; %s", err)

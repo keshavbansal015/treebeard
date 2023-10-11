@@ -56,8 +56,8 @@ func (r *routerServer) Write(ctx context.Context, writeRequest *pb.WriteRequest)
 	return &pb.WriteReply{Success: writeResponse.success}, nil
 }
 
-func StartRPCServer(shardNodeRPCClients map[int]ReplicaRPCClientMap, routerID int, port int) {
-	lis, err := net.Listen("tcp", fmt.Sprintf("localhost:%d", port))
+func StartRPCServer(ip string, shardNodeRPCClients map[int]ReplicaRPCClientMap, routerID int, port int) {
+	lis, err := net.Listen("tcp", fmt.Sprintf("%s:%d", ip, port))
 	if err != nil {
 		log.Fatal().Msgf("failed to listen: %v", err)
 	}

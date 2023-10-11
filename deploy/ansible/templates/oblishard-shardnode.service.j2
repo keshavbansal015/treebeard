@@ -1,0 +1,22 @@
+[Unit]
+Description=Oblishard Shardnode
+Requires=network.target
+After=syslog.target network.target
+
+[Service]
+Type=simple
+ExecStart=/root/oblishard/shardnode/shardnode \
+    -shardnodeid {{ item.id }} \
+    -ip {{ item.local_bind_ip }} \
+    -rpcport {{ item.port }} \
+    -replicaid {{ item.replicaid }} \
+    -raftport {{ item.raftport }} \
+    -raftdir {{ '/root/oblishard/shardnode/'  + item.id | string + '/' + item.replicaid | string }} \
+    {% if item.replicaid!=0 %}
+    {{'-joinaddr=' + shardnode_endpoints.endpoints[0].ip + ':' + shardnode_endpoints.endpoints[0].port | string }} \
+    {% endif %}
+    -conf /root/oblishard/
+Restart=on-failure
+
+[Install]
+WantedBy=multi-user.target

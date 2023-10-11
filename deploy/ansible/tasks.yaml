@@ -1,0 +1,146 @@
+- name: Deploy the system
+  hosts: all
+  tasks:
+    - name: Update and upgrade apt
+      ansible.builtin.apt:
+        update_cache: yes # apt update
+        cache_valid_time: 3600 # update if not updated in the last 3600 seconds
+        upgrade: yes # apt upgrade
+    
+    - name: Install Redis
+      ansible.builtin.apt:
+        name:
+          - redis
+
+    - name: Start Redis
+      ansible.builtin.systemd:
+        name: redis-server
+        state: started
+        daemon_reload: true
+
+    - name: Build the go executables locally
+      ansible.builtin.shell:
+        chdir: "{{ item }}"
+        cmd: env GOOS=linux GOARCH=amd64 go build . # TODO: get the GOOS and GOARCH from hosts
+      delegate_to: 127.0.0.1
+      loop:
+        - "../../cmd/client/"
+        - "../../cmd/router/"
+        - "../../cmd/shardnode/"
+        - "../../cmd/oramnode/"
+
+    - name: Include endpoints as vars
+      ansible.builtin.include_vars:
+        file: "{{ item.file_path }}"
+        name: "{{ item.name }}"
+      loop:
+        - {name: router_endpoints, file_path: '../../configs/router_endpoints.yaml'}
+        - {name: shardnode_endpoints, file_path: '../../configs/shardnode_endpoints.yaml'}
+        - {name: oramnode_endpoints, file_path: '../../configs/oramnode_endpoints.yaml'}
+
+    - name: Create directories
+      ansible.builtin.file:
+        path: "{{ '/root/oblishard/' + item[0] + '/'  + item[1].id | string + '/' + item[1].replicaid | default('') | string }}"
+        state: directory
+        mode: '0755'
+      delegate_to: 34.118.3.12 # "{{ item[1].ip }}"
+      become: yes
+      become_user: root
+      loop: >-
+          {{
+          ["router"] | product(router_endpoints.endpoints) | list +
+          ["shardnode"] | product(shardnode_endpoints.endpoints) | list +
+          ["oramnode"] | product(oramnode_endpoints.endpoints) | list
+          }}   
+
+    - name: Copy executables
+      ansible.builtin.copy:
+        src: "../../cmd/{{ item[0] }}/{{ item[0] }}"
+        dest: "{{ '/root/oblishard/' + item[0] + '/' + item[0] }}"
+        mode: '0777'
+      delegate_to: 34.118.3.12 # "{{ item[1].ip }}"
+      become: yes
+      become_user: root
+      loop: >-
+          {{
+          ["router"] | product(router_endpoints.endpoints) | list +
+          ["shardnode"] | product(shardnode_endpoints.endpoints) | list +
+          ["oramnode"] | product(oramnode_endpoints.endpoints) | list
+          }}
+
+    - name: Copy configs
+      ansible.builtin.copy:
+        src: "../../configs/{{ item[0] }}"
+        dest: "/root/oblishard/{{ item[0] }}"
+        mode: '0666'
+      delegate_to: 34.118.3.12 # "{{ item[1].ip }}"
+      become: yes
+      become_user: root
+      loop: "{{ ['router_endpoints.yaml', 'shardnode_endpoints.yaml', 'oramnode_endpoints.yaml', 'parameters.yaml'] | product(groups['all']) | list }}"
+
+    - name: Start Redis service # Where should we run this?
+      ansible.builtin.systemd:
+        name: "redis-server"
+        state: started
+        daemon_reload: true
+
+    - name: Create oramnode systemd services
+      template:
+        src: templates/oblishard-oramnode.service.j2
+        dest: "/lib/systemd/system/oblishard-oramnode-{{ item.id }}-{{ item.replicaid }}.service"
+      delegate_to: 34.118.3.12 # "{{ item[1].ip }}"
+      become: yes
+      become_user: root
+      with_items: "{{ oramnode_endpoints.endpoints }}"
+
+    - name: Start oramnode services
+      ansible.builtin.systemd:
+        name: "oblishard-oramnode-{{ item.id }}-{{ item.replicaid }}"
+        state: started
+        daemon_reload: true
+      delegate_to: 34.118.3.12 # "{{ item[1].ip }}"
+      become: yes
+      become_user: root
+      loop_control:
+        pause: 7 # let the first node become the leader first
+      with_items: "{{ oramnode_endpoints.endpoints }}"
+
+    - name: Create shardnode systemd services
+      template:
+        src: templates/oblishard-shardnode.service.j2
+        dest: "/lib/systemd/system/oblishard-shardnode-{{ item.id }}-{{ item.replicaid }}.service"
+      delegate_to: 34.118.3.12 # "{{ item[1].ip }}"
+      become: yes
+      become_user: root
+      with_items: "{{ shardnode_endpoints.endpoints }}"
+
+    - name: Start shardnode services
+      ansible.builtin.systemd:
+        name: "oblishard-shardnode-{{ item.id }}-{{ item.replicaid }}"
+        state: started
+        daemon_reload: true
+      delegate_to: 34.118.3.12 # "{{ item[1].ip }}"
+      become: yes
+      become_user: root
+      loop_control:
+        pause: 7 # let the first node become the leader first
+      with_items: "{{ shardnode_endpoints.endpoints }}"
+
+    - name: Create router systemd services
+      template:
+        src: templates/oblishard-router.service.j2
+        dest: "/lib/systemd/system/oblishard-router-{{ item.id }}.service"
+      delegate_to: 34.118.3.12 # "{{ item[1].ip }}"
+      become: yes
+      become_user: root
+      with_items: "{{ router_endpoints.endpoints }}"
+
+    - name: Start router services
+      ansible.builtin.systemd:
+        name: "oblishard-router-{{ item.id }}"
+        state: started
+        daemon_reload: true
+      delegate_to: 34.118.3.12 # "{{ item[1].ip }}"
+      become: yes
+      become_user: root
+      with_items: "{{ router_endpoints.endpoints }}"

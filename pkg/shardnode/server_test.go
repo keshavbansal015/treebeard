@@ -12,6 +12,7 @@ import (
 	"github.com/dsg-uwaterloo/oblishard/pkg/storage"
 	"github.com/hashicorp/raft"
 	"github.com/phayes/freeport"
+	"github.com/rs/zerolog/log"
 	"google.golang.org/grpc/metadata"
 )
 
@@ -99,15 +100,19 @@ func getMockOramNodeClientsWithBatchResponses() map[int]ReplicaRPCClientMap {
 
 func startLeaderRaftNodeServer(t *testing.T, batchSize int, withBatchReponses bool) *shardNodeServer {
 	cleanRaftDataDirectory("sh-data-replicaid-0")
+	err := os.MkdirAll("sh-data-replicaid-0", os.ModePerm)
+	if err != nil {
+		log.Fatal().Msgf("Unable to create raft directory")
+	}
 
 	fsm := newShardNodeFSM()
 	raftPort, err := freeport.GetFreePort()
 	if err != nil {
 		t.Errorf("unable to get free port")
 	}
-	r, err := startRaftServer(true, 0, raftPort, fsm)
+	r, err := startRaftServer(true, "localhost", 0, raftPort, "sh-data-replicaid-0", fsm)
 	if err != nil {
-		t.Errorf("unable to start raft server")
+		t.Errorf("unable to start raft server; %v", err)
 	}
 	fsm.mu.Lock()
 	fsm.raftNode = r

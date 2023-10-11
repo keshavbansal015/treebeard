@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"flag"
+	"path"
 
 	"github.com/dsg-uwaterloo/oblishard/pkg/config"
 	router "github.com/dsg-uwaterloo/oblishard/pkg/router"
@@ -11,18 +12,20 @@ import (
 	"github.com/rs/zerolog/log"
 )
 
-// Usage: ./router -routerid=<routerid> -port=<port>
+// Usage: ./router -routerid=<routerid> -ip=<ip> -port=<port> -conf=<configs path>
 func main() {
 	utils.InitLogging(true)
 
 	routerID := flag.Int("routerid", 0, "router id, starting consecutively from zero")
+	ip := flag.String("ip", "", "ip of this replica")
 	port := flag.Int("port", 0, "node port")
+	configsPath := flag.String("conf", "", "configs directory path")
 	flag.Parse()
 	if *port == 0 {
 		log.Fatal().Msgf("The port should be provided with the -port flag")
 	}
 
-	shardNodeEndpoints, err := config.ReadShardNodeEndpoints("../../configs/shardnode_endpoints.yaml")
+	shardNodeEndpoints, err := config.ReadShardNodeEndpoints(path.Join(*configsPath, "shardnode_endpoints.yaml"))
 	if err != nil {
 		log.Fatal().Msgf("Cannot read shard node endpoints from yaml file; %v", err)
 	}
@@ -43,5 +46,5 @@ func main() {
 	}
 	defer stopTracingProvider(context.Background())
 
-	router.StartRPCServer(rpcClients, *routerID, *port)
+	router.StartRPCServer(*ip, rpcClients, *routerID, *port)
 }

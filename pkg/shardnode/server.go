@@ -94,7 +94,11 @@ func (s *shardNodeServer) sendCurrentBatches() {
 			oramNodeReplicaMap := s.oramNodeClients.getRandomOramNodeReplicaMap()
 			// TODO: add a note about why we are using the first request's context
 			log.Debug().Msgf("Sending batch of size %d to storageID %d", len(requests), storageID)
-			reply, _ := oramNodeReplicaMap.readPathFromAllOramNodeReplicas(requests[0].ctx, requests, storageID)
+			reply, err := oramNodeReplicaMap.readPathFromAllOramNodeReplicas(requests[0].ctx, requests, storageID)
+			if err != nil {
+				log.Error().Msgf("Could not get value from the oramnode; %s", err)
+				// TOOD: think about the case where the oram node doesn't return a response in 2 seconds
+			}
 			for _, readPathReply := range reply.Responses {
 				log.Debug().Msgf("Got reply from oram node replica: %v", readPathReply)
 				if _, exists := s.batchManager.responseChannel[readPathReply.Block]; exists {
@@ -283,10 +287,10 @@ func (s *shardNodeServer) JoinRaftVoter(ctx context.Context, joinRaftVoterReques
 	return &pb.JoinRaftVoterReply{Success: true}, nil
 }
 
-func StartServer(shardNodeServerID int, rpcPort int, replicaID int, raftPort int, joinAddr string, oramNodeRPCClients map[int]ReplicaRPCClientMap, parameters config.Parameters) {
+func StartServer(shardNodeServerID int, ip string, rpcPort int, replicaID int, raftPort int, raftDir string, joinAddr string, oramNodeRPCClients map[int]ReplicaRPCClientMap, parameters config.Parameters) {
 	isFirst := joinAddr == ""
 	shardNodeFSM := newShardNodeFSM()
-	r, err := startRaftServer(isFirst, replicaID, raftPort, shardNodeFSM)
+	r, err := startRaftServer(isFirst, ip, replicaID, raftPort, raftDir, shardNodeFSM)
 	if err != nil {
 		log.Fatal().Msgf("The raft node creation did not succeed; %s", err)
 	}
@@ -311,7 +315,7 @@ func StartServer(shardNodeServerID int, rpcPort int, replicaID int, raftPort int
 			context.Background(),
 			&pb.JoinRaftVoterRequest{
 				NodeId:   int32(replicaID),
-				NodeAddr: fmt.Sprintf("localhost:%d", raftPort),
+				NodeAddr: fmt.Sprintf("%s:%d", ip, raftPort),
 			},
 		)
 		if err != nil || !joinRaftVoterReply.Success {
@@ -319,7 +323,7 @@ func StartServer(shardNodeServerID int, rpcPort int, replicaID int, raftPort int
 		}
 	}
 
-	lis, err := net.Listen("tcp", fmt.Sprintf("localhost:%d", rpcPort))
+	lis, err := net.Listen("tcp", fmt.Sprintf("%s:%d", ip, rpcPort))
 	if err != nil {
 		log.Fatal().Msgf("failed to listen: %v", err)
 	}

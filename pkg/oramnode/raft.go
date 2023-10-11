@@ -1,6 +1,7 @@
 package oramnode
 
 import (
+	"context"
 	"fmt"
 	"io"
 	"net"
@@ -14,6 +15,7 @@ import (
 	raftboltdb "github.com/hashicorp/raft-boltdb/v2"
 	"github.com/rs/zerolog/log"
 	"github.com/vmihailenco/msgpack/v5"
+	"go.opentelemetry.io/otel"
 )
 
 type beginEvictionData struct {
@@ -78,6 +80,8 @@ func (fsm *oramNodeFSM) handleEndEvictionCommand() {
 }
 
 func (fsm *oramNodeFSM) handleBeginReadPathCommand(paths []int, storageID int) {
+	tracer := otel.Tracer("")
+	_, span := tracer.Start(context.Background(), "begin read path replication inside")
 	log.Debug().Msgf("Aquiring lock for oramNodeFSM in handleBeginReadPathCommand")
 	fsm.mu.Lock()
 	log.Debug().Msgf("Aquired lock for oramNodeFSM in handleBeginReadPathCommand")
@@ -88,6 +92,7 @@ func (fsm *oramNodeFSM) handleBeginReadPathCommand(paths []int, storageID int) {
 	}()
 
 	fsm.unfinishedReadPath = &beginReadPathData{paths, storageID}
+	span.End()
 }
 
 func (fsm *oramNodeFSM) handleEndReadPathCommand() {
@@ -157,27 +162,21 @@ func (fsm *oramNodeFSM) Restore(rc io.ReadCloser) error {
 // TODO: the logic for startRaftServer is the same for both shardNode and OramNode.
 // TOOD: it can be moved to a new raft-utils package to reduce code duplication
 
-func startRaftServer(isFirst bool, replicaID int, raftPort int, oramNodeFSM *oramNodeFSM) (*raft.Raft, error) {
-	dataDir := fmt.Sprintf("om-data-replicaid-%d", replicaID)
+func startRaftServer(isFirst bool, ip string, replicaID int, raftPort int, raftDir string, oramNodeFSM *oramNodeFSM) (*raft.Raft, error) {
 	raftConfig := raft.DefaultConfig()
 	raftConfig.LocalID = raft.ServerID(strconv.Itoa(replicaID))
 
-	err := os.MkdirAll(dataDir, os.ModePerm)
-	if err != nil {
-		return nil, fmt.Errorf("could not create the data directory; %s", err)
-	}
-
-	store, err := raftboltdb.NewBoltStore(path.Join(dataDir, "bolt"))
+	store, err := raftboltdb.NewBoltStore(path.Join(raftDir, "bolt"))
 	if err != nil {
 		return nil, fmt.Errorf("could not create the bolt store; %s", err)
 	}
 
-	snapshots, err := raft.NewFileSnapshotStore(path.Join(dataDir, "snapshot"), 2, os.Stderr)
+	snapshots, err := raft.NewFileSnapshotStore(path.Join(raftDir, "snapshot"), 2, os.Stderr)
 	if err != nil {
 		return nil, fmt.Errorf("could not create the snapshot store; %s", err)
 	}
 
-	raftAddr := fmt.Sprintf("localhost:%d", raftPort)
+	raftAddr := fmt.Sprintf("%s:%d", ip, raftPort)
 	tcpAddr, err := net.ResolveTCPAddr("tcp", raftAddr)
 	if err != nil {
 		return nil, fmt.Errorf("could not resolve tcp addr; %s", err)

@@ -255,15 +255,18 @@ func (o *oramNodeServer) ReadPath(ctx context.Context, request *pb.ReadPathReque
 	if err != nil {
 		return nil, fmt.Errorf("unable to create begin read path replication command; %v", err)
 	}
+	_, beginReadPathReplicationSpan := tracer.Start(ctx, "replicate begin read path")
 	err = o.raftNode.Apply(beginReadPathCommand, 2*time.Second).Error()
 	if err != nil {
 		return nil, fmt.Errorf("could not apply log to the FSM; %s", err)
 	}
+	beginReadPathReplicationSpan.End()
 
 	buckets, err := o.storageHandler.GetBucketsInPaths(paths)
 	if err != nil {
 		return nil, fmt.Errorf("could not get bucket ids in the paths; %v", err)
 	}
+	_, getBlockOffsetsSpan := tracer.Start(ctx, "get block offsets")
 	for _, bucketID := range buckets {
 		offset, isReal, blockFound, err := o.storageHandler.GetBlockOffset(bucketID, int(request.StorageId), blocks)
 		if err != nil {
@@ -274,11 +277,13 @@ func (o *oramNodeServer) ReadPath(ctx context.Context, request *pb.ReadPathReque
 		}
 		offsetList[bucketID] = offset
 	}
+	getBlockOffsetsSpan.End()
 
 	returnValues := make(map[string]string) // map of block to value
 	for _, block := range blocks {
 		returnValues[block] = ""
 	}
+	_, readBlocksSpan := tracer.Start(ctx, "read blocks")
 	for _, bucketID := range buckets {
 		if block, exists := realBlockBucketMapping[bucketID]; exists {
 			value, err := o.storageHandler.ReadBlock(bucketID, int(request.StorageId), offsetList[bucketID])
@@ -290,11 +295,14 @@ func (o *oramNodeServer) ReadPath(ctx context.Context, request *pb.ReadPathReque
 			o.storageHandler.ReadBlock(bucketID, int(request.StorageId), offsetList[bucketID])
 		}
 	}
+	readBlocksSpan.End()
 
+	_, earlyReshuffleSpan := tracer.Start(ctx, "early reshuffle")
 	err = o.earlyReshuffle(buckets, int(request.StorageId))
 	if err != nil {
 		return nil, fmt.Errorf("early reshuffle failed;%s", err)
 	}
+	earlyReshuffleSpan.End()
 
 	o.readPathCounterMu.Lock()
 	o.readPathCounter++
@@ -304,10 +312,12 @@ func (o *oramNodeServer) ReadPath(ctx context.Context, request *pb.ReadPathReque
 	if err != nil {
 		return nil, fmt.Errorf("unable to create end read path replication command; %s", err)
 	}
-	err = o.raftNode.Apply(endReadPathCommand, 2*time.Second).Error()
+	_, endReadPathReplicationSpan := tracer.Start(ctx, "replicate end read path")
+	err = o.raftNode.Apply(endReadPathCommand, 0).Error()
 	if err != nil {
 		return nil, fmt.Errorf("could not apply log to the FSM; %s", err)
 	}
+	endReadPathReplicationSpan.End()
 
 	var response []*pb.BlockResponse
 	for block, value := range returnValues {
@@ -335,10 +345,10 @@ func (o *oramNodeServer) JoinRaftVoter(ctx context.Context, joinRaftVoterRequest
 	return &pb.JoinRaftVoterReply{Success: true}, nil
 }
 
-func StartServer(oramNodeServerID int, rpcPort int, replicaID int, raftPort int, joinAddr string, shardNodeRPCClients map[int]ReplicaRPCClientMap, parameters config.Parameters) {
+func StartServer(oramNodeServerID int, ip string, rpcPort int, replicaID int, raftPort int, raftDir string, joinAddr string, shardNodeRPCClients map[int]ReplicaRPCClientMap, parameters config.Parameters) {
 	isFirst := joinAddr == ""
 	oramNodeFSM := newOramNodeFSM()
-	r, err := startRaftServer(isFirst, replicaID, raftPort, oramNodeFSM)
+	r, err := startRaftServer(isFirst, ip, replicaID, raftPort, raftDir, oramNodeFSM)
 	if err != nil {
 		log.Fatal().Msgf("The raft node creation did not succeed; %s", err)
 	}
@@ -360,7 +370,7 @@ func StartServer(oramNodeServerID int, rpcPort int, replicaID int, raftPort int,
 			context.Background(),
 			&pb.JoinRaftVoterRequest{
 				NodeId:   int32(replicaID),
-				NodeAddr: fmt.Sprintf("localhost:%d", raftPort),
+				NodeAddr: fmt.Sprintf("%s:%d", ip, raftPort),
 			},
 		)
 		if err != nil || !joinRaftVoterReply.Success {
@@ -368,7 +378,7 @@ func StartServer(oramNodeServerID int, rpcPort int, replicaID int, raftPort int,
 		}
 	}
 
-	lis, err := net.Listen("tcp", fmt.Sprintf("localhost:%d", rpcPort))
+	lis, err := net.Listen("tcp", fmt.Sprintf("%s:%d", ip, rpcPort))
 	if err != nil {
 		log.Fatal().Msgf("failed to listen: %v", err)
 	}

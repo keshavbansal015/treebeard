@@ -1,0 +1,12 @@
+[Unit]
+Description=Oblishard Router
+Requires=network.target
+After=syslog.target network.target
+
+[Service]
+Type=simple
+ExecStart=/root/oblishard/router/router -routerid {{ item.id }} -ip {{ item.local_bind_ip }} -port {{ item.port }} -conf /root/oblishard/
+Restart=on-failure
+
+[Install]
+WantedBy=multi-user.target

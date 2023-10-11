@@ -1,0 +1,22 @@
+[Unit]
+Description=Oblishard Oramnode
+Requires=network.target
+After=syslog.target network.target
+
+[Service]
+Type=simple
+ExecStart=/root/oblishard/oramnode/oramnode \
+    -oramnodeid {{ item.id }} \
+    -ip {{ item.local_bind_ip }} \
+    -rpcport {{ item.port }} \
+    -replicaid {{ item.replicaid }} \
+    -raftport {{ item.raftport }} \
+    -raftdir {{ '/root/oblishard/oramnode/'  + item.id | string + '/' + item.replicaid | string }} \
+    {% if item.replicaid!=0 %}
+    {{'-joinaddr=' + oramnode_endpoints.endpoints[0].ip + ':' + oramnode_endpoints.endpoints[0].port | string }} \
+    {% endif %}
+    -conf /root/oblishard/
+Restart=on-failure
+
+[Install]
+WantedBy=multi-user.target
