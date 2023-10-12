@@ -6,7 +6,49 @@
         update_cache: yes # apt update
         cache_valid_time: 3600 # update if not updated in the last 3600 seconds
         upgrade: yes # apt upgrade
+
+    - name: Add Docker GPG apt Key
+      apt_key:
+        url: https://download.docker.com/linux/ubuntu/gpg
+        state: present
+
+    - name: Add Docker Repository
+      apt_repository:
+        repo: deb https://download.docker.com/linux/ubuntu bionic stable
+        state: present
     
+    - name: Install Packages
+      apt:
+        update_cache: yes
+        pkg:
+          - docker-ce
+          - docker-ce-cli
+          - containerd.io
+          - docker-buildx-plugin
+          - docker-compose-plugin
+          - python3-docker
+          - socat
+
+    - name: Move Jaeger docker-compose.yaml and Start it
+      block:
+        - name: Move Jaeger file
+          copy:
+            src: ../../jaeger/docker-compose.yaml
+            dest: /root/oblishard/jaeger.yaml
+        - name: Run Jaeger
+          shell:
+            cmd: "docker compose -f jaeger.yaml up -d"
+            chdir: /root/oblishard
+        - name: Create Socat reverse proxy service
+          copy:
+            src: templates/socat.service
+            dest: /lib/systemd/system/jaeger-socat.service
+        - name: Start Socat service
+          ansible.builtin.systemd:
+            name: "jaeger-socat"
+            state: started
+            daemon_reload: true
+
     - name: Install Redis
       ansible.builtin.apt:
         name:
