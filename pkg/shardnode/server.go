@@ -97,6 +97,7 @@ func (s *shardNodeServer) sendCurrentBatches() {
 			reply, err := oramNodeReplicaMap.readPathFromAllOramNodeReplicas(requests[0].ctx, requests, storageID)
 			if err != nil {
 				log.Error().Msgf("Could not get value from the oramnode; %s", err)
+				continue
 				// TOOD: think about the case where the oram node doesn't return a response in 2 seconds
 			}
 			for _, readPathReply := range reply.Responses {
