@@ -7,6 +7,7 @@ import (
 	"errors"
 	"math"
 	"math/rand"
+	"path"
 	"strconv"
 
 	"github.com/rs/zerolog/log"
@@ -47,10 +48,10 @@ func NewStorageHandler() *StorageHandler {
 	return s
 }
 
-func (s *StorageHandler) InitDatabase() {
+func (s *StorageHandler) InitDatabase(configsPath string) {
 	log.Debug().Msgf("Initializing the redis database")
 	for i := 0; i < numDB; i++ {
-		s.databaseInit("../../traces/data.txt", i)
+		s.databaseInit(path.Join(configsPath, "redis-data.txt"), i)
 	}
 }
 

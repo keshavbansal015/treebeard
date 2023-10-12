@@ -15,7 +15,8 @@ ExecStart=/root/oblishard/oramnode/oramnode \
     {% if item.replicaid!=0 %}
     {{'-joinaddr=' + oramnode_endpoints.endpoints[0].ip + ':' + oramnode_endpoints.endpoints[0].port | string }} \
     {% endif %}
-    -conf /root/oblishard/
+    -conf /root/oblishard/ \
+    -logpath {{ '/root/oblishard/oramnode/'  + item.id | string + '/' + item.replicaid | string + '/all.log' }}
 Restart=on-failure
 
 [Install]

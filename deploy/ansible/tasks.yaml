@@ -46,7 +46,7 @@
         - name: Start Socat service
           ansible.builtin.systemd:
             name: "jaeger-socat"
-            state: started
+            state: restarted
             daemon_reload: true
 
     - name: Install Redis
@@ -57,7 +57,7 @@
     - name: Start Redis
       ansible.builtin.systemd:
         name: redis-server
-        state: started
+        state: restarted
         daemon_reload: true
 
     - name: Build the go executables locally
@@ -80,7 +80,22 @@
         - {name: shardnode_endpoints, file_path: '../../configs/shardnode_endpoints.yaml'}
         - {name: oramnode_endpoints, file_path: '../../configs/oramnode_endpoints.yaml'}
 
-    - name: Create directories
+    - name: Remove previous directories
+      ansible.builtin.file:
+        path: "{{ '/root/oblishard/' + item[0] + '/'  + item[1].id | string + '/' + item[1].replicaid | default('') | string }}"
+        state: absent
+        mode: '0755'
+      delegate_to: 34.118.3.12 # "{{ item[1].ip }}"
+      become: yes
+      become_user: root
+      loop: >-
+          {{
+          ["router"] | product(router_endpoints.endpoints) | list +
+          ["shardnode"] | product(shardnode_endpoints.endpoints) | list +
+          ["oramnode"] | product(oramnode_endpoints.endpoints) | list
+          }}
+
+    - name: Create new directories
       ansible.builtin.file:
         path: "{{ '/root/oblishard/' + item[0] + '/'  + item[1].id | string + '/' + item[1].replicaid | default('') | string }}"
         state: directory
@@ -118,12 +133,12 @@
       delegate_to: 34.118.3.12 # "{{ item[1].ip }}"
       become: yes
       become_user: root
-      loop: "{{ ['router_endpoints.yaml', 'shardnode_endpoints.yaml', 'oramnode_endpoints.yaml', 'parameters.yaml'] | product(groups['all']) | list }}"
+      loop: "{{ ['router_endpoints.yaml', 'shardnode_endpoints.yaml', 'oramnode_endpoints.yaml', 'parameters.yaml', 'redis-data.txt'] | product(groups['all']) | list }}"
 
     - name: Start Redis service # Where should we run this?
       ansible.builtin.systemd:
         name: "redis-server"
-        state: started
+        state: restarted
         daemon_reload: true
 
     - name: Create oramnode systemd services
@@ -138,7 +153,7 @@
     - name: Start oramnode services
       ansible.builtin.systemd:
         name: "oblishard-oramnode-{{ item.id }}-{{ item.replicaid }}"
-        state: started
+        state: restarted
         daemon_reload: true
       delegate_to: 34.118.3.12 # "{{ item[1].ip }}"
       become: yes
@@ -159,7 +174,7 @@
     - name: Start shardnode services
       ansible.builtin.systemd:
         name: "oblishard-shardnode-{{ item.id }}-{{ item.replicaid }}"
-        state: started
+        state: restarted
         daemon_reload: true
       delegate_to: 34.118.3.12 # "{{ item[1].ip }}"
       become: yes
@@ -180,7 +195,7 @@
     - name: Start router services
       ansible.builtin.systemd:
         name: "oblishard-router-{{ item.id }}"
-        state: started
+        state: restarted
         daemon_reload: true
       delegate_to: 34.118.3.12 # "{{ item[1].ip }}"
       become: yes

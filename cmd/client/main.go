@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"flag"
 
 	"github.com/dsg-uwaterloo/oblishard/pkg/client"
 	"github.com/dsg-uwaterloo/oblishard/pkg/config"
@@ -11,8 +12,11 @@ import (
 	"go.opentelemetry.io/otel"
 )
 
+// Usage: go run . -logpath=<log path>
 func main() {
-	utils.InitLogging(true)
+	logPath := flag.String("logpath", "", "path to write logs")
+	flag.Parse()
+	utils.InitLogging(true, *logPath)
 
 	routerEndpoints, err := config.ReadRouterEndpoints("../../configs/router_endpoints.yaml")
 	if err != nil {

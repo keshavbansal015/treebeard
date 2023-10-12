@@ -12,15 +12,16 @@ import (
 	"github.com/rs/zerolog/log"
 )
 
-// Usage: ./router -routerid=<routerid> -ip=<ip> -port=<port> -conf=<configs path>
+// Usage: ./router -routerid=<routerid> -ip=<ip> -port=<port> -conf=<configs path> -logpath=<log path>
 func main() {
-	utils.InitLogging(true)
 
 	routerID := flag.Int("routerid", 0, "router id, starting consecutively from zero")
 	ip := flag.String("ip", "", "ip of this replica")
 	port := flag.Int("port", 0, "node port")
 	configsPath := flag.String("conf", "", "configs directory path")
+	logPath := flag.String("logpath", "", "path to write the logs")
 	flag.Parse()
+	utils.InitLogging(true, *logPath)
 	if *port == 0 {
 		log.Fatal().Msgf("The port should be provided with the -port flag")
 	}

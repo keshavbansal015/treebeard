@@ -12,10 +12,8 @@ import (
 	"github.com/rs/zerolog/log"
 )
 
-// Usage: ./shardnode -shardnodeid=<shardnodeid> -ip=<ip> -rpcport=<rpcport> -replicaid=<replicaid> -raftport=<raftport> -raftdir=<raftdir> -joinaddr=<ip:port> -conf=<configs path>
+// Usage: ./shardnode -shardnodeid=<shardnodeid> -ip=<ip> -rpcport=<rpcport> -replicaid=<replicaid> -raftport=<raftport> -raftdir=<raftdir> -joinaddr=<ip:port> -conf=<configs path> -logpath=<log path>
 func main() {
-	utils.InitLogging(true)
-
 	shardNodeID := flag.Int("shardnodeid", 0, "shardnode id, starting consecutively from zero")
 	ip := flag.String("ip", "", "ip of this replica")
 	replicaID := flag.Int("replicaid", 0, "replica id, starting consecutively from zero")
@@ -24,7 +22,10 @@ func main() {
 	raftDir := flag.String("raftdir", "", "the address of the raft snapshot directory")
 	joinAddr := flag.String("joinaddr", "", "the address of the initial raft node, which bootstraped the cluster")
 	configsPath := flag.String("conf", "", "configs directory path")
+	logPath := flag.String("logpath", "", "path to write logs")
 	flag.Parse()
+
+	utils.InitLogging(true, *logPath)
 	if *rpcPort == 0 {
 		log.Fatal().Msgf("The rpc port should be provided with the -rpcport flag")
 	}
@@ -58,5 +59,5 @@ func main() {
 	}
 	defer stopTracingProvider(context.Background())
 
-	shardnode.StartServer(*shardNodeID, *ip, *rpcPort, *replicaID, *raftPort, *raftDir, *joinAddr, rpcClients, parameters)
+	shardnode.StartServer(*shardNodeID, *ip, *rpcPort, *replicaID, *raftPort, *raftDir, *joinAddr, rpcClients, parameters, *configsPath)
 }

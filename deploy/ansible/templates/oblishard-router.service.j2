@@ -5,7 +5,7 @@ After=syslog.target network.target
 
 [Service]
 Type=simple
-ExecStart=/root/oblishard/router/router -routerid {{ item.id }} -ip {{ item.local_bind_ip }} -port {{ item.port }} -conf /root/oblishard/
+ExecStart=/root/oblishard/router/router -routerid {{ item.id }} -ip {{ item.local_bind_ip }} -port {{ item.port }} -conf /root/oblishard/ -logpath /root/oblishard/router/{{ item.id }}/all.log
 Restart=on-failure
 
 [Install]
