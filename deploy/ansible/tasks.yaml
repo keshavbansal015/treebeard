@@ -140,6 +140,10 @@
         name: "redis-server"
         state: restarted
         daemon_reload: true
+    
+    - name: Flush previous Redis data
+      community.general.redis:
+        command: flush
 
     - name: Create oramnode systemd services
       template:
