@@ -60,6 +60,10 @@
         state: restarted
         daemon_reload: true
 
+    - name: Flush previous Redis data
+      ansible.builtin.shell:
+        cmd: redis-cli FLUSHALL  
+
     - name: Build the go executables locally
       ansible.builtin.shell:
         chdir: "{{ item }}"
@@ -134,16 +138,6 @@
       become: yes
       become_user: root
       loop: "{{ ['router_endpoints.yaml', 'shardnode_endpoints.yaml', 'oramnode_endpoints.yaml', 'parameters.yaml', 'redis-data.txt'] | product(groups['all']) | list }}"
-
-    - name: Start Redis service # Where should we run this?
-      ansible.builtin.systemd:
-        name: "redis-server"
-        state: restarted
-        daemon_reload: true
-    
-    - name: Flush previous Redis data
-      community.general.redis:
-        command: flush
 
     - name: Create oramnode systemd services
       template:
