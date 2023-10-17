@@ -374,7 +374,7 @@ func StartServer(oramNodeServerID int, ip string, rpcPort int, replicaID int, ra
 			},
 		)
 		if err != nil || !joinRaftVoterReply.Success {
-			log.Fatal().Msgf("The raft node could not connect to the leader as a new voter; %s", err)
+			log.Error().Msgf("The raft node could not connect to the leader as a new voter; %s", err)
 		}
 	}
 

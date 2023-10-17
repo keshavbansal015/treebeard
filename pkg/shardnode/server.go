@@ -320,7 +320,7 @@ func StartServer(shardNodeServerID int, ip string, rpcPort int, replicaID int, r
 			},
 		)
 		if err != nil || !joinRaftVoterReply.Success {
-			log.Fatal().Msgf("The raft node could not connect to the leader as a new voter; %s", err)
+			log.Error().Msgf("The raft node could not connect to the leader as a new voter; %s", err)
 		}
 	}
 
