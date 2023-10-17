@@ -11,6 +11,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/hashicorp/go-hclog"
 	"github.com/hashicorp/raft"
 	raftboltdb "github.com/hashicorp/raft-boltdb/v2"
 	"github.com/rs/zerolog/log"
@@ -164,6 +165,7 @@ func (fsm *oramNodeFSM) Restore(rc io.ReadCloser) error {
 
 func startRaftServer(isFirst bool, ip string, replicaID int, raftPort int, raftDir string, oramNodeFSM *oramNodeFSM) (*raft.Raft, error) {
 	raftConfig := raft.DefaultConfig()
+	raftConfig.Logger = hclog.New(&hclog.LoggerOptions{Output: log.Logger})
 	raftConfig.LocalID = raft.ServerID(strconv.Itoa(replicaID))
 
 	store, err := raftboltdb.NewBoltStore(path.Join(raftDir, "bolt"))
