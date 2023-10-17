@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/hashicorp/go-hclog"
 	"github.com/hashicorp/raft"
 	raftboltdb "github.com/hashicorp/raft-boltdb/v2"
 	"github.com/rs/zerolog/log"
@@ -426,6 +427,7 @@ func (sn shardNodeSnapshot) Release() {}
 
 func startRaftServer(isFirst bool, ip string, replicaID int, raftPort int, raftDir string, shardshardNodeFSM *shardNodeFSM) (*raft.Raft, error) {
 	raftConfig := raft.DefaultConfig()
+	raftConfig.Logger = hclog.New(&hclog.LoggerOptions{Output: log.Logger})
 	raftConfig.LocalID = raft.ServerID(strconv.Itoa(replicaID))
 
 	store, err := raftboltdb.NewBoltStore(path.Join(raftDir, "bolt"))
