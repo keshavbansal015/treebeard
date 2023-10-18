@@ -45,17 +45,3 @@ func (b *batchManager) addRequestToStorageQueueAndWait(req blockRequest, storage
 	b.responseChannel[req.block] = make(chan string)
 	return b.responseChannel[req.block]
 }
-
-// It simply adds the request to the correct queue.
-func (b *batchManager) addRequestToStorageQueueWithoutWaiting(req blockRequest, storageID int) {
-	log.Debug().Msgf("Aquiring lock for batch manager in addRequestToStorageQueueWithoutWaiting")
-	b.mu.Lock()
-	log.Debug().Msgf("Aquired lock for batch manager in addRequestToStorageQueueWithoutWaiting")
-	defer func() {
-		log.Debug().Msgf("Releasing lock for batch manager in addRequestToStorageQueueWithoutWaiting")
-		b.mu.Unlock()
-		log.Debug().Msgf("Released lock for batch manager in addRequestToStorageQueueWithoutWaiting")
-	}()
-
-	b.storageQueues[storageID] = append(b.storageQueues[storageID], req)
-}

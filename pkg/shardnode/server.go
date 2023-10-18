@@ -85,6 +85,8 @@ func (s *shardNodeServer) sendBatchesForever() {
 	}
 }
 
+// TODO: fix the bug where it sends more than batch size sometimes
+
 // For queues that have more than batchSize requests, it sends the batch and waits for the responses.
 func (s *shardNodeServer) sendCurrentBatches() {
 	s.batchManager.mu.Lock()
@@ -97,6 +99,7 @@ func (s *shardNodeServer) sendCurrentBatches() {
 			reply, err := oramNodeReplicaMap.readPathFromAllOramNodeReplicas(requests[0].ctx, requests, storageID)
 			if err != nil {
 				log.Error().Msgf("Could not get value from the oramnode; %s", err)
+				delete(s.batchManager.storageQueues, storageID)
 				continue
 				// TOOD: think about the case where the oram node doesn't return a response in 2 seconds
 			}
@@ -137,23 +140,13 @@ func (s *shardNodeServer) query(ctx context.Context, op OperationType, block str
 
 	path, storageID := s.getPathAndStorageBasedOnRequest(ctx, block, requestID)
 
-	isInStash := false
-	s.shardNodeFSM.mu.Lock()
-	if _, exists := s.shardNodeFSM.stash[block]; exists {
-		isInStash = true
-	}
-	s.shardNodeFSM.mu.Unlock()
-
 	var replyValue string
 	_, waitOnReplySpan := tracer.Start(ctx, "wait on reply") // TODO: should I update the context?
-	if isInStash || !s.shardNodeFSM.isInitialRequest(block, requestID) {
-		log.Debug().Msgf("Adding request to storage queue without waiting for block %s", block)
-		s.batchManager.addRequestToStorageQueueWithoutWaiting(blockRequest{ctx: ctx, block: block, path: path}, storageID)
-	} else {
-		log.Debug().Msgf("Adding request to storage queue and waiting for block %s", block)
-		oramReplyChan := s.batchManager.addRequestToStorageQueueAndWait(blockRequest{ctx: ctx, block: block, path: path}, storageID)
-		replyValue = <-oramReplyChan
-	}
+
+	log.Debug().Msgf("Adding request to storage queue and waiting for block %s", block)
+	oramReplyChan := s.batchManager.addRequestToStorageQueueAndWait(blockRequest{ctx: ctx, block: block, path: path}, storageID)
+	replyValue = <-oramReplyChan
+
 	waitOnReplySpan.End()
 	responseChannel := s.createResponseChannelForRequestID(requestID)
 	if s.shardNodeFSM.isInitialRequest(block, requestID) {

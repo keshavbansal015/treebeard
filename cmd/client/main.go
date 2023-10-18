@@ -56,6 +56,10 @@ func main() {
 				log.Error().Msgf("Failed to call Read block %s on router; %v", request.Block, err)
 				continue
 			}
+			if value == "" {
+				log.Error().Msgf("Block %s does not exist", request.Block)
+				continue
+			}
 			log.Debug().Msgf("Sucess in Read of block %s. Got value: %v\n", request.Block, value)
 		} else {
 			ctx, span := tracer.Start(context.Background(), "client write request")

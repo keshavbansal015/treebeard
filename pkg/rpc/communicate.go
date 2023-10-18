@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/rs/zerolog/log"
 	grpc "google.golang.org/grpc"
 )
 
@@ -28,6 +29,10 @@ func CallAllReplicas(ctx context.Context, clients []interface{}, replicaFuncs []
 	for {
 		select {
 		case result := <-responseChannel:
+			log.Debug().Msgf("Received result in CallAllReplicas %v", result)
+			if result.err != nil {
+				log.Error().Msgf("Error in CallAllReplicas %v", result.err)
+			}
 			if result.err == nil {
 				return result.reply, nil
 			}
