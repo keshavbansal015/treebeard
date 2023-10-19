@@ -5,3 +5,4 @@ cmd/router/router
 cmd/shardnode/shardnode
 cmd/oramnode/oramnode
 *.rdb
+*.log
