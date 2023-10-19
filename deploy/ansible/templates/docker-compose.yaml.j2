@@ -1,0 +1,8 @@
+version: '3.8'
+
+services:
+  jaeger:
+    image: jaegertracing/opentelemetry-all-in-one:latest
+    ports:
+      - {{ jaeger_endpoint.api_port }}:{{ jaeger_endpoint.api_port }}
+      - {{ jaeger_endpoint.grpc_port }}:{{ jaeger_endpoint.grpc_port }}

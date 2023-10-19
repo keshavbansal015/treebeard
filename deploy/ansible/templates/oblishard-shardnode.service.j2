@@ -13,7 +13,7 @@ ExecStart=/root/oblishard/shardnode/shardnode \
     -raftport {{ item.raftport }} \
     -raftdir {{ '/root/oblishard/shardnode/'  + item.id | string + '/' + item.replicaid | string }} \
     {% if item.replicaid!=0 %}
-    {{'-joinaddr=' + shardnode_endpoints.endpoints[0].ip + ':' + shardnode_endpoints.endpoints[0].port | string }} \
+    {{'-joinaddr=' + shardnode_endpoints.endpoints[0].exposed_ip + ':' + shardnode_endpoints.endpoints[0].port | string }} \
     {% endif %}
     -conf /root/oblishard/ \
     -logpath {{ '/root/oblishard/shardnode/'  + item.id | string + '/' + item.replicaid | string + '/all.log' }}

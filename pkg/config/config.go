@@ -8,20 +8,20 @@ import (
 )
 
 type RouterEndpoint struct {
-	IP   string
+	IP   string `yaml:"exposed_ip"`
 	Port int
 	ID   int
 }
 
 type ShardNodeEndpoint struct {
-	IP        string
+	IP        string `yaml:"exposed_ip"`
 	Port      int
 	ID        int
 	ReplicaID int
 }
 
 type OramNodeEndpoint struct {
-	IP        string
+	IP        string `yaml:"exposed_ip"`
 	Port      int
 	ID        int
 	ReplicaID int
