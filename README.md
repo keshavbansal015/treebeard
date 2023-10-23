@@ -1,6 +1,8 @@
 # oblishard
 A scalable and fault-tolerant Oblivious RAM (ORAM) data store
 
+The Readme is out of date. Don't use the instructions here! I will fix it soon.
+
 ## Table of Contents
 
 1. [Protocol Buffers](#protocol-buffers)
