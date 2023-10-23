@@ -1,10 +1,6 @@
 endpoints:
-  - ip: 127.0.0.1
+  - exposed_ip: 127.0.0.1
+    local_bind_ip: 127.0.0.1
+    deploy_host: host1
     port: 8745
     id: 0
-  # - ip: 127.0.0.1
-  #   port: 8746
-  #   id: 1
-  # - ip: 127.0.0.1
-  #   port: 8747
-  #   id: 2

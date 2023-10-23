@@ -1,13 +1,22 @@
 endpoints:
-  - ip: 127.0.0.1
+  - exposed_ip: 127.0.0.1
+    local_bind_ip: 127.0.0.1
+    deploy_host: host1
     port: 8748
     id: 0
     replicaid: 0
-  - ip: 127.0.0.1
+    raftport: 3124
+  - exposed_ip: 127.0.0.1
+    local_bind_ip: 127.0.0.1
+    deploy_host: host1
     port: 8749
     id: 0
     replicaid: 1
-  - ip: 127.0.0.1
+    raftport: 3125
+  - exposed_ip: 127.0.0.1
+    local_bind_ip: 127.0.0.1
+    deploy_host: host1
     port: 8750
     id: 0
     replicaid: 2
+    raftport: 3126
