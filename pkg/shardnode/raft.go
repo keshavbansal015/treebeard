@@ -5,7 +5,6 @@ import (
 	"io"
 	"net"
 	"os"
-	"path"
 	"strconv"
 	"sync"
 	"time"
@@ -13,7 +12,6 @@ import (
 	"github.com/google/uuid"
 	"github.com/hashicorp/go-hclog"
 	"github.com/hashicorp/raft"
-	raftboltdb "github.com/hashicorp/raft-boltdb/v2"
 	"github.com/rs/zerolog/log"
 	"github.com/vmihailenco/msgpack/v5"
 )
@@ -426,19 +424,14 @@ func (sn shardNodeSnapshot) Persist(sink raft.SnapshotSink) error {
 func (sn shardNodeSnapshot) Release() {}
 
 func startRaftServer(isFirst bool, ip string, replicaID int, raftPort int, raftDir string, shardshardNodeFSM *shardNodeFSM) (*raft.Raft, error) {
+
 	raftConfig := raft.DefaultConfig()
 	raftConfig.Logger = hclog.New(&hclog.LoggerOptions{Output: log.Logger})
 	raftConfig.LocalID = raft.ServerID(strconv.Itoa(replicaID))
 
-	store, err := raftboltdb.NewBoltStore(path.Join(raftDir, "bolt"))
-	if err != nil {
-		return nil, fmt.Errorf("could not create the bolt store; %s", err)
-	}
+	store := raft.NewInmemStore()
 
-	snapshots, err := raft.NewFileSnapshotStore(path.Join(raftDir, "snapshot"), 2, os.Stderr)
-	if err != nil {
-		return nil, fmt.Errorf("could not create the snapshot store; %s", err)
-	}
+	snapshots := raft.NewInmemSnapshotStore()
 
 	raftAddr := fmt.Sprintf("%s:%d", ip, raftPort)
 	tcpAddr, err := net.ResolveTCPAddr("tcp", raftAddr)
