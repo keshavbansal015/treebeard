@@ -80,7 +80,6 @@ func startTestSystem() {
 	time.Sleep(4 * time.Second) // This is a bad of way of ensuring the leader is elected
 	go startOramNode(1, 8752, 1416, "om-data-replicaid-1", "127.0.0.1:8751")
 	go startOramNode(2, 8753, 1417, "om-data-replicaid-2", "127.0.0.1:8751")
-	// redis?
 	// TODO: kill the go routines, maybe by using cancel contexts
 }
 

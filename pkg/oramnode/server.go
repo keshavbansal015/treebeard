@@ -88,7 +88,6 @@ func (o *oramNodeServer) earlyReshuffle(buckets []int, storageID int) error {
 	log.Debug().Msgf("Performing early reshuffle with buckets %v and storageID %d", buckets, storageID)
 	// TODO: can we make this a background thread?
 	for _, bucket := range buckets {
-		// TODO: check the Redis latency
 		accessCount, err := o.storageHandler.GetAccessCount(bucket, storageID)
 		if err != nil {
 			return fmt.Errorf("unable to get access count from the server; %s", err)

@@ -77,7 +77,6 @@ func (s *StorageHandler) GetRandomPathAndStorageID(ctx context.Context) (path in
 // If non of the "blocks" are in the bucket, it returns isReal=false
 func (s *StorageHandler) GetBlockOffset(bucketID int, storageID int, blocks []string) (offset int, isReal bool, blockFound string, err error) {
 	log.Debug().Msgf("Getting block offset for bucket %d and storage %d", bucketID, storageID)
-	// TODO: implement
 	blockMap := make(map[string]int)
 	for i := 0; i < Z; i++ {
 		pos, key, err := s.GetMetadata(bucketID, strconv.Itoa(i), storageID)
@@ -120,7 +119,6 @@ func (s *StorageHandler) GetAccessCount(bucketID int, storageID int) (count int,
 // blocks is a map of block id to block values.
 func (s *StorageHandler) ReadBucket(bucketID int, storageID int) (blocks map[string]string, err error) {
 	log.Debug().Msgf("Reading bucket %d from storage %d", bucketID, storageID)
-	// TODO: implement
 	client := s.getClient(storageID)
 	ctx := context.Background()
 	blocks = make(map[string]string)
@@ -153,7 +151,6 @@ func (s *StorageHandler) ReadBucket(bucketID int, storageID int) (blocks map[str
 // It returns the blocks that were written into the storage shard in the writtenBlocks variable.
 func (s *StorageHandler) WriteBucket(bucketID int, storageID int, readBucketBlocks map[string]string, shardNodeBlocks map[string]string, isAtomic bool) (writtenBlocks map[string]string, err error) {
 	log.Debug().Msgf("Writing bucket %d to storage %d", bucketID, storageID)
-	// TODO: implement
 	// TODO: It should make the counter zero
 	values := make([]string, Z+S)
 	metadatas := make([]string, Z+S)
@@ -218,7 +215,6 @@ func (s *StorageHandler) WriteBucket(bucketID int, storageID int, readBucketBloc
 // ReadBlock reads a single block using an its offset.
 func (s *StorageHandler) ReadBlock(bucketID int, storageID int, offset int) (value string, err error) {
 	log.Debug().Msgf("Reading block %d from bucket %d in storage %d", offset, bucketID, storageID)
-	// TODO: it should invalidate and increase counter
 	client := s.getClient(storageID)
 	ctx := context.Background()
 	value, err = client.HGet(ctx, strconv.Itoa(bucketID), strconv.Itoa(offset)).Result()

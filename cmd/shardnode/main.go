@@ -47,8 +47,6 @@ func main() {
 		log.Fatal().Msgf("Failed to read parameters from yaml file; %v", err)
 	}
 
-	// TODO: add a replica id to this
-	// TODO: read the exporter url from a config file or sth like that
 	tracingProvider, err := tracing.NewProvider(context.Background(), "shardnode", "localhost:4317")
 	if err != nil {
 		log.Fatal().Msgf("Failed to create tracing provider; %v", err)

@@ -86,18 +86,15 @@ func (s *shardNodeServer) sendBatchesForever() {
 	}
 }
 
-// TODO: fix the bug where it sends more than batch size sometimes
-
 // For queues that have equal or more than batchSize requests, it sends a batch of size=BatchSize and waits for the responses.
 // The logic here assumes that there are no duplicate blocks in the requests (which is fine since we only send a real request for the first one).
 // It will not work otherwise because it will delete the response channel for a block after getting the first response.
 func (s *shardNodeServer) sendCurrentBatches() {
-	s.batchManager.mu.Lock() //TODO: don't lock the whole thing, it will prevent concurrent batch sends
+	s.batchManager.mu.Lock() // TODO: don't lock the whole thing, it will prevent concurrent batch sends
 	defer s.batchManager.mu.Unlock()
 	for storageID, requests := range s.batchManager.storageQueues {
 		if len(requests) >= s.batchManager.batchSize {
 			oramNodeReplicaMap := s.oramNodeClients.getRandomOramNodeReplicaMap()
-			// TODO: add a note about why we are using the first request's context
 			log.Debug().Msgf("Sending batch of size %d to storageID %d", len(requests), storageID)
 			reply, err := oramNodeReplicaMap.readPathFromAllOramNodeReplicas(requests[0].ctx, requests, storageID)
 			s.batchManager.deleteRequestsFromQueue(storageID, s.batchManager.batchSize)
@@ -133,7 +130,7 @@ func (s *shardNodeServer) query(ctx context.Context, op OperationType, block str
 	if err != nil {
 		return "", fmt.Errorf("could not create request replication command; %s", err)
 	}
-	_, requestReplicationSpan := tracer.Start(ctx, "apply request replication") // TODO: should I update the context?
+	_, requestReplicationSpan := tracer.Start(ctx, "apply request replication")
 	err = s.raftNode.Apply(requestReplicationCommand, 2*time.Second).Error()
 	requestReplicationSpan.End()
 	if err != nil {
@@ -143,7 +140,7 @@ func (s *shardNodeServer) query(ctx context.Context, op OperationType, block str
 	blockToRequest, path, storageID := s.getWhatToSendBasedOnRequest(ctx, block, requestID)
 
 	var replyValue string
-	_, waitOnReplySpan := tracer.Start(ctx, "wait on reply") // TODO: should I update the context?
+	_, waitOnReplySpan := tracer.Start(ctx, "wait on reply")
 
 	log.Debug().Msgf("Adding request to storage queue and waiting for block %s", block)
 	oramReplyChan := s.batchManager.addRequestToStorageQueueAndWait(blockRequest{ctx: ctx, block: blockToRequest, path: path}, storageID)
