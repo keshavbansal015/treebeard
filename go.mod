@@ -38,7 +38,6 @@ require (
 	github.com/golang/protobuf v1.5.3 // indirect
 	github.com/google/uuid v1.3.0
 	github.com/hashicorp/raft v1.5.0
-	github.com/hashicorp/raft-boltdb/v2 v2.2.2
 	github.com/phayes/freeport v0.0.0-20220201140144-74d24b5ae9f5
 	github.com/rs/zerolog v1.31.0
 	github.com/vmihailenco/msgpack/v5 v5.3.5
