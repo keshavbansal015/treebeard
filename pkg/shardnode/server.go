@@ -3,6 +3,7 @@ package shardnode
 import (
 	"context"
 	"fmt"
+	"math/rand"
 	"net"
 	"strconv"
 	"time"
@@ -50,15 +51,16 @@ const (
 )
 
 // For the initial request of a block, it returns the path and storageID from the position map.
-// For other requests, it returns a random path and storageID.
-func (s *shardNodeServer) getPathAndStorageBasedOnRequest(ctx context.Context, block string, requestID string) (path int, storageID int) {
+// For other requests, it returns a random path and storageID and a random block.
+func (s *shardNodeServer) getWhatToSendBasedOnRequest(ctx context.Context, block string, requestID string) (blockToRequest string, path int, storageID int) {
 	log.Debug().Msgf("Getting path and storageID based on request for block %s and requestID %s", block, requestID)
 	if !s.shardNodeFSM.isInitialRequest(block, requestID) {
-		return s.storageHandler.GetRandomPathAndStorageID(ctx)
+		path, storageID = s.storageHandler.GetRandomPathAndStorageID(ctx)
+		return strconv.Itoa(rand.Int()), path, storageID
 	} else {
 		s.shardNodeFSM.mu.Lock()
 		defer s.shardNodeFSM.mu.Unlock()
-		return s.shardNodeFSM.positionMap[block].path, s.shardNodeFSM.positionMap[block].storageID
+		return block, s.shardNodeFSM.positionMap[block].path, s.shardNodeFSM.positionMap[block].storageID
 	}
 }
 
@@ -81,15 +83,16 @@ func (s *shardNodeServer) createResponseChannelForRequestID(requestID string) ch
 func (s *shardNodeServer) sendBatchesForever() {
 	for {
 		s.sendCurrentBatches()
-		time.Sleep(50 * time.Millisecond) // TODO: choose this based on the number of the requests
 	}
 }
 
 // TODO: fix the bug where it sends more than batch size sometimes
 
-// For queues that have more than batchSize requests, it sends the batch and waits for the responses.
+// For queues that have equal or more than batchSize requests, it sends a batch of size=BatchSize and waits for the responses.
+// The logic here assumes that there are no duplicate blocks in the requests (which is fine since we only send a real request for the first one).
+// It will not work otherwise because it will delete the response channel for a block after getting the first response.
 func (s *shardNodeServer) sendCurrentBatches() {
-	s.batchManager.mu.Lock()
+	s.batchManager.mu.Lock() //TODO: don't lock the whole thing, it will prevent concurrent batch sends
 	defer s.batchManager.mu.Unlock()
 	for storageID, requests := range s.batchManager.storageQueues {
 		if len(requests) >= s.batchManager.batchSize {
@@ -97,9 +100,9 @@ func (s *shardNodeServer) sendCurrentBatches() {
 			// TODO: add a note about why we are using the first request's context
 			log.Debug().Msgf("Sending batch of size %d to storageID %d", len(requests), storageID)
 			reply, err := oramNodeReplicaMap.readPathFromAllOramNodeReplicas(requests[0].ctx, requests, storageID)
+			delete(s.batchManager.storageQueues, storageID)
 			if err != nil {
 				log.Error().Msgf("Could not get value from the oramnode; %s", err)
-				delete(s.batchManager.storageQueues, storageID)
 				continue
 				// TOOD: think about the case where the oram node doesn't return a response in 2 seconds
 			}
@@ -110,10 +113,13 @@ func (s *shardNodeServer) sendCurrentBatches() {
 					delete(s.batchManager.responseChannel, readPathReply.Block)
 				}
 			}
-			delete(s.batchManager.storageQueues, storageID)
 		}
 	}
 }
+
+// requestLog: block1: [request1, request2, request3]
+
+// storageQueue: storageID1: [request1, request2, request3]
 
 func (s *shardNodeServer) query(ctx context.Context, op OperationType, block string, value string) (string, error) {
 	if s.raftNode.State() != raft.Leader {
@@ -138,13 +144,13 @@ func (s *shardNodeServer) query(ctx context.Context, op OperationType, block str
 		return "", fmt.Errorf("could not apply log to the FSM; %s", err)
 	}
 
-	path, storageID := s.getPathAndStorageBasedOnRequest(ctx, block, requestID)
+	blockToRequest, path, storageID := s.getWhatToSendBasedOnRequest(ctx, block, requestID)
 
 	var replyValue string
 	_, waitOnReplySpan := tracer.Start(ctx, "wait on reply") // TODO: should I update the context?
 
 	log.Debug().Msgf("Adding request to storage queue and waiting for block %s", block)
-	oramReplyChan := s.batchManager.addRequestToStorageQueueAndWait(blockRequest{ctx: ctx, block: block, path: path}, storageID)
+	oramReplyChan := s.batchManager.addRequestToStorageQueueAndWait(blockRequest{ctx: ctx, block: blockToRequest, path: path}, storageID)
 	replyValue = <-oramReplyChan
 
 	waitOnReplySpan.End()
