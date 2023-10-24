@@ -239,6 +239,7 @@ func (o *oramNodeServer) ReadPath(ctx context.Context, request *pb.ReadPathReque
 	if o.raftNode.State() != raft.Leader {
 		return nil, fmt.Errorf("not the leader node")
 	}
+	log.Debug().Msgf("Received read path request %v", request)
 	tracer := otel.Tracer("")
 	ctx, span := tracer.Start(ctx, "oramnode read path request")
 
@@ -263,6 +264,7 @@ func (o *oramNodeServer) ReadPath(ctx context.Context, request *pb.ReadPathReque
 	beginReadPathReplicationSpan.End()
 
 	buckets, err := o.storageHandler.GetBucketsInPaths(paths)
+	log.Debug().Msgf("Got buckets %v", buckets)
 	if err != nil {
 		return nil, fmt.Errorf("could not get bucket ids in the paths; %v", err)
 	}
@@ -278,6 +280,7 @@ func (o *oramNodeServer) ReadPath(ctx context.Context, request *pb.ReadPathReque
 		offsetList[bucketID] = offset
 	}
 	getBlockOffsetsSpan.End()
+	log.Debug().Msgf("Got offsets %v", offsetList)
 
 	returnValues := make(map[string]string) // map of block to value
 	for _, block := range blocks {
@@ -296,6 +299,7 @@ func (o *oramNodeServer) ReadPath(ctx context.Context, request *pb.ReadPathReque
 		}
 	}
 	readBlocksSpan.End()
+	log.Debug().Msgf("Going to return values %v", returnValues)
 
 	_, earlyReshuffleSpan := tracer.Start(ctx, "early reshuffle")
 	err = o.earlyReshuffle(buckets, int(request.StorageId))
