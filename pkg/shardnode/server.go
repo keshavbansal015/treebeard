@@ -100,7 +100,7 @@ func (s *shardNodeServer) sendCurrentBatches() {
 			// TODO: add a note about why we are using the first request's context
 			log.Debug().Msgf("Sending batch of size %d to storageID %d", len(requests), storageID)
 			reply, err := oramNodeReplicaMap.readPathFromAllOramNodeReplicas(requests[0].ctx, requests, storageID)
-			delete(s.batchManager.storageQueues, storageID)
+			s.batchManager.deleteRequestsFromQueue(storageID, s.batchManager.batchSize)
 			if err != nil {
 				log.Error().Msgf("Could not get value from the oramnode; %s", err)
 				continue

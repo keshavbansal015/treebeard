@@ -16,7 +16,7 @@ type blockRequest struct {
 type batchManager struct {
 	batchSize       int
 	storageQueues   map[int][]blockRequest // map of storage id to its requests
-	responseChannel map[string]chan string
+	responseChannel map[string]chan string // map of block to its response channel
 	mu              sync.Mutex
 }
 
@@ -44,4 +44,9 @@ func (b *batchManager) addRequestToStorageQueueAndWait(req blockRequest, storage
 	b.storageQueues[storageID] = append(b.storageQueues[storageID], req)
 	b.responseChannel[req.block] = make(chan string)
 	return b.responseChannel[req.block]
+}
+
+// I'm not locking the batchManager here because the sendCurrentBatches does it.
+func (b *batchManager) deleteRequestsFromQueue(storageID int, count int) {
+	b.storageQueues[storageID] = b.storageQueues[storageID][count:]
 }

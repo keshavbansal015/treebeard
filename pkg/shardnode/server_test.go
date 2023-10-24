@@ -16,12 +16,15 @@ import (
 	"google.golang.org/grpc/metadata"
 )
 
-func TestGetPathAndStorageBasedOnRequestWhenInitialRequestReturnsRealPathAndStorage(t *testing.T) {
+func TestGetPathAndStorageBasedOnRequestWhenInitialRequestReturnsRealBlockAndPathAndStorage(t *testing.T) {
 	s := newShardNodeServer(0, 0, &raft.Raft{}, newShardNodeFSM(), nil, storage.NewStorageHandler(), newBatchManager(1))
 	s.shardNodeFSM.requestLog["block1"] = []string{"request1", "request2"}
 	s.shardNodeFSM.positionMap["block1"] = positionState{path: 23, storageID: 3}
 
-	path, storageID := s.getPathAndStorageBasedOnRequest(context.Background(), "block1", "request1")
+	block, path, storageID := s.getWhatToSendBasedOnRequest(context.Background(), "block1", "request1")
+	if block != "block1" {
+		t.Errorf("Expected block to be \"block1\" but the value is: %s", block)
+	}
 	if path != 23 {
 		t.Errorf("Expected path to be a real value from position map equal to 23 but the value is: %d", path)
 	}
@@ -154,7 +157,36 @@ func TestSendCurrentBatchesSendsQueuesExceedingBatchSizeRequests(t *testing.T) {
 			receivedResponsesCount++
 		}
 	}
+}
 
+func TestSendCurrentBatchesOnlySendsBatchSizeRequestsAtATime(t *testing.T) {
+	s := newShardNodeServer(0, 0, &raft.Raft{}, &shardNodeFSM{}, getMockOramNodeClientsWithBatchResponses(), storage.NewStorageHandler(), newBatchManager(2))
+	s.batchManager.responseChannel["a"] = make(chan string)
+	s.batchManager.storageQueues[1] = []blockRequest{{block: "a", path: 1}}
+	s.batchManager.responseChannel["b"] = make(chan string)
+	s.batchManager.storageQueues[1] = append(s.batchManager.storageQueues[1], blockRequest{block: "b", path: 1})
+	s.batchManager.responseChannel["c"] = make(chan string)
+	s.batchManager.storageQueues[1] = append(s.batchManager.storageQueues[1], blockRequest{block: "c", path: 1})
+	go s.sendCurrentBatches()
+	timout := time.After(3 * time.Second)
+	receivedResponsesCount := 0
+	for {
+		if receivedResponsesCount == 2 {
+			break
+		}
+		select {
+		case <-timout:
+			t.Errorf("the batches were not sent")
+			return
+		case <-s.batchManager.responseChannel["a"]:
+			receivedResponsesCount++
+		case <-s.batchManager.responseChannel["b"]:
+			receivedResponsesCount++
+		}
+	}
+	if len(s.batchManager.storageQueues[1]) != 1 || s.batchManager.storageQueues[1][0].block != "c" {
+		t.Errorf("the remaining request should be c")
+	}
 }
 
 func TestSendCurrentBatchesRemovesSentQueueAndResponseChannel(t *testing.T) {
