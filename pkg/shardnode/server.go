@@ -117,10 +117,6 @@ func (s *shardNodeServer) sendCurrentBatches() {
 	}
 }
 
-// requestLog: block1: [request1, request2, request3]
-
-// storageQueue: storageID1: [request1, request2, request3]
-
 func (s *shardNodeServer) query(ctx context.Context, op OperationType, block string, value string) (string, error) {
 	if s.raftNode.State() != raft.Leader {
 		return "", fmt.Errorf("not the leader node")
