@@ -14,13 +14,13 @@ const (
 	Write
 )
 
-type request struct {
+type Request struct {
 	Block         string
 	OperationType int
 	NewValue      string
 }
 
-func ReadTraceFile(traceFilePath string) ([]request, error) {
+func ReadTraceFile(traceFilePath string) ([]Request, error) {
 	log.Debug().Msgf("Reading trace file")
 	file, err := os.Open(traceFilePath)
 	if err != nil {
@@ -28,7 +28,7 @@ func ReadTraceFile(traceFilePath string) ([]request, error) {
 	}
 	defer file.Close()
 
-	var requests []request
+	var requests []Request
 
 	scanner := bufio.NewScanner(file)
 	for scanner.Scan() {
@@ -39,12 +39,12 @@ func ReadTraceFile(traceFilePath string) ([]request, error) {
 			if len(tokens) != 2 {
 				return nil, fmt.Errorf("read request should have the operation type and block id")
 			}
-			requests = append(requests, request{Block: tokens[1], OperationType: Read})
+			requests = append(requests, Request{Block: tokens[1], OperationType: Read})
 		} else if tokens[0] == "WRITE" {
 			if len(tokens) != 3 {
 				return nil, fmt.Errorf("read request should have the operation type, block id, and new value")
 			}
-			requests = append(requests, request{Block: tokens[1], OperationType: Write, NewValue: tokens[2]})
+			requests = append(requests, Request{Block: tokens[1], OperationType: Write, NewValue: tokens[2]})
 		} else {
 			return nil, fmt.Errorf("only READ and WRITE are supported in the trace file")
 		}
