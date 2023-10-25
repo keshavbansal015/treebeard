@@ -133,13 +133,10 @@ type localReplicaChangeHandlerFunc func(requestID string, r ReplicateResponsePay
 // It handles the response replication changes locally on each raft replica.
 // The leader doesn't wait for this to finish to return success for the response replication command.
 func (fsm *shardNodeFSM) handleLocalResponseReplicationChanges(requestID string, r ReplicateResponsePayload) {
-	log.Debug().Msgf("Aquiring lock for shardNodeFSM in handleLocalResponseReplicationChanges")
-	fsm.mu.Lock()
-	log.Debug().Msgf("Aquired lock for shardNodeFSM in handleLocalResponseReplicationChanges")
 	defer func() {
-		log.Debug().Msgf("Releasing lock for shardNodeFSM in handleLocalResponseReplicationChanges")
+		log.Debug().Msgf("Releasing lock for shardNodeFSM in handleReplicateResponse")
 		fsm.mu.Unlock()
-		log.Debug().Msgf("Released lock for shardNodeFSM in handleLocalResponseReplicationChanges")
+		log.Debug().Msgf("Released lock for shardNodeFSM in handleReplicateResponse")
 	}()
 
 	stashState, exists := fsm.stash[r.RequestedBlock]
@@ -161,32 +158,30 @@ func (fsm *shardNodeFSM) handleLocalResponseReplicationChanges(requestID string,
 		}
 	}
 	if fsm.raftNode.State() == raft.Leader {
+		fsm.positionMap[r.RequestedBlock] = positionState{path: fsm.pathMap[requestID], storageID: fsm.storageIDMap[requestID]}
 		for i := len(fsm.requestLog[r.RequestedBlock]) - 1; i >= 0; i-- {
 			timout := time.After(1 * time.Second) // TODO: think about this in the batching scenario
 			select {
 			case <-timout:
 				continue
 			case fsm.responseChannel[fsm.requestLog[r.RequestedBlock][i]] <- fsm.stash[r.RequestedBlock].value:
+				delete(fsm.pathMap, fsm.requestLog[r.RequestedBlock][i])
+				delete(fsm.storageIDMap, fsm.requestLog[r.RequestedBlock][i])
+				delete(fsm.responseChannel, fsm.requestLog[r.RequestedBlock][i])
 				fsm.requestLog[r.RequestedBlock] = append(fsm.requestLog[r.RequestedBlock][:i], fsm.requestLog[r.RequestedBlock][i+1:]...)
 			}
 		}
 	}
-	fsm.positionMap[r.RequestedBlock] = positionState{path: fsm.pathMap[requestID], storageID: fsm.storageIDMap[requestID]}
-	delete(fsm.pathMap, requestID)
-	delete(fsm.storageIDMap, requestID)
 	delete(fsm.responseMap, requestID)
-	delete(fsm.responseChannel, requestID)
 }
 
+// I'm doing sth really tricky here. I am locking but I let the goroutine unlock the mutex.
+// The reason I'm doing this is that I don't want any other process to aquire the lock in between.
+// On the other hand I don't want to wait for the goroutine to finish
 func (fsm *shardNodeFSM) handleReplicateResponse(requestID string, r ReplicateResponsePayload, f localReplicaChangeHandlerFunc) {
 	log.Debug().Msgf("Aquiring lock for shardNodeFSM in handleReplicateResponse")
 	fsm.mu.Lock()
 	log.Debug().Msgf("Aquired lock for shardNodeFSM in handleReplicateResponse")
-	defer func() {
-		log.Debug().Msgf("Releasing lock for shardNodeFSM in handleReplicateResponse")
-		fsm.mu.Unlock()
-		log.Debug().Msgf("Released lock for shardNodeFSM in handleReplicateResponse")
-	}()
 
 	fsm.responseMap[requestID] = r.Response
 	go f(requestID, r)
