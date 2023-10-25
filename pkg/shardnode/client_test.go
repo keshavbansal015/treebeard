@@ -6,6 +6,7 @@ import (
 	"reflect"
 	"testing"
 
+	"github.com/dsg-uwaterloo/oblishard/api/oramnode"
 	oramnodepb "github.com/dsg-uwaterloo/oblishard/api/oramnode"
 	"google.golang.org/grpc"
 )
@@ -30,11 +31,11 @@ func TestGetRandomOramNodeReplicaMapReturnsRandomClientExistingInOramNodeMap(t *
 }
 
 type mockOramNodeClient struct {
-	replyFunc func() (*oramnodepb.ReadPathReply, error)
+	replyFunc func([]*oramnode.BlockRequest) (*oramnodepb.ReadPathReply, error)
 }
 
 func (c *mockOramNodeClient) ReadPath(ctx context.Context, in *oramnodepb.ReadPathRequest, opts ...grpc.CallOption) (*oramnodepb.ReadPathReply, error) {
-	return c.replyFunc()
+	return c.replyFunc(in.Requests)
 }
 
 func (c *mockOramNodeClient) JoinRaftVoter(ctx context.Context, in *oramnodepb.JoinRaftVoterRequest, opts ...grpc.CallOption) (*oramnodepb.JoinRaftVoterReply, error) {
@@ -46,7 +47,7 @@ func TestReadPathFromAllOramNodeReplicasReturnsResponseFromLeader(t *testing.T) 
 		0: map[int]oramNodeRPCClient{
 			0: {
 				ClientAPI: &mockOramNodeClient{
-					replyFunc: func() (*oramnodepb.ReadPathReply, error) {
+					replyFunc: func([]*oramnode.BlockRequest) (*oramnodepb.ReadPathReply, error) {
 						return &oramnodepb.ReadPathReply{Responses: []*oramnodepb.BlockResponse{
 							{Block: "a", Value: "response_from_leader"},
 						}}, nil
@@ -55,7 +56,7 @@ func TestReadPathFromAllOramNodeReplicasReturnsResponseFromLeader(t *testing.T) 
 			},
 			1: {
 				ClientAPI: &mockOramNodeClient{
-					replyFunc: func() (*oramnodepb.ReadPathReply, error) {
+					replyFunc: func([]*oramnode.BlockRequest) (*oramnodepb.ReadPathReply, error) {
 						return nil, fmt.Errorf("not the leader")
 					},
 				},
@@ -77,14 +78,14 @@ func TestReadPathFromAllOramNodeReplicasTimeoutsIfNoResponseIsReceived(t *testin
 		0: map[int]oramNodeRPCClient{
 			0: {
 				ClientAPI: &mockOramNodeClient{
-					replyFunc: func() (*oramnodepb.ReadPathReply, error) {
+					replyFunc: func([]*oramnode.BlockRequest) (*oramnodepb.ReadPathReply, error) {
 						return nil, fmt.Errorf("not the leader")
 					},
 				},
 			},
 			1: {
 				ClientAPI: &mockOramNodeClient{
-					replyFunc: func() (*oramnodepb.ReadPathReply, error) {
+					replyFunc: func([]*oramnode.BlockRequest) (*oramnodepb.ReadPathReply, error) {
 						return nil, fmt.Errorf("not the leader")
 					},
 				},

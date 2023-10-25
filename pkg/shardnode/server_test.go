@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/dsg-uwaterloo/oblishard/api/oramnode"
 	oramnodepb "github.com/dsg-uwaterloo/oblishard/api/oramnode"
 	shardnodepb "github.com/dsg-uwaterloo/oblishard/api/shardnode"
 	"github.com/dsg-uwaterloo/oblishard/pkg/storage"
@@ -58,16 +59,18 @@ func getMockOramNodeClients() map[int]ReplicaRPCClientMap {
 		0: map[int]oramNodeRPCClient{
 			0: {
 				ClientAPI: &mockOramNodeClient{
-					replyFunc: func() (*oramnodepb.ReadPathReply, error) {
-						return &oramnodepb.ReadPathReply{Responses: []*oramnodepb.BlockResponse{
-							{Block: "a", Value: "response_from_leader"},
-						}}, nil
+					replyFunc: func(blocks []*oramnode.BlockRequest) (*oramnodepb.ReadPathReply, error) {
+						blocksToReturn := make([]*oramnodepb.BlockResponse, len(blocks))
+						for i, block := range blocks {
+							blocksToReturn[i] = &oramnodepb.BlockResponse{Block: block.Block, Value: "response_from_leader"}
+						}
+						return &oramnodepb.ReadPathReply{Responses: blocksToReturn}, nil
 					},
 				},
 			},
 			1: {
 				ClientAPI: &mockOramNodeClient{
-					replyFunc: func() (*oramnodepb.ReadPathReply, error) {
+					replyFunc: func(blocks []*oramnode.BlockRequest) (*oramnodepb.ReadPathReply, error) {
 						return nil, fmt.Errorf("not the leader")
 					},
 				},
@@ -81,7 +84,7 @@ func getMockOramNodeClientsWithBatchResponses() map[int]ReplicaRPCClientMap {
 		0: map[int]oramNodeRPCClient{
 			0: {
 				ClientAPI: &mockOramNodeClient{
-					replyFunc: func() (*oramnodepb.ReadPathReply, error) {
+					replyFunc: func([]*oramnode.BlockRequest) (*oramnodepb.ReadPathReply, error) {
 						return &oramnodepb.ReadPathReply{Responses: []*oramnodepb.BlockResponse{
 							{Block: "a", Value: "response_from_leader"},
 							{Block: "b", Value: "response_from_leader"},
@@ -92,7 +95,7 @@ func getMockOramNodeClientsWithBatchResponses() map[int]ReplicaRPCClientMap {
 			},
 			1: {
 				ClientAPI: &mockOramNodeClient{
-					replyFunc: func() (*oramnodepb.ReadPathReply, error) {
+					replyFunc: func([]*oramnode.BlockRequest) (*oramnodepb.ReadPathReply, error) {
 						return nil, fmt.Errorf("not the leader")
 					},
 				},
@@ -195,7 +198,7 @@ func TestSendCurrentBatchesRemovesSentQueueAndResponseChannel(t *testing.T) {
 	s.batchManager.storageQueues[1] = []blockRequest{{block: "a", path: 1}}
 	go s.sendCurrentBatches()
 	<-s.batchManager.responseChannel["a"]
-	if _, exists := s.batchManager.storageQueues[1]; exists {
+	if len(s.batchManager.storageQueues[1]) != 0 {
 		t.Errorf("SendCurrentBatches should remove queue after sending it")
 	}
 	if _, exists := s.batchManager.responseChannel["a"]; exists {
@@ -249,9 +252,9 @@ func TestQueryPrioritizesStashValueToOramNodeResponse(t *testing.T) {
 	s := startLeaderRaftNodeServer(t, 1, false)
 	ctx := metadata.NewIncomingContext(context.Background(), metadata.Pairs("requestid", "request1"))
 	s.shardNodeFSM.mu.Lock()
-	s.shardNodeFSM.stash["block1"] = stashState{value: "stash_value", logicalTime: 0, waitingStatus: false}
+	s.shardNodeFSM.stash["a"] = stashState{value: "stash_value", logicalTime: 0, waitingStatus: false}
 	s.shardNodeFSM.mu.Unlock()
-	response, err := s.query(ctx, Read, "block1", "")
+	response, err := s.query(ctx, Read, "a", "")
 	if response != "stash_value" {
 		t.Errorf("expected the response to be \"stash_value\" but it is: %s", response)
 	}

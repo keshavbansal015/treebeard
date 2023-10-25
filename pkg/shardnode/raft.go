@@ -161,18 +161,17 @@ func (fsm *shardNodeFSM) handleLocalResponseReplicationChanges(requestID string,
 		}
 	}
 	if fsm.raftNode.State() == raft.Leader {
-		for _, waitingRequestID := range fsm.requestLog[r.RequestedBlock] {
+		for i := len(fsm.requestLog[r.RequestedBlock]) - 1; i >= 0; i-- {
 			timout := time.After(1 * time.Second) // TODO: think about this in the batching scenario
 			select {
 			case <-timout:
 				continue
-			case fsm.responseChannel[waitingRequestID] <- fsm.stash[r.RequestedBlock].value:
-				continue
+			case fsm.responseChannel[fsm.requestLog[r.RequestedBlock][i]] <- fsm.stash[r.RequestedBlock].value:
+				fsm.requestLog[r.RequestedBlock] = append(fsm.requestLog[r.RequestedBlock][:i], fsm.requestLog[r.RequestedBlock][i+1:]...)
 			}
 		}
 	}
 	fsm.positionMap[r.RequestedBlock] = positionState{path: fsm.pathMap[requestID], storageID: fsm.storageIDMap[requestID]}
-	delete(fsm.requestLog, r.RequestedBlock)
 	delete(fsm.pathMap, requestID)
 	delete(fsm.storageIDMap, requestID)
 	delete(fsm.responseMap, requestID)
