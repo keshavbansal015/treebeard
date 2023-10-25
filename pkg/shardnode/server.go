@@ -95,8 +95,8 @@ func (s *shardNodeServer) sendCurrentBatches() {
 	for storageID, requests := range s.batchManager.storageQueues {
 		if len(requests) >= s.batchManager.batchSize {
 			oramNodeReplicaMap := s.oramNodeClients.getRandomOramNodeReplicaMap()
-			log.Debug().Msgf("Sending batch of size %d to storageID %d", len(requests), storageID)
-			reply, err := oramNodeReplicaMap.readPathFromAllOramNodeReplicas(requests[0].ctx, requests, storageID)
+			log.Debug().Msgf("Sending batch of size %d to storageID %d", s.batchManager.batchSize, storageID)
+			reply, err := oramNodeReplicaMap.readPathFromAllOramNodeReplicas(requests[0].ctx, requests[0:s.batchManager.batchSize], storageID)
 			s.batchManager.deleteRequestsFromQueue(storageID, s.batchManager.batchSize)
 			if err != nil {
 				log.Error().Msgf("Could not get value from the oramnode; %s", err)
