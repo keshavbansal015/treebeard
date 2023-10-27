@@ -136,13 +136,19 @@
           ["oramnode"] | product(oramnode_endpoints.endpoints) | list
           }}
 
+    - name: Copy client
+      ansible.builtin.copy:
+        src: "../../cmd/client/client"
+        dest: "/root/oblishard/"
+        mode: '0777'
+
     - name: Copy configs
       ansible.builtin.copy:
         src: "../../configs/{{ item[0] }}"
         dest: "/root/oblishard/{{ item[0] }}"
         mode: '0666'
       delegate_to: "{{ item[1] }}"
-      loop: "{{ ['router_endpoints.yaml', 'shardnode_endpoints.yaml', 'oramnode_endpoints.yaml', 'parameters.yaml', 'redis-data.txt'] | product(groups['all']) | list }}"
+      loop: "{{ ['router_endpoints.yaml', 'shardnode_endpoints.yaml', 'oramnode_endpoints.yaml', 'parameters.yaml', 'redis-data.txt', 'simple.trace'] | product(groups['all']) | list }}"
 
     - name: Create oramnode systemd services
       template:

@@ -58,7 +58,7 @@ func main() {
 	flag.Parse()
 	utils.InitLogging(true, *logPath)
 
-	routerEndpoints, err := config.ReadRouterEndpoints("../../configs/router_endpoints.yaml")
+	routerEndpoints, err := config.ReadRouterEndpoints(path.Join(*configsPath, "router_endpoints.yaml"))
 	if err != nil {
 		log.Fatal().Msgf("Cannot read router endpoints from yaml file; %v", err)
 	}
@@ -68,7 +68,7 @@ func main() {
 		log.Fatal().Msgf("Failed to start clients; %v", err)
 	}
 
-	requests, err := client.ReadTraceFile("../../traces/simple.trace")
+	requests, err := client.ReadTraceFile(path.Join(*configsPath, "simple.trace"))
 	if err != nil {
 		log.Fatal().Msgf("Failed to read trace file; %v", err)
 	}
