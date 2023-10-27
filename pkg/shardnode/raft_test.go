@@ -142,6 +142,7 @@ func TestHandleLocalReplicaChangesWhenValueInStashReturnsCorrectReadValueToAllWa
 	shardNodeFSM.stash["block"] = stashState{value: "test_value"}
 
 	payload := createTestReplicateResponsePayload("block", "response", "value", Read)
+	shardNodeFSM.mu.Lock()
 	go shardNodeFSM.handleLocalResponseReplicationChanges("request1", payload)
 
 	checkWaitingChannelsHelper(t, shardNodeFSM.responseChannel, "test_value")
@@ -157,6 +158,7 @@ func TestHandleLocalReplicaChangesWhenValueInStashReturnsCorrectWriteValueToAllW
 	shardNodeFSM.stash["block"] = stashState{value: "test_value"}
 
 	payload := createTestReplicateResponsePayload("block", "response", "value_write", Write)
+	shardNodeFSM.mu.Lock()
 	go shardNodeFSM.handleLocalResponseReplicationChanges("request1", payload)
 
 	checkWaitingChannelsHelper(t, shardNodeFSM.responseChannel, "value_write")
@@ -176,6 +178,7 @@ func TestHandleLocalReplicaChangesWhenValueNotInStashReturnsResponseToAllWaiting
 	shardNodeFSM.responseMap["request1"] = "response_from_oramnode"
 
 	payload := createTestReplicateResponsePayload("block", "response", "", Read)
+	shardNodeFSM.mu.Lock()
 	go shardNodeFSM.handleLocalResponseReplicationChanges("request1", payload)
 
 	checkWaitingChannelsHelper(t, shardNodeFSM.responseChannel, "response_from_oramnode")
@@ -195,6 +198,7 @@ func TestHandleLocalReplicaChangesWhenValueNotInStashReturnsWriteResponseToAllWa
 	shardNodeFSM.responseMap["request1"] = "response_from_oramnode"
 
 	payload := createTestReplicateResponsePayload("block", "response", "write_val", Write)
+	shardNodeFSM.mu.Lock()
 	go shardNodeFSM.handleLocalResponseReplicationChanges("request1", payload)
 
 	checkWaitingChannelsHelper(t, shardNodeFSM.responseChannel, "write_val")
@@ -213,6 +217,7 @@ func TestHandleLocalReplicaChangesWhenNotLeaderDoesNotWriteOnChannels(t *testing
 	shardNodeFSM.stash["block"] = stashState{value: "test_value"}
 
 	payload := createTestReplicateResponsePayload("block", "response", "", Read)
+	shardNodeFSM.mu.Lock()
 	go shardNodeFSM.handleLocalResponseReplicationChanges("request1", payload)
 
 	for {
