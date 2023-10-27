@@ -83,7 +83,7 @@ func (s *StorageHandler) databaseInit(filepath string, storageID int) (position_
 		if i == Z {
 			for ; i < Z+S; i++ {
 				dummyID := "dummy" + strconv.Itoa(dummyCount)
-				dummyString := "b" + strconv.Itoa(bucketCount) + "d" + strconv.Itoa(i)
+				dummyString := "b" + strconv.Itoa(bucketCount) + "d" + strconv.Itoa(realIndex[i])
 				dummyString, err = Encrypt(dummyString, s.key[storageID])
 				if err != nil {
 					log.Error().Msgf("Error encrypting data")

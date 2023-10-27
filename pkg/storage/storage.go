@@ -212,7 +212,7 @@ func (s *StorageHandler) WriteBucket(bucketID int, storageID int, readBucketBloc
 	return writtenBlocks, nil
 }
 
-// ReadBlock reads a single block using an its offset.
+// ReadBlock reads a single block using the offset.
 func (s *StorageHandler) ReadBlock(bucketID int, storageID int, offset int) (value string, err error) {
 	log.Debug().Msgf("Reading block %d from bucket %d in storage %d", offset, bucketID, storageID)
 	client := s.getClient(storageID)
