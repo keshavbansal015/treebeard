@@ -115,6 +115,7 @@ func (e *epochManager) sendReadRequest(req *request, responseChannel chan reques
 		shardNodeReply := reply.(*shardnodepb.ReadReply)
 		log.Debug().Msgf("Received read reply %v", shardNodeReply)
 		responseChannel <- requestResponse{req: req, response: readResponse{value: shardNodeReply.Value, err: err}}
+		log.Debug().Msgf("Sent read reply %v", shardNodeReply)
 	}
 }
 
@@ -151,6 +152,11 @@ func (e *epochManager) sendEpochRequestsAndAnswerThem(epochNumber int) {
 	e.mu.Lock()
 	responseChannel := make(chan requestResponse)
 	requestsCount := len(e.requests[epochNumber])
+	if requestsCount == 0 {
+		e.mu.Unlock()
+		return
+	}
+	log.Debug().Msgf("Sending epoch requests and answering them for epoch %d with %d requests", epochNumber, requestsCount)
 	for _, r := range e.requests[epochNumber] {
 		if r.operationType == Read {
 			go e.sendReadRequest(r, responseChannel)
@@ -159,7 +165,7 @@ func (e *epochManager) sendEpochRequestsAndAnswerThem(epochNumber int) {
 		}
 	}
 	e.mu.Unlock()
-	timeout := time.After(5 * time.Second) // TODO: make this a parameter
+	timeout := time.After(10 * time.Second) // TODO: make this a parameter
 	responsesReceived := make(map[*request]any)
 
 	for {
@@ -175,6 +181,7 @@ func (e *epochManager) sendEpochRequestsAndAnswerThem(epochNumber int) {
 	}
 	e.mu.Lock()
 	defer e.mu.Unlock()
+	log.Debug().Msgf("Answering epoch requests for epoch %d", epochNumber)
 	for req, response := range responsesReceived {
 		e.reponseChans[epochNumber][req] <- response
 	}

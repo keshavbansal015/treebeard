@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"net"
+	"time"
 
 	pb "github.com/dsg-uwaterloo/oblishard/api/router"
 	"github.com/dsg-uwaterloo/oblishard/pkg/rpc"
@@ -63,7 +64,7 @@ func StartRPCServer(ip string, shardNodeRPCClients map[int]ReplicaRPCClientMap, 
 	}
 	grpcServer := grpc.NewServer(grpc.UnaryInterceptor(rpc.ContextPropagationUnaryServerInterceptor()))
 
-	epochManager := newEpochManager(shardNodeRPCClients, 0) //TODO: change duration
+	epochManager := newEpochManager(shardNodeRPCClients, 10*time.Millisecond)
 	go epochManager.run()
 	routerServer := newRouterServer(routerID, epochManager)
 	pb.RegisterRouterServer(grpcServer, &routerServer)
