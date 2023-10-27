@@ -312,7 +312,7 @@ func (fsm *shardNodeFSM) Restore(rc io.ReadCloser) error {
 	return fmt.Errorf("not implemented yet")
 }
 
-func startRaftServer(isFirst bool, ip string, replicaID int, raftPort int, raftDir string, shardshardNodeFSM *shardNodeFSM) (*raft.Raft, error) {
+func startRaftServer(isFirst bool, ip string, replicaID int, raftPort int, shardshardNodeFSM *shardNodeFSM) (*raft.Raft, error) {
 
 	raftConfig := raft.DefaultConfig()
 	raftConfig.Logger = hclog.New(&hclog.LoggerOptions{Output: log.Logger})

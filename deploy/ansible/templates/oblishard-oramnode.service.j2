@@ -11,7 +11,6 @@ ExecStart=/root/oblishard/oramnode/oramnode \
     -rpcport {{ item.port }} \
     -replicaid {{ item.replicaid }} \
     -raftport {{ item.raftport }} \
-    -raftdir {{ '/root/oblishard/oramnode/'  + item.id | string + '/' + item.replicaid | string }} \
     {% if item.replicaid!=0 %}
     {{'-joinaddr=' + oramnode_endpoints.endpoints[0].exposed_ip + ':' + oramnode_endpoints.endpoints[0].port | string }} \
     {% endif %}

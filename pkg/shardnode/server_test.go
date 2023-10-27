@@ -3,7 +3,6 @@ package shardnode
 import (
 	"context"
 	"fmt"
-	"os"
 	"testing"
 	"time"
 
@@ -13,7 +12,6 @@ import (
 	"github.com/dsg-uwaterloo/oblishard/pkg/storage"
 	"github.com/hashicorp/raft"
 	"github.com/phayes/freeport"
-	"github.com/rs/zerolog/log"
 	"google.golang.org/grpc/metadata"
 )
 
@@ -48,10 +46,6 @@ func TestQueryReturnsErrorForNonLeaderRaftPeer(t *testing.T) {
 	if err == nil {
 		t.Errorf("A non-leader raft peer should return error after call to query.")
 	}
-}
-
-func cleanRaftDataDirectory(directoryPath string) {
-	os.RemoveAll(directoryPath)
 }
 
 func getMockOramNodeClients() map[int]ReplicaRPCClientMap {
@@ -105,18 +99,12 @@ func getMockOramNodeClientsWithBatchResponses() map[int]ReplicaRPCClientMap {
 }
 
 func startLeaderRaftNodeServer(t *testing.T, batchSize int, withBatchReponses bool) *shardNodeServer {
-	cleanRaftDataDirectory("sh-data-replicaid-0")
-	err := os.MkdirAll("sh-data-replicaid-0", os.ModePerm)
-	if err != nil {
-		log.Fatal().Msgf("Unable to create raft directory")
-	}
-
 	fsm := newShardNodeFSM()
 	raftPort, err := freeport.GetFreePort()
 	if err != nil {
 		t.Errorf("unable to get free port")
 	}
-	r, err := startRaftServer(true, "localhost", 0, raftPort, "sh-data-replicaid-0", fsm)
+	r, err := startRaftServer(true, "localhost", 0, raftPort, fsm)
 	if err != nil {
 		t.Errorf("unable to start raft server; %v", err)
 	}

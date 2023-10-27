@@ -161,7 +161,7 @@ func (fsm *oramNodeFSM) Restore(rc io.ReadCloser) error {
 // TODO: the logic for startRaftServer is the same for both shardNode and OramNode.
 // TOOD: it can be moved to a new raft-utils package to reduce code duplication
 
-func startRaftServer(isFirst bool, ip string, replicaID int, raftPort int, raftDir string, oramNodeFSM *oramNodeFSM) (*raft.Raft, error) {
+func startRaftServer(isFirst bool, ip string, replicaID int, raftPort int, oramNodeFSM *oramNodeFSM) (*raft.Raft, error) {
 	raftConfig := raft.DefaultConfig()
 	raftConfig.Logger = hclog.New(&hclog.LoggerOptions{Output: log.Logger})
 	raftConfig.LocalID = raft.ServerID(strconv.Itoa(replicaID))

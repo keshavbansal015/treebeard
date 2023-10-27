@@ -2,8 +2,6 @@ package e2e
 
 import (
 	"context"
-	"fmt"
-	"os"
 	"testing"
 	"time"
 
@@ -27,12 +25,7 @@ func startRouter() {
 	router.StartRPCServer("localhost", rpcClients, 0, 8745)
 }
 
-func startShardNode(replicaID int, rpcPort int, raftPort int, raftDir string, joinAddr string) {
-	os.RemoveAll(fmt.Sprintf("sh-data-replicaid-%d", replicaID))
-	err := os.MkdirAll(fmt.Sprintf("sh-data-replicaid-%d", replicaID), os.ModePerm)
-	if err != nil {
-		log.Fatal().Msgf("Unable to create raft directory")
-	}
+func startShardNode(replicaID int, rpcPort int, raftPort int, joinAddr string) {
 	oramNodeEndpoints, err := config.ReadOramNodeEndpoints("./configs/oramnode_endpoints.yaml")
 	if err != nil {
 		log.Fatal().Msgf("Cannot read oram node endpoints from yaml file; %v", err)
@@ -45,15 +38,10 @@ func startShardNode(replicaID int, rpcPort int, raftPort int, raftDir string, jo
 	if err != nil {
 		log.Fatal().Msgf("Failed to read parameters from yaml file; %v", err)
 	}
-	shardnode.StartServer(0, "localhost", rpcPort, replicaID, raftPort, raftDir, joinAddr, rpcClients, parameters, "../../configs")
+	shardnode.StartServer(0, "localhost", rpcPort, replicaID, raftPort, joinAddr, rpcClients, parameters, "../../configs")
 }
 
-func startOramNode(replicaID int, rpcPort int, raftPort int, raftDir string, joinAddr string) {
-	os.RemoveAll(fmt.Sprintf("om-data-replicaid-%d", replicaID))
-	err := os.MkdirAll(fmt.Sprintf("om-data-replicaid-%d", replicaID), os.ModePerm)
-	if err != nil {
-		log.Fatal().Msgf("Unable to create raft directory")
-	}
+func startOramNode(replicaID int, rpcPort int, raftPort int, joinAddr string) {
 	shardNodeEndpoints, err := config.ReadShardNodeEndpoints("./configs/shardnode_endpoints.yaml")
 	if err != nil {
 		log.Fatal().Msgf("Cannot read shard node endpoints from yaml file; %v", err)
@@ -66,20 +54,20 @@ func startOramNode(replicaID int, rpcPort int, raftPort int, raftDir string, joi
 	if err != nil {
 		log.Fatal().Msgf("Failed to read parameters from yaml file; %v", err)
 	}
-	oramnode.StartServer(0, "localhost", rpcPort, replicaID, raftPort, raftDir, joinAddr, rpcClients, parameters)
+	oramnode.StartServer(0, "localhost", rpcPort, replicaID, raftPort, joinAddr, rpcClients, parameters)
 }
 
 // It assumes that the redis service is running on the default port (6379)
 func startTestSystem() {
 	go startRouter()
-	go startShardNode(0, 8748, 3124, "sh-data-replicaid-0", "")
+	go startShardNode(0, 8748, 3124, "")
 	time.Sleep(4 * time.Second) // This is a bad of way of ensuring the leader is elected
-	go startShardNode(1, 8749, 3125, "sh-data-replicaid-1", "127.0.0.1:8748")
-	go startShardNode(2, 8750, 3126, "sh-data-replicaid-2", "127.0.0.1:8748")
-	go startOramNode(0, 8751, 1415, "om-data-replicaid-0", "")
+	go startShardNode(1, 8749, 3125, "127.0.0.1:8748")
+	go startShardNode(2, 8750, 3126, "127.0.0.1:8748")
+	go startOramNode(0, 8751, 1415, "")
 	time.Sleep(4 * time.Second) // This is a bad of way of ensuring the leader is elected
-	go startOramNode(1, 8752, 1416, "om-data-replicaid-1", "127.0.0.1:8751")
-	go startOramNode(2, 8753, 1417, "om-data-replicaid-2", "127.0.0.1:8751")
+	go startOramNode(1, 8752, 1416, "127.0.0.1:8751")
+	go startOramNode(2, 8753, 1417, "127.0.0.1:8751")
 	// TODO: kill the go routines, maybe by using cancel contexts
 }
 
