@@ -22,7 +22,7 @@ func startRouter() {
 	if err != nil {
 		log.Fatal().Msgf("Failed to create client connections with shard node servers; %v", err)
 	}
-	router.StartRPCServer("localhost", rpcClients, 0, 8745)
+	router.StartRPCServer("localhost", rpcClients, 0, 8745, config.Parameters{EpochTime: 10})
 }
 
 func startShardNode(replicaID int, rpcPort int, raftPort int, joinAddr string) {
