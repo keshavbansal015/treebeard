@@ -12,14 +12,13 @@ import (
 	"github.com/rs/zerolog/log"
 )
 
-// Usage: ./oramnode -oramnodeid=<oramnodeid> -ip=<ip> -rpcport=<rpcport> -replicaid=<replicaid> -raftport=<raftport> -raftdir=<raftdir> -joinaddr=<ip:port> -conf=<configs path> -logpath=<log path>
+// Usage: ./oramnode -oramnodeid=<oramnodeid> -ip=<ip> -rpcport=<rpcport> -replicaid=<replicaid> -raftport=<raftport> -joinaddr=<ip:port> -conf=<configs path> -logpath=<log path>
 func main() {
 	oramNodeID := flag.Int("oramnodeid", 0, "oramnode id, starting consecutively from zero")
 	ip := flag.String("ip", "", "ip of this replica")
 	replicaID := flag.Int("replicaid", 0, "replica id, starting consecutively from zero")
 	rpcPort := flag.Int("rpcport", 0, "node rpc port")
 	raftPort := flag.Int("raftport", 0, "node raft port")
-	raftDir := flag.String("raftdir", "", "the address of the raft snapshot directory")
 	joinAddr := flag.String("joinaddr", "", "the address of the initial raft node, which bootstraped the cluster")
 	configsPath := flag.String("conf", "", "configs directory path")
 	logPath := flag.String("logpath", "", "path to write logs")
@@ -55,5 +54,5 @@ func main() {
 	}
 	defer stopTracingProvider(context.Background())
 
-	oramnode.StartServer(*oramNodeID, *ip, *rpcPort, *replicaID, *raftPort, *raftDir, *joinAddr, rpcClients, parameters)
+	oramnode.StartServer(*oramNodeID, *ip, *rpcPort, *replicaID, *raftPort, *joinAddr, rpcClients, parameters)
 }
