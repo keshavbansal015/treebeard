@@ -4,6 +4,7 @@ import (
 	"context"
 	"flag"
 	"fmt"
+	"path"
 
 	"github.com/dsg-uwaterloo/oblishard/pkg/client"
 	"github.com/dsg-uwaterloo/oblishard/pkg/config"
@@ -50,13 +51,14 @@ func asyncWrite(tracer trace.Tracer, block string, newValue string, routerRPCCli
 	}
 }
 
-// Usage: go run . -logpath=<log path>
+// Usage: go run . -logpath=<log path> -conf=<configs path>
 func main() {
 	logPath := flag.String("logpath", "", "path to write logs")
+	configsPath := flag.String("conf", "", "configs directory path")
 	flag.Parse()
 	utils.InitLogging(true, *logPath)
 
-	routerEndpoints, err := config.ReadRouterEndpoints("../../configs/router_endpoints.yaml")
+	routerEndpoints, err := config.ReadRouterEndpoints(path.Join(*configsPath, "router_endpoints.yaml"))
 	if err != nil {
 		log.Fatal().Msgf("Cannot read router endpoints from yaml file; %v", err)
 	}
@@ -66,14 +68,19 @@ func main() {
 		log.Fatal().Msgf("Failed to start clients; %v", err)
 	}
 
-	requests, err := client.ReadTraceFile("../../traces/simple.trace")
+	requests, err := client.ReadTraceFile(path.Join(*configsPath, "simple.trace"))
 	if err != nil {
 		log.Fatal().Msgf("Failed to read trace file; %v", err)
 	}
 
+	parameters, err := config.ReadParameters(path.Join(*configsPath, "parameters.yaml"))
+	if err != nil {
+		log.Fatal().Msgf("Failed to read parameters from yaml file; %v", err)
+	}
+
 	routerRPCClient := rpcClients.GetRandomRouter()
 
-	tracingProvider, err := tracing.NewProvider(context.Background(), "client", "localhost:4317")
+	tracingProvider, err := tracing.NewProvider(context.Background(), "client", "localhost:4317", !parameters.Trace)
 	if err != nil {
 		log.Fatal().Msgf("Failed to create tracing provider; %v", err)
 	}

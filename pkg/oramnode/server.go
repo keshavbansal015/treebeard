@@ -348,10 +348,10 @@ func (o *oramNodeServer) JoinRaftVoter(ctx context.Context, joinRaftVoterRequest
 	return &pb.JoinRaftVoterReply{Success: true}, nil
 }
 
-func StartServer(oramNodeServerID int, ip string, rpcPort int, replicaID int, raftPort int, raftDir string, joinAddr string, shardNodeRPCClients map[int]ReplicaRPCClientMap, parameters config.Parameters) {
+func StartServer(oramNodeServerID int, ip string, rpcPort int, replicaID int, raftPort int, joinAddr string, shardNodeRPCClients map[int]ReplicaRPCClientMap, parameters config.Parameters) {
 	isFirst := joinAddr == ""
 	oramNodeFSM := newOramNodeFSM()
-	r, err := startRaftServer(isFirst, ip, replicaID, raftPort, raftDir, oramNodeFSM)
+	r, err := startRaftServer(isFirst, ip, replicaID, raftPort, oramNodeFSM)
 	if err != nil {
 		log.Fatal().Msgf("The raft node creation did not succeed; %s", err)
 	}

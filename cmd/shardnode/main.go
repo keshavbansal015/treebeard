@@ -12,14 +12,13 @@ import (
 	"github.com/rs/zerolog/log"
 )
 
-// Usage: ./shardnode -shardnodeid=<shardnodeid> -ip=<ip> -rpcport=<rpcport> -replicaid=<replicaid> -raftport=<raftport> -raftdir=<raftdir> -joinaddr=<ip:port> -conf=<configs path> -logpath=<log path>
+// Usage: ./shardnode -shardnodeid=<shardnodeid> -ip=<ip> -rpcport=<rpcport> -replicaid=<replicaid> -raftport=<raftport> -joinaddr=<ip:port> -conf=<configs path> -logpath=<log path>
 func main() {
 	shardNodeID := flag.Int("shardnodeid", 0, "shardnode id, starting consecutively from zero")
 	ip := flag.String("ip", "", "ip of this replica")
 	replicaID := flag.Int("replicaid", 0, "replica id, starting consecutively from zero")
 	rpcPort := flag.Int("rpcport", 0, "node rpc port")
 	raftPort := flag.Int("raftport", 0, "node raft port")
-	raftDir := flag.String("raftdir", "", "the address of the raft snapshot directory")
 	joinAddr := flag.String("joinaddr", "", "the address of the initial raft node, which bootstraped the cluster")
 	configsPath := flag.String("conf", "", "configs directory path")
 	logPath := flag.String("logpath", "", "path to write logs")
@@ -47,7 +46,7 @@ func main() {
 		log.Fatal().Msgf("Failed to read parameters from yaml file; %v", err)
 	}
 
-	tracingProvider, err := tracing.NewProvider(context.Background(), "shardnode", "localhost:4317")
+	tracingProvider, err := tracing.NewProvider(context.Background(), "shardnode", "localhost:4317", !parameters.Trace)
 	if err != nil {
 		log.Fatal().Msgf("Failed to create tracing provider; %v", err)
 	}
@@ -57,5 +56,5 @@ func main() {
 	}
 	defer stopTracingProvider(context.Background())
 
-	shardnode.StartServer(*shardNodeID, *ip, *rpcPort, *replicaID, *raftPort, *raftDir, *joinAddr, rpcClients, parameters, *configsPath)
+	shardnode.StartServer(*shardNodeID, *ip, *rpcPort, *replicaID, *raftPort, *joinAddr, rpcClients, parameters, *configsPath)
 }

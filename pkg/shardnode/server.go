@@ -280,10 +280,10 @@ func (s *shardNodeServer) JoinRaftVoter(ctx context.Context, joinRaftVoterReques
 	return &pb.JoinRaftVoterReply{Success: true}, nil
 }
 
-func StartServer(shardNodeServerID int, ip string, rpcPort int, replicaID int, raftPort int, raftDir string, joinAddr string, oramNodeRPCClients map[int]ReplicaRPCClientMap, parameters config.Parameters, configsPath string) {
+func StartServer(shardNodeServerID int, ip string, rpcPort int, replicaID int, raftPort int, joinAddr string, oramNodeRPCClients map[int]ReplicaRPCClientMap, parameters config.Parameters, configsPath string) {
 	isFirst := joinAddr == ""
 	shardNodeFSM := newShardNodeFSM()
-	r, err := startRaftServer(isFirst, ip, replicaID, raftPort, raftDir, shardNodeFSM)
+	r, err := startRaftServer(isFirst, ip, replicaID, raftPort, shardNodeFSM)
 	if err != nil {
 		log.Fatal().Msgf("The raft node creation did not succeed; %s", err)
 	}

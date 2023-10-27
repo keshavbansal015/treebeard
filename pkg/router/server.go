@@ -7,6 +7,7 @@ import (
 	"time"
 
 	pb "github.com/dsg-uwaterloo/oblishard/api/router"
+	"github.com/dsg-uwaterloo/oblishard/pkg/config"
 	"github.com/dsg-uwaterloo/oblishard/pkg/rpc"
 	"github.com/rs/zerolog/log"
 	"go.opentelemetry.io/otel"
@@ -57,14 +58,14 @@ func (r *routerServer) Write(ctx context.Context, writeRequest *pb.WriteRequest)
 	return &pb.WriteReply{Success: writeResponse.success}, nil
 }
 
-func StartRPCServer(ip string, shardNodeRPCClients map[int]ReplicaRPCClientMap, routerID int, port int) {
+func StartRPCServer(ip string, shardNodeRPCClients map[int]ReplicaRPCClientMap, routerID int, port int, parameters config.Parameters) {
 	lis, err := net.Listen("tcp", fmt.Sprintf("%s:%d", ip, port))
 	if err != nil {
 		log.Fatal().Msgf("failed to listen: %v", err)
 	}
 	grpcServer := grpc.NewServer(grpc.UnaryInterceptor(rpc.ContextPropagationUnaryServerInterceptor()))
 
-	epochManager := newEpochManager(shardNodeRPCClients, 10*time.Millisecond)
+	epochManager := newEpochManager(shardNodeRPCClients, time.Duration(parameters.EpochTime)*time.Millisecond)
 	go epochManager.run()
 	routerServer := newRouterServer(routerID, epochManager)
 	pb.RegisterRouterServer(grpcServer, &routerServer)

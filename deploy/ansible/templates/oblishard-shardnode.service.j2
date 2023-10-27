@@ -11,7 +11,6 @@ ExecStart=/root/oblishard/shardnode/shardnode \
     -rpcport {{ item.port }} \
     -replicaid {{ item.replicaid }} \
     -raftport {{ item.raftport }} \
-    -raftdir {{ '/root/oblishard/shardnode/'  + item.id | string + '/' + item.replicaid | string }} \
     {% if item.replicaid!=0 %}
     {{'-joinaddr=' + shardnode_endpoints.endpoints[0].exposed_ip + ':' + shardnode_endpoints.endpoints[0].port | string }} \
     {% endif %}

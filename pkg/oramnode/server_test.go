@@ -3,7 +3,6 @@ package oramnode
 import (
 	"context"
 	"fmt"
-	"os"
 	"sort"
 	"strconv"
 	"testing"
@@ -14,7 +13,6 @@ import (
 	strg "github.com/dsg-uwaterloo/oblishard/pkg/storage"
 	"github.com/hashicorp/raft"
 	"github.com/phayes/freeport"
-	"github.com/rs/zerolog/log"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/metadata"
 )
@@ -38,10 +36,6 @@ func (m *mockShardNodeClient) AckSentBlocks(ctx context.Context, in *shardnodepb
 }
 func (m *mockShardNodeClient) JoinRaftVoter(ctx context.Context, in *shardnodepb.JoinRaftVoterRequest, opts ...grpc.CallOption) (*shardnodepb.JoinRaftVoterReply, error) {
 	return nil, nil
-}
-
-func cleanRaftDataDirectory(directoryPath string) {
-	os.RemoveAll(directoryPath)
 }
 
 func getMockShardNodeClients() map[int]ReplicaRPCClientMap {
@@ -178,18 +172,12 @@ func (m *mockStorageHandler) GetBucketsInPaths(paths []int) (bucketIDs []int, er
 }
 
 func startLeaderRaftNodeServer(t *testing.T) *oramNodeServer {
-	cleanRaftDataDirectory("om-data-replicaid-0")
-	err := os.MkdirAll("om-data-replicaid-0", os.ModePerm)
-	if err != nil {
-		log.Fatal().Msgf("Unable to create raft directory; %v", err)
-	}
-
 	fsm := newOramNodeFSM()
 	raftPort, err := freeport.GetFreePort()
 	if err != nil {
 		t.Errorf("unable to get free port")
 	}
-	r, err := startRaftServer(true, "localhost", 0, raftPort, "om-data-replicaid-0", fsm)
+	r, err := startRaftServer(true, "localhost", 0, raftPort, fsm)
 	if err != nil {
 		t.Errorf("unable to start raft server")
 	}

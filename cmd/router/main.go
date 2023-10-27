@@ -35,7 +35,12 @@ func main() {
 		log.Fatal().Msgf("Failed to create client connections with shard node servers; %v", err)
 	}
 
-	tracingProvider, err := tracing.NewProvider(context.Background(), "router", "localhost:4317")
+	parameters, err := config.ReadParameters(path.Join(*configsPath, "parameters.yaml"))
+	if err != nil {
+		log.Fatal().Msgf("Failed to read parameters from yaml file; %v", err)
+	}
+
+	tracingProvider, err := tracing.NewProvider(context.Background(), "router", "localhost:4317", true)
 	if err != nil {
 		log.Fatal().Msgf("Failed to create tracing provider; %v", err)
 	}
@@ -45,5 +50,5 @@ func main() {
 	}
 	defer stopTracingProvider(context.Background())
 
-	router.StartRPCServer(*ip, rpcClients, *routerID, *port)
+	router.StartRPCServer(*ip, rpcClients, *routerID, *port, parameters)
 }
