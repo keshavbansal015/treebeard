@@ -5,13 +5,36 @@ import (
 
 	"github.com/rs/zerolog/log"
 	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/codes"
 	"go.opentelemetry.io/otel/exporters/otlp/otlptrace"
 	"go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc"
 	"go.opentelemetry.io/otel/propagation"
 	"go.opentelemetry.io/otel/sdk/resource"
 	"go.opentelemetry.io/otel/sdk/trace"
 	semconv "go.opentelemetry.io/otel/semconv/v1.4.0"
+	otrace "go.opentelemetry.io/otel/trace"
 )
+
+type NoopSpan struct{}
+
+func (NoopSpan) End(options ...otrace.SpanEndOption)                  {}
+func (NoopSpan) AddEvent(name string, options ...otrace.EventOption)  {}
+func (NoopSpan) IsRecording() bool                                    { return false }
+func (NoopSpan) RecordError(err error, options ...otrace.EventOption) {}
+func (NoopSpan) SpanContext() otrace.SpanContext                      { return otrace.SpanContext{} }
+func (NoopSpan) SetStatus(code codes.Code, description string)        {}
+func (NoopSpan) SetName(name string)                                  {}
+func (NoopSpan) SetAttributes(kv ...attribute.KeyValue)               {}
+func (NoopSpan) TracerProvider() otrace.TracerProvider                { return nil }
+
+type NoopTracer struct{}
+
+func (d *NoopTracer) Start(ctx context.Context, spanName string, opts ...otrace.SpanStartOption) (context.Context, otrace.Span) {
+	return ctx, NoopSpan{}
+}
+
+type NoopProvider struct{}
 
 type Provider struct {
 	serviceName string
@@ -19,7 +42,7 @@ type Provider struct {
 	provider    *trace.TracerProvider
 }
 
-func NewProvider(ctx context.Context, serviceName, exporterURL string) (*Provider, error) {
+func NewProvider(ctx context.Context, serviceName, exporterURL string, isNoop bool) (*Provider, error) {
 	log.Debug().Msgf("Creating new tracing provider with service name %s and exporter url %s", serviceName, exporterURL)
 	e, err := otlptrace.New(ctx, otlptracegrpc.NewClient(
 		otlptracegrpc.WithEndpoint(exporterURL),
@@ -42,6 +65,9 @@ func NewProvider(ctx context.Context, serviceName, exporterURL string) (*Provide
 		trace.WithBatcher(e),
 		trace.WithResource(r),
 	)
+	if isNoop {
+		tracerProvider.Shutdown(ctx)
+	}
 
 	return &Provider{
 		serviceName: serviceName,

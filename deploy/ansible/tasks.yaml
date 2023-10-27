@@ -53,6 +53,7 @@
         - {name: oramnode_endpoints, file_path: '../../configs/oramnode_endpoints.yaml'}
         - {name: redis_endpoints, file_path: '../../configs/redis_endpoints.yaml'}
         - {name: jaeger_endpoint, file_path: '../../configs/jaeger_endpoint.yaml'}
+        - {name: parameters, file_path: '../../configs/parameters.yaml'}
 
     - name: Move Jaeger docker-compose.yaml and Start it
       block:
@@ -73,6 +74,7 @@
             name: "jaeger-socat"
             state: restarted
             daemon_reload: true
+      when: parameters.trace == true
 
     - name: Install Redis
       ansible.builtin.apt:
@@ -98,7 +100,7 @@
     - name: Build the go executables locally
       ansible.builtin.shell:
         chdir: "{{ item }}"
-        cmd: env GOOS=linux GOARCH=amd64 go build . # TODO: get the GOOS and GOARCH from hosts
+        cmd: env GOOS=linux GOARCH=amd64 go build .
       delegate_to: 127.0.0.1
       become: yes
       become_user: aminst

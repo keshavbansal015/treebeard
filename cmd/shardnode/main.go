@@ -46,7 +46,7 @@ func main() {
 		log.Fatal().Msgf("Failed to read parameters from yaml file; %v", err)
 	}
 
-	tracingProvider, err := tracing.NewProvider(context.Background(), "shardnode", "localhost:4317")
+	tracingProvider, err := tracing.NewProvider(context.Background(), "shardnode", "localhost:4317", !parameters.Trace)
 	if err != nil {
 		log.Fatal().Msgf("Failed to create tracing provider; %v", err)
 	}

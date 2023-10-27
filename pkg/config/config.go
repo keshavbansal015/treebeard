@@ -40,10 +40,11 @@ type OramNodeConfig struct {
 }
 
 type Parameters struct {
-	MaxBlocksToSend int `yaml:"max-blocks-to-send"`
-	EvictionRate    int `yaml:"eviction-rate"`
-	BatchSize       int `yaml:"batch-size"`
-	EpochTime       int `yaml:"epoch-time"`
+	MaxBlocksToSend int  `yaml:"max-blocks-to-send"`
+	EvictionRate    int  `yaml:"eviction-rate"`
+	BatchSize       int  `yaml:"batch-size"`
+	EpochTime       int  `yaml:"epoch-time"`
+	Trace           bool `yaml:"trace"`
 }
 
 func ReadRouterEndpoints(path string) ([]RouterEndpoint, error) {
