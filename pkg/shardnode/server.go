@@ -58,8 +58,8 @@ func (s *shardNodeServer) getWhatToSendBasedOnRequest(ctx context.Context, block
 		path, storageID = s.storageHandler.GetRandomPathAndStorageID(ctx)
 		return strconv.Itoa(rand.Int()), path, storageID
 	} else {
-		s.shardNodeFSM.mu.Lock()
-		defer s.shardNodeFSM.mu.Unlock()
+		s.shardNodeFSM.positionMapMu.Lock()
+		defer s.shardNodeFSM.positionMapMu.Unlock()
 		return block, s.shardNodeFSM.positionMap[block].path, s.shardNodeFSM.positionMap[block].storageID
 	}
 }
@@ -67,11 +67,11 @@ func (s *shardNodeServer) getWhatToSendBasedOnRequest(ctx context.Context, block
 // It creates a channel for receiving the response from the raft FSM for the current requestID.
 func (s *shardNodeServer) createResponseChannelForRequestID(requestID string) chan string {
 	log.Debug().Msgf("Aquiring lock for shard node FSM in createResponseChannelForRequestID")
-	s.shardNodeFSM.mu.Lock()
+	s.shardNodeFSM.responseChannelMu.Lock()
 	log.Debug().Msgf("Aquired lock for shard node FSM in createResponseChannelForRequestID")
 	defer func() {
 		log.Debug().Msgf("Releasing lock for shard node FSM in createResponseChannelForRequestID")
-		s.shardNodeFSM.mu.Unlock()
+		s.shardNodeFSM.responseChannelMu.Unlock()
 		log.Debug().Msgf("Released lock for shard node FSM in createResponseChannelForRequestID")
 	}()
 	ch := make(chan string)
@@ -189,11 +189,13 @@ func (s *shardNodeServer) Write(ctx context.Context, writeRequest *pb.WriteReque
 // The blocks should be for the same path and storageID.
 func (s *shardNodeServer) getBlocksForSend(maxBlocks int, paths []int, storageID int) (blocksToReturn []*pb.Block, blocks []string) {
 	log.Debug().Msgf("Aquiring lock for shard node FSM in getBlocksForSend")
-	s.shardNodeFSM.mu.Lock()
+	s.shardNodeFSM.stashMu.Lock()
+	s.shardNodeFSM.positionMapMu.Lock()
 	log.Debug().Msgf("Aquired lock for shard node FSM in getBlocksForSend")
 	defer func() {
 		log.Debug().Msgf("Releasing lock for shard node FSM in getBlocksForSend")
-		s.shardNodeFSM.mu.Unlock()
+		s.shardNodeFSM.stashMu.Unlock()
+		s.shardNodeFSM.positionMapMu.Unlock()
 		log.Debug().Msgf("Released lock for shard node FSM in getBlocksForSend")
 	}()
 
@@ -287,9 +289,9 @@ func StartServer(shardNodeServerID int, ip string, rpcPort int, replicaID int, r
 	if err != nil {
 		log.Fatal().Msgf("The raft node creation did not succeed; %s", err)
 	}
-	shardNodeFSM.mu.Lock()
+	shardNodeFSM.raftNodeMu.Lock()
 	shardNodeFSM.raftNode = r
-	shardNodeFSM.mu.Unlock()
+	shardNodeFSM.raftNodeMu.Unlock()
 
 	go func() {
 		for {

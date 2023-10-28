@@ -41,24 +41,26 @@ func (p positionState) isPathInPaths(paths []int) bool {
 }
 
 type shardNodeFSM struct {
-	mu         sync.Mutex
-	requestLog map[string][]string // map of block to requesting requestIDs
-
-	pathMap      map[string]int // map of requestID to new path
-	storageIDMap map[string]int // map of requestID to new storageID
-
-	responseMap map[string]string // map of requestID to response map[string]string
-
-	stash map[string]stashState // map of block to stashState
-
-	responseChannel map[string]chan string // map of requestId to their channel for receiving response
-
-	acks  map[string][]string // map of requestID to array of blocks
-	nacks map[string][]string // map of requestID to array of blocks
-
-	positionMap map[string]positionState // map of block to positionState
-
-	raftNode RaftNodeWIthState
+	requestLog        map[string][]string // map of block to requesting requestIDs
+	requestLogMu      sync.Mutex
+	pathMap           map[string]int // map of requestID to new path
+	pathMapMu         sync.Mutex
+	storageIDMap      map[string]int // map of requestID to new storageID
+	storageIDMapMu    sync.Mutex
+	responseMap       map[string]string // map of requestID to response map[string]string
+	responseMapMu     sync.Mutex
+	stash             map[string]stashState // map of block to stashState
+	stashMu           sync.Mutex
+	responseChannel   map[string]chan string // map of requestId to their channel for receiving response
+	responseChannelMu sync.Mutex
+	acks              map[string][]string // map of requestID to array of blocks
+	acksMu            sync.Mutex
+	nacks             map[string][]string // map of requestID to array of blocks
+	nacksMu           sync.Mutex
+	positionMap       map[string]positionState // map of block to positionState
+	positionMapMu     sync.Mutex
+	raftNode          RaftNodeWIthState
+	raftNodeMu        sync.Mutex
 }
 
 func newShardNodeFSM() *shardNodeFSM {
@@ -76,9 +78,6 @@ func newShardNodeFSM() *shardNodeFSM {
 }
 
 func (fsm *shardNodeFSM) String() string {
-	fsm.mu.Lock()
-	defer fsm.mu.Unlock()
-
 	out := fmt.Sprintln("ShardNodeFSM")
 	out = out + fmt.Sprintf("requestLog: %v\n", fsm.requestLog)
 	out = out + fmt.Sprintf("pathMap: %v\n", fsm.pathMap)
@@ -94,11 +93,11 @@ func (fsm *shardNodeFSM) String() string {
 
 func (fsm *shardNodeFSM) isInitialRequest(block string, requestID string) bool {
 	log.Debug().Msgf("Aquiring lock for shardNodeFSM in isInitialRequest")
-	fsm.mu.Lock()
+	fsm.requestLogMu.Lock()
 	log.Debug().Msgf("Aquired lock for shardNodeFSM in isInitialRequest")
 	defer func() {
 		log.Debug().Msgf("Releasing lock for shardNodeFSM in isInitialRequest")
-		fsm.mu.Unlock()
+		fsm.requestLogMu.Unlock()
 		log.Debug().Msgf("Released lock for shardNodeFSM in isInitialRequest")
 	}()
 
@@ -107,11 +106,15 @@ func (fsm *shardNodeFSM) isInitialRequest(block string, requestID string) bool {
 
 func (fsm *shardNodeFSM) handleReplicateRequestAndPathAndStorage(requestID string, r ReplicateRequestAndPathAndStoragePayload) {
 	log.Debug().Msgf("Aquiring lock for shardNodeFSM in handleReplicateRequestAndPathAndStorage")
-	fsm.mu.Lock()
+	fsm.requestLogMu.Lock()
+	fsm.pathMapMu.Lock()
+	fsm.storageIDMapMu.Lock()
 	log.Debug().Msgf("Aquired lock for shardNodeFSM in handleReplicateRequestAndPathAndStorage")
 	defer func() {
 		log.Debug().Msgf("Releasing lock for shardNodeFSM in handleReplicateRequestAndPathAndStorage")
-		fsm.mu.Unlock()
+		fsm.requestLogMu.Unlock()
+		fsm.pathMapMu.Unlock()
+		fsm.storageIDMapMu.Unlock()
 		log.Debug().Msgf("Released lock for shardNodeFSM in handleReplicateRequestAndPathAndStorage")
 	}()
 
@@ -125,9 +128,26 @@ type localReplicaChangeHandlerFunc func(requestID string, r ReplicateResponsePay
 // It handles the response replication changes locally on each raft replica.
 // The leader doesn't wait for this to finish to return success for the response replication command.
 func (fsm *shardNodeFSM) handleLocalResponseReplicationChanges(requestID string, r ReplicateResponsePayload) {
+	log.Debug().Msgf("Aquiring lock for shardNodeFSM in handleLocalResponseReplicationChanges")
+	fsm.stashMu.Lock()
+	fsm.responseMapMu.Lock()
+	fsm.positionMapMu.Lock()
+	fsm.pathMapMu.Lock()
+	fsm.storageIDMapMu.Lock()
+	fsm.requestLogMu.Lock()
+	fsm.responseChannelMu.Lock()
+	fsm.raftNodeMu.Lock()
+	log.Debug().Msgf("Aquired lock for shardNodeFSM in handleLocalResponseReplicationChanges")
 	defer func() {
 		log.Debug().Msgf("Releasing lock for shardNodeFSM in handleReplicateResponse")
-		fsm.mu.Unlock()
+		fsm.stashMu.Unlock()
+		fsm.responseMapMu.Unlock()
+		fsm.positionMapMu.Unlock()
+		fsm.pathMapMu.Unlock()
+		fsm.storageIDMapMu.Unlock()
+		fsm.requestLogMu.Unlock()
+		fsm.responseChannelMu.Unlock()
+		fsm.raftNodeMu.Unlock()
 		log.Debug().Msgf("Released lock for shardNodeFSM in handleReplicateResponse")
 	}()
 
@@ -167,13 +187,16 @@ func (fsm *shardNodeFSM) handleLocalResponseReplicationChanges(requestID string,
 	delete(fsm.responseMap, requestID)
 }
 
-// I'm doing sth really tricky here. I am locking but I let the goroutine unlock the mutex.
-// The reason I'm doing this is that I don't want any other process to aquire the lock in between.
-// On the other hand I don't want to wait for the goroutine to finish
 func (fsm *shardNodeFSM) handleReplicateResponse(requestID string, r ReplicateResponsePayload, f localReplicaChangeHandlerFunc) {
 	log.Debug().Msgf("Aquiring lock for shardNodeFSM in handleReplicateResponse")
-	fsm.mu.Lock()
+	fsm.responseMapMu.Lock()
 	log.Debug().Msgf("Aquired lock for shardNodeFSM in handleReplicateResponse")
+
+	defer func() {
+		log.Debug().Msgf("Releasing lock for shardNodeFSM in handleReplicateResponse")
+		fsm.responseMapMu.Unlock()
+		log.Debug().Msgf("Released lock for shardNodeFSM in handleReplicateResponse")
+	}()
 
 	fsm.responseMap[requestID] = r.Response
 	go f(requestID, r)
@@ -181,11 +204,11 @@ func (fsm *shardNodeFSM) handleReplicateResponse(requestID string, r ReplicateRe
 
 func (fsm *shardNodeFSM) handleReplicateSentBlocks(r ReplicateSentBlocksPayload) {
 	log.Debug().Msgf("Aquiring lock for shardNodeFSM in handleReplicateSentBlocks")
-	fsm.mu.Lock()
+	fsm.stashMu.Lock()
 	log.Debug().Msgf("Aquired lock for shardNodeFSM in handleReplicateSentBlocks")
 	defer func() {
 		log.Debug().Msgf("Releasing lock for shardNodeFSM in handleReplicateSentBlocks")
-		fsm.mu.Unlock()
+		fsm.stashMu.Unlock()
 		log.Debug().Msgf("Released lock for shardNodeFSM in handleReplicateSentBlocks")
 	}()
 
@@ -201,11 +224,15 @@ func (fsm *shardNodeFSM) handleReplicateSentBlocks(r ReplicateSentBlocksPayload)
 // If an acked block was changed during the eviction, it will keep it.
 func (fsm *shardNodeFSM) handleLocalAcksNacksReplicationChanges(requestID string) {
 	log.Debug().Msgf("Aquiring lock for shardNodeFSM in handleLocalAcksNacksReplicationChanges")
-	fsm.mu.Lock()
+	fsm.acksMu.Lock()
+	fsm.nacksMu.Lock()
+	fsm.stashMu.Lock()
 	log.Debug().Msgf("Aquired lock for shardNodeFSM in handleLocalAcksNacksReplicationChanges")
 	defer func() {
 		log.Debug().Msgf("Releasing lock for shardNodeFSM in handleLocalAcksNacksReplicationChanges")
-		fsm.mu.Unlock()
+		fsm.acksMu.Unlock()
+		fsm.nacksMu.Unlock()
+		fsm.stashMu.Unlock()
 		log.Debug().Msgf("Released lock for shardNodeFSM in handleLocalAcksNacksReplicationChanges")
 	}()
 
@@ -226,11 +253,13 @@ func (fsm *shardNodeFSM) handleLocalAcksNacksReplicationChanges(requestID string
 
 func (fsm *shardNodeFSM) handleReplicateAcksNacks(r ReplicateAcksNacksPayload) {
 	log.Debug().Msgf("Aquiring lock for shardNodeFSM in handleReplicateAcksNacks")
-	fsm.mu.Lock()
+	fsm.acksMu.Lock()
+	fsm.nacksMu.Lock()
 	log.Debug().Msgf("Aquired lock for shardNodeFSM in handleReplicateAcksNacks")
 	defer func() {
 		log.Debug().Msgf("Releasing lock for shardNodeFSM in handleReplicateAcksNacks")
-		fsm.mu.Unlock()
+		fsm.acksMu.Unlock()
+		fsm.nacksMu.Unlock()
 		log.Debug().Msgf("Released lock for shardNodeFSM in handleReplicateAcksNacks")
 	}()
 

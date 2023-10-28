@@ -108,9 +108,9 @@ func startLeaderRaftNodeServer(t *testing.T, batchSize int, withBatchReponses bo
 	if err != nil {
 		t.Errorf("unable to start raft server; %v", err)
 	}
-	fsm.mu.Lock()
+	fsm.raftNodeMu.Lock()
 	fsm.raftNode = r
-	fsm.mu.Unlock()
+	fsm.raftNodeMu.Unlock()
 	<-r.LeaderCh() // wait to become the leader
 	oramNodeClients := getMockOramNodeClients()
 	if withBatchReponses {
@@ -239,9 +239,9 @@ func TestQueryReturnsResponseRecievedFromOramNodeWithBatching(t *testing.T) {
 func TestQueryPrioritizesStashValueToOramNodeResponse(t *testing.T) {
 	s := startLeaderRaftNodeServer(t, 1, false)
 	ctx := metadata.NewIncomingContext(context.Background(), metadata.Pairs("requestid", "request1"))
-	s.shardNodeFSM.mu.Lock()
+	s.shardNodeFSM.stashMu.Lock()
 	s.shardNodeFSM.stash["a"] = stashState{value: "stash_value", logicalTime: 0, waitingStatus: false}
-	s.shardNodeFSM.mu.Unlock()
+	s.shardNodeFSM.stashMu.Unlock()
 	response, err := s.query(ctx, Read, "a", "")
 	if response != "stash_value" {
 		t.Errorf("expected the response to be \"stash_value\" but it is: %s", response)
@@ -267,8 +267,18 @@ func TestQueryCleansTempValuesInFSMAfterExecution(t *testing.T) {
 	s := startLeaderRaftNodeServer(t, 1, false)
 	ctx := metadata.NewIncomingContext(context.Background(), metadata.Pairs("requestid", "request1"))
 	s.query(ctx, Write, "a", "val")
-	s.shardNodeFSM.mu.Lock()
-	defer s.shardNodeFSM.mu.Unlock()
+	s.shardNodeFSM.pathMapMu.Lock()
+	s.shardNodeFSM.storageIDMapMu.Lock()
+	s.shardNodeFSM.responseMapMu.Lock()
+	s.shardNodeFSM.requestLogMu.Lock()
+	s.shardNodeFSM.responseChannelMu.Lock()
+	defer func() {
+		s.shardNodeFSM.pathMapMu.Unlock()
+		s.shardNodeFSM.storageIDMapMu.Unlock()
+		s.shardNodeFSM.responseMapMu.Unlock()
+		s.shardNodeFSM.requestLogMu.Unlock()
+		s.shardNodeFSM.responseChannelMu.Unlock()
+	}()
 	if _, exists := s.shardNodeFSM.pathMap["request1"]; exists {
 		t.Errorf("query should remove the request from the pathMap after successful execution.")
 	}
@@ -290,8 +300,8 @@ func TestQueryAddsReadValueToStash(t *testing.T) {
 	s := startLeaderRaftNodeServer(t, 1, false)
 	ctx := metadata.NewIncomingContext(context.Background(), metadata.Pairs("requestid", "request1"))
 	s.query(ctx, Read, "a", "")
-	s.shardNodeFSM.mu.Lock()
-	defer s.shardNodeFSM.mu.Unlock()
+	s.shardNodeFSM.stashMu.Lock()
+	defer s.shardNodeFSM.stashMu.Unlock()
 	if s.shardNodeFSM.stash["a"].value != "response_from_leader" {
 		t.Errorf("The response from the oramnode should be added to the stash")
 	}
@@ -301,8 +311,8 @@ func TestQueryAddsWriteValueToStash(t *testing.T) {
 	s := startLeaderRaftNodeServer(t, 1, false)
 	ctx := metadata.NewIncomingContext(context.Background(), metadata.Pairs("requestid", "request1"))
 	s.query(ctx, Write, "a", "valW")
-	s.shardNodeFSM.mu.Lock()
-	defer s.shardNodeFSM.mu.Unlock()
+	s.shardNodeFSM.stashMu.Lock()
+	defer s.shardNodeFSM.stashMu.Unlock()
 	if s.shardNodeFSM.stash["a"].value != "valW" {
 		t.Errorf("The write value should be added to the stash")
 	}
@@ -313,8 +323,8 @@ func TestQueryUpdatesPositionMap(t *testing.T) {
 	ctx := metadata.NewIncomingContext(context.Background(), metadata.Pairs("requestid", "request1"))
 	s.shardNodeFSM.positionMap["a"] = positionState{path: 13423432, storageID: 3223113}
 	s.query(ctx, Write, "a", "valW")
-	s.shardNodeFSM.mu.Lock()
-	defer s.shardNodeFSM.mu.Unlock()
+	s.shardNodeFSM.positionMapMu.Lock()
+	defer s.shardNodeFSM.positionMapMu.Unlock()
 	if s.shardNodeFSM.positionMap["a"].path == 13423432 || s.shardNodeFSM.positionMap["a"].storageID == 3223113 {
 		t.Errorf("position map should get updated after request")
 	}
@@ -438,7 +448,7 @@ func TestSendBlocksMarksSentBlocksAsWaitingAndZeroLogicalTime(t *testing.T) {
 	s.shardNodeFSM.positionMap["block3"] = positionState{path: 0, storageID: 0}
 
 	blocks, _ := s.SendBlocks(context.Background(), &shardnodepb.SendBlocksRequest{MaxBlocks: 3, Paths: []int32{0}, StorageId: 0})
-	s.shardNodeFSM.mu.Lock()
+	s.shardNodeFSM.stashMu.Lock()
 	for _, block := range blocks.Blocks {
 		if s.shardNodeFSM.stash[block.Block].waitingStatus == false {
 			t.Errorf("sent blocks should get marked as waiting")
@@ -447,7 +457,7 @@ func TestSendBlocksMarksSentBlocksAsWaitingAndZeroLogicalTime(t *testing.T) {
 			t.Errorf("sent blocks should have logicalTime zero")
 		}
 	}
-	s.shardNodeFSM.mu.Unlock()
+	s.shardNodeFSM.stashMu.Unlock()
 }
 
 func TestAckSentBlocksRemovesAckedBlocksFromStash(t *testing.T) {
@@ -468,8 +478,8 @@ func TestAckSentBlocksRemovesAckedBlocksFromStash(t *testing.T) {
 		},
 	)
 	time.Sleep(500 * time.Millisecond) // wait for handleLocalAcksNacksReplicationChanges goroutine to finish
-	s.shardNodeFSM.mu.Lock()
-	defer s.shardNodeFSM.mu.Unlock()
+	s.shardNodeFSM.stashMu.Lock()
+	defer s.shardNodeFSM.stashMu.Unlock()
 	if len(s.shardNodeFSM.stash) != 0 {
 		t.Errorf("AckSentBlocks should remove all acked blocks from the stash but the stash is: %v", s.shardNodeFSM.stash)
 	}
@@ -494,8 +504,8 @@ func TestAckSentBlocksKeepsNAckedBlocksInStashAndRemovesWaiting(t *testing.T) {
 		},
 	)
 	time.Sleep(500 * time.Millisecond) // wait for handleLocalAcksNacksReplicationChanges goroutine to finish
-	s.shardNodeFSM.mu.Lock()
-	defer s.shardNodeFSM.mu.Unlock()
+	s.shardNodeFSM.stashMu.Lock()
+	defer s.shardNodeFSM.stashMu.Unlock()
 	for _, block := range nackedBlocks {
 		if s.shardNodeFSM.stash[block.Block].waitingStatus == true {
 			t.Errorf("AckSentBlocks should remove waiting flag from nacked blocks")
