@@ -299,8 +299,8 @@ func TestWriteBackBlocksToAllBucketsReturnsFalseForNotPushedReceivedBlocks(t *te
 func TestEvictCleansUpBeginEvictionAfterSuccessfulExecution(t *testing.T) {
 	o := startLeaderRaftNodeServer(t)
 	o.evict([]int{1, 7, 16}, 0)
-	o.oramNodeFSM.mu.Lock()
-	defer o.oramNodeFSM.mu.Unlock()
+	o.oramNodeFSM.unfinishedEvictionMu.Lock()
+	defer o.oramNodeFSM.unfinishedEvictionMu.Unlock()
 
 	if o.oramNodeFSM.unfinishedEviction != nil {
 		t.Errorf("evict should remove unfinished eviction after successful eviction")
@@ -310,8 +310,8 @@ func TestEvictCleansUpBeginEvictionAfterSuccessfulExecution(t *testing.T) {
 func TestEvictKeepsBeginEvictionInFailureScenario(t *testing.T) {
 	o := startLeaderRaftNodeServer(t).withFailedShardNodeClients()
 	o.evict([]int{1, 7, 16}, 0)
-	o.oramNodeFSM.mu.Lock()
-	defer o.oramNodeFSM.mu.Unlock()
+	o.oramNodeFSM.unfinishedEvictionMu.Lock()
+	defer o.oramNodeFSM.unfinishedEvictionMu.Unlock()
 	if o.oramNodeFSM.unfinishedEviction == nil {
 		t.Errorf("evict should add an unfinished eviction to FSM in failure scenarios")
 	}
@@ -356,8 +356,6 @@ func TestReadPathIncrementsReadPathCounter(t *testing.T) {
 	o := startLeaderRaftNodeServer(t).withMockStorageHandler(newMockStorageHandler(4, 4))
 	ctx := metadata.NewIncomingContext(context.Background(), metadata.Pairs("requestid", "request1"))
 	o.ReadPath(ctx, &oramnode.ReadPathRequest{StorageId: 2, Requests: []*oramnode.BlockRequest{{Block: "a", Path: 1}}})
-	o.oramNodeFSM.mu.Lock()
-	defer o.oramNodeFSM.mu.Unlock()
 	if o.readPathCounter != 1 {
 		t.Errorf("ReadPath should increment readPathCounter")
 	}

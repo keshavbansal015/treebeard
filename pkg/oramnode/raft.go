@@ -28,22 +28,13 @@ type beginReadPathData struct {
 }
 
 type oramNodeFSM struct {
-	mu sync.Mutex
-
-	unfinishedEviction *beginEvictionData // unfinished eviction
-	unfinishedReadPath *beginReadPathData // unfinished read path
+	unfinishedEviction   *beginEvictionData // unfinished eviction
+	unfinishedEvictionMu sync.Mutex
+	unfinishedReadPath   *beginReadPathData // unfinished read path
+	unfinishedReadPathMu sync.Mutex
 }
 
 func (fsm *oramNodeFSM) String() string {
-	log.Debug().Msgf("Aquiring lock for oramNodeFSM in String")
-	fsm.mu.Lock()
-	log.Debug().Msgf("Aquired lock for oramNodeFSM in String")
-	defer func() {
-		log.Debug().Msgf("Releasing lock for oramNodeFSM in String")
-		fsm.mu.Unlock()
-		log.Debug().Msgf("Released lock for oramNodeFSM in String")
-	}()
-
 	out := fmt.Sprintln("oramNodeFSM")
 	out = out + fmt.Sprintf("unfinishedEviction: %v\n", fsm.unfinishedEviction)
 	return out
@@ -55,11 +46,11 @@ func newOramNodeFSM() *oramNodeFSM {
 
 func (fsm *oramNodeFSM) handleBeginEvictionCommand(paths []int, storageID int) {
 	log.Debug().Msgf("Aquiring lock for oramNodeFSM in handleBeginEvictionCommand")
-	fsm.mu.Lock()
+	fsm.unfinishedEvictionMu.Lock()
 	log.Debug().Msgf("Aquired lock for oramNodeFSM in handleBeginEvictionCommand")
 	defer func() {
 		log.Debug().Msgf("Releasing lock for oramNodeFSM in handleBeginEvictionCommand")
-		fsm.mu.Unlock()
+		fsm.unfinishedEvictionMu.Unlock()
 		log.Debug().Msgf("Released lock for oramNodeFSM in handleBeginEvictionCommand")
 	}()
 
@@ -68,11 +59,11 @@ func (fsm *oramNodeFSM) handleBeginEvictionCommand(paths []int, storageID int) {
 
 func (fsm *oramNodeFSM) handleEndEvictionCommand() {
 	log.Debug().Msgf("Aquiring lock for oramNodeFSM in handleEndEvictionCommand")
-	fsm.mu.Lock()
+	fsm.unfinishedEvictionMu.Lock()
 	log.Debug().Msgf("Aquired lock for oramNodeFSM in handleEndEvictionCommand")
 	defer func() {
 		log.Debug().Msgf("Releasing lock for oramNodeFSM in handleEndEvictionCommand")
-		fsm.mu.Unlock()
+		fsm.unfinishedEvictionMu.Unlock()
 		log.Debug().Msgf("Released lock for oramNodeFSM in handleEndEvictionCommand")
 	}()
 	fsm.unfinishedEviction = nil
@@ -82,11 +73,11 @@ func (fsm *oramNodeFSM) handleBeginReadPathCommand(paths []int, storageID int) {
 	tracer := otel.Tracer("")
 	_, span := tracer.Start(context.Background(), "begin read path replication inside")
 	log.Debug().Msgf("Aquiring lock for oramNodeFSM in handleBeginReadPathCommand")
-	fsm.mu.Lock()
+	fsm.unfinishedReadPathMu.Lock()
 	log.Debug().Msgf("Aquired lock for oramNodeFSM in handleBeginReadPathCommand")
 	defer func() {
 		log.Debug().Msgf("Releasing lock for oramNodeFSM in handleBeginReadPathCommand")
-		fsm.mu.Unlock()
+		fsm.unfinishedReadPathMu.Unlock()
 		log.Debug().Msgf("Released lock for oramNodeFSM in handleBeginReadPathCommand")
 	}()
 
@@ -96,11 +87,11 @@ func (fsm *oramNodeFSM) handleBeginReadPathCommand(paths []int, storageID int) {
 
 func (fsm *oramNodeFSM) handleEndReadPathCommand() {
 	log.Debug().Msgf("Aquiring lock for oramNodeFSM in handleEndReadPathCommand")
-	fsm.mu.Lock()
+	fsm.unfinishedReadPathMu.Lock()
 	log.Debug().Msgf("Aquired lock for oramNodeFSM in handleEndReadPathCommand")
 	defer func() {
 		log.Debug().Msgf("Releasing lock for oramNodeFSM in handleEndReadPathCommand")
-		fsm.mu.Unlock()
+		fsm.unfinishedReadPathMu.Unlock()
 		log.Debug().Msgf("Released lock for oramNodeFSM in handleEndReadPathCommand")
 	}()
 	fsm.unfinishedReadPath = nil

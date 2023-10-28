@@ -59,24 +59,26 @@ func newOramNodeServer(oramNodeServerID int, replicaID int, raftNode *raft.Raft,
 // It runs the failed eviction and read path as the new leader.
 func (o *oramNodeServer) performFailedOperations() error {
 	<-o.raftNode.LeaderCh()
-	o.oramNodeFSM.mu.Lock()
+	o.oramNodeFSM.unfinishedEvictionMu.Lock()
+	o.oramNodeFSM.unfinishedReadPathMu.Lock()
 	needsEviction := o.oramNodeFSM.unfinishedEviction
 	needsReadPath := o.oramNodeFSM.unfinishedReadPath
-	o.oramNodeFSM.mu.Unlock()
+	o.oramNodeFSM.unfinishedEvictionMu.Unlock()
+	o.oramNodeFSM.unfinishedReadPathMu.Unlock()
 	if needsEviction != nil {
-		o.oramNodeFSM.mu.Lock()
+		o.oramNodeFSM.unfinishedEvictionMu.Lock()
 		paths := o.oramNodeFSM.unfinishedEviction.paths
 		storageID := o.oramNodeFSM.unfinishedEviction.storageID
-		o.oramNodeFSM.mu.Unlock()
+		o.oramNodeFSM.unfinishedEvictionMu.Unlock()
 		log.Debug().Msgf("Performing failed eviction with paths %v and storageID %d", paths, storageID)
 		o.evict(paths, storageID)
 	}
 	if needsReadPath != nil {
 		log.Debug().Msgf("Performing failed read path")
-		o.oramNodeFSM.mu.Lock()
+		o.oramNodeFSM.unfinishedReadPathMu.Lock()
 		paths := o.oramNodeFSM.unfinishedReadPath.paths
 		storageID := o.oramNodeFSM.unfinishedReadPath.storageID
-		o.oramNodeFSM.mu.Unlock()
+		o.oramNodeFSM.unfinishedReadPathMu.Unlock()
 		buckets, _ := o.storageHandler.GetBucketsInPaths(paths)
 		log.Debug().Msgf("Performing failed read path with paths %v and storageID %d", paths, storageID)
 		o.earlyReshuffle(buckets, storageID)
