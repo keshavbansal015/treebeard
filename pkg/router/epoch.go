@@ -68,14 +68,6 @@ func (e *epochManager) addRequestToCurrentEpoch(r *request) chan any {
 }
 
 func (e *epochManager) whereToForward(block string) (shardNodeID int) {
-	log.Debug().Msgf("Aquiring lock for epoch manager in whereToForward")
-	e.mu.Lock()
-	log.Debug().Msgf("Aquired lock for epoch manager in whereToForward")
-	defer func() {
-		log.Debug().Msgf("Releasing lock for epoch manager in whereToForward")
-		e.mu.Unlock()
-		log.Debug().Msgf("Released lock for epoch manager in whereToForward")
-	}()
 	h := e.hasher.Hash(block)
 	return int(math.Mod(float64(h), float64(len(e.shardNodeRPCClients))))
 }
