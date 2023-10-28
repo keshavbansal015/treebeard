@@ -12,7 +12,7 @@ import (
 
 func TestAddRequestToCurrentEpochAddsRequestAndChannel(t *testing.T) {
 	e := newEpochManager(make(map[int]ReplicaRPCClientMap), time.Second)
-	e.currentEpoch = 12
+	e.currentEpoch.Store(12)
 	req := &request{ctx: context.Background(), operationType: Read, block: "a", value: "value"}
 	e.addRequestToCurrentEpoch(req)
 	if len(e.requests[12]) != 1 || e.requests[12][0].block != "a" || e.requests[12][0].value != "value" || e.requests[12][0].operationType != Read {
@@ -114,7 +114,7 @@ func getMockShardNodeClients() map[int]ReplicaRPCClientMap {
 
 func TestSendEpochRequestsAndAnswerThemReturnsAllResponses(t *testing.T) {
 	e := newEpochManager(getMockShardNodeClients(), time.Second)
-	e.currentEpoch = 1
+	e.currentEpoch.Store(1)
 	request1 := &request{ctx: context.Background(), operationType: Write, block: "a", value: "123"}
 	request2 := &request{ctx: context.Background(), operationType: Read, block: "b"}
 	e.requests[1] = []*request{

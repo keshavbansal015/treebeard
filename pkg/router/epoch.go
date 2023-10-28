@@ -4,6 +4,7 @@ import (
 	"context"
 	"math"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	shardnodepb "github.com/dsg-uwaterloo/oblishard/api/shardnode"
@@ -17,7 +18,7 @@ type epochManager struct {
 	shardNodeRPCClients map[int]ReplicaRPCClientMap
 	requests            map[int][]*request            // map of epoch round to requests
 	reponseChans        map[int]map[*request]chan any // map of epoch round to map of request to response channel
-	currentEpoch        int
+	currentEpoch        atomic.Uint64
 	epochDuration       time.Duration
 	hasher              utils.Hasher
 	mu                  sync.Mutex
@@ -28,7 +29,7 @@ func newEpochManager(shardNodeRPCClients map[int]ReplicaRPCClientMap, epochDurat
 		shardNodeRPCClients: shardNodeRPCClients,
 		requests:            make(map[int][]*request),
 		reponseChans:        make(map[int]map[*request]chan any),
-		currentEpoch:        0,
+		currentEpoch:        atomic.Uint64{},
 		epochDuration:       epochDuration,
 		hasher:              utils.Hasher{KnownHashes: make(map[string]uint32)},
 	}
@@ -47,21 +48,23 @@ type request struct {
 }
 
 func (e *epochManager) addRequestToCurrentEpoch(r *request) chan any {
+	currentEpoch := int(e.currentEpoch.Load())
+
 	log.Debug().Msgf("Aquiring lock for epoch manager in addRequestToCurrentEpoch")
 	e.mu.Lock()
 	log.Debug().Msgf("Aquired lock for epoch manager in addRequestToCurrentEpoch")
-	log.Debug().Msgf("Adding request %v to epoch %d", r, e.currentEpoch)
+	log.Debug().Msgf("Adding request %v to epoch %d", r, currentEpoch)
 	defer func() {
 		log.Debug().Msgf("Releasing lock for epoch manager in addRequestToCurrentEpoch")
 		e.mu.Unlock()
 		log.Debug().Msgf("Released lock for epoch manager in addRequestToCurrentEpoch")
 	}()
-	e.requests[e.currentEpoch] = append(e.requests[e.currentEpoch], r)
-	if _, exists := e.reponseChans[e.currentEpoch]; !exists {
-		e.reponseChans[e.currentEpoch] = make(map[*request]chan any)
+	e.requests[currentEpoch] = append(e.requests[currentEpoch], r)
+	if _, exists := e.reponseChans[currentEpoch]; !exists {
+		e.reponseChans[currentEpoch] = make(map[*request]chan any)
 	}
-	e.reponseChans[e.currentEpoch][r] = make(chan any)
-	return e.reponseChans[e.currentEpoch][r]
+	e.reponseChans[currentEpoch][r] = make(chan any)
+	return e.reponseChans[currentEpoch][r]
 }
 
 func (e *epochManager) whereToForward(block string) (shardNodeID int) {
@@ -192,9 +195,7 @@ func (e *epochManager) run() {
 	for {
 		epochTimeOut := time.After(e.epochDuration)
 		<-epochTimeOut
-		e.mu.Lock()
-		go e.sendEpochRequestsAndAnswerThem(e.currentEpoch)
-		e.currentEpoch++
-		e.mu.Unlock()
+		go e.sendEpochRequestsAndAnswerThem(int(e.currentEpoch.Load()))
+		e.currentEpoch.Add(1)
 	}
 }
