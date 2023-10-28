@@ -41,14 +41,6 @@ func (p positionState) isPathInPaths(paths []int) bool {
 }
 
 type shardNodeFSM struct {
-	// I'm starting with simple maps and one mutex to handle race conditions.
-	// However, there are other ways to design this that might be better regarding performance:
-	//     1. using different mutexes for different maps so that we just block the exact map that is having multiple access.
-	//     2. using sync.Map. This takes away type safety but might have better performance.
-	//        * https://medium.com/@deckarep/the-new-kid-in-town-gos-sync-map-de24a6bf7c2c
-	//        * https://www.youtube.com/watch?v=C1EtfDnsdDs
-	//        * https://pkg.go.dev/sync
-
 	mu         sync.Mutex
 	requestLog map[string][]string // map of block to requesting requestIDs
 
