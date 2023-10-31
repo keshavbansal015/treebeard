@@ -156,7 +156,7 @@ LICENSE file.
     <!-- our internals -->
     <module>core</module>
     <module>binding-parent</module>
-    <module>distribution</module>
+<!--    <module>distribution</module>-->
     <module>oblishard</module>
     <!-- all the datastore bindings, lex sorted please -->
   </modules>

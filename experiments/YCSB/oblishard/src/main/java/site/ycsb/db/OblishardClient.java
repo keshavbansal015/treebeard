@@ -30,7 +30,6 @@ public class OblishardClient extends DB {
     ReadRequest req = ReadRequest.newBuilder().setBlock(key).build();
     try {
       ReadReply reply = stub.read(req);
-      System.out.println(reply);
       return Status.OK;
     } catch (StatusRuntimeException e) {
       System.out.println(e.toString());
@@ -45,10 +44,9 @@ public class OblishardClient extends DB {
 
   @Override
   public Status update(String table, String key, Map<String, ByteIterator> values) {
-    WriteRequest req = WriteRequest.newBuilder().setBlock(key).setValue(values.get("data").toString()).build();
+    WriteRequest req = WriteRequest.newBuilder().setBlock(key).setValue(values.values().toArray()[0].toString()).build();
     try {
       WriteReply reply = stub.write(req);
-      System.out.println(reply);
       return Status.OK;
     } catch (StatusRuntimeException e) {
       System.out.println(e.toString());
