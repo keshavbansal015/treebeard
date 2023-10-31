@@ -14,8 +14,6 @@ import (
 	"go.opentelemetry.io/otel"
 )
 
-// TOOD: check if Redis is in memory
-
 const (
 	Z                 = 1 // number of real blocks
 	S                 = 9 // number of dummies
