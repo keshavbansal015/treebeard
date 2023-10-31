@@ -106,7 +106,7 @@ func main() {
 			go asyncWrite(tracer, request.Block, request.NewValue, routerRPCClient, writeResponseChannel)
 		}
 	}
-	for i := 0; i <= readOperations+writeOperations; i++ {
+	for i := 0; i < readOperations+writeOperations; i++ {
 		select {
 		case readResponse := <-readResponseChannel:
 			if readResponse.err != nil {
