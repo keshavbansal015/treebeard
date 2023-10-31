@@ -54,7 +54,7 @@ func asyncWrite(tracer trace.Tracer, block string, newValue string, routerRPCCli
 // Usage: go run . -logpath=<log path> -conf=<configs path>
 func main() {
 	logPath := flag.String("logpath", "", "path to write logs")
-	configsPath := flag.String("conf", "", "configs directory path")
+	configsPath := flag.String("conf", "../../configs/default", "configs directory path")
 	flag.Parse()
 	utils.InitLogging(true, *logPath)
 

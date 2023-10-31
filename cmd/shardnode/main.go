@@ -20,7 +20,7 @@ func main() {
 	rpcPort := flag.Int("rpcport", 0, "node rpc port")
 	raftPort := flag.Int("raftport", 0, "node raft port")
 	joinAddr := flag.String("joinaddr", "", "the address of the initial raft node, which bootstraped the cluster")
-	configsPath := flag.String("conf", "../../configs", "configs directory path")
+	configsPath := flag.String("conf", "../../configs/default", "configs directory path")
 	logPath := flag.String("logpath", "", "path to write logs")
 	flag.Parse()
 

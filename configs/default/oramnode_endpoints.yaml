@@ -1,0 +1,19 @@
+endpoints:
+  - exposed_ip: localhost
+    local_bind_ip: localhost
+    port: 8751
+    id: 0
+    replicaid: 0
+    raftport: 3127
+  - exposed_ip: localhost
+    local_bind_ip: localhost
+    port: 8752
+    id: 0
+    replicaid: 1
+    raftport: 3128
+  - exposed_ip: localhost
+    local_bind_ip: localhost
+    port: 8753
+    id: 0
+    replicaid: 2
+    raftport: 3129
