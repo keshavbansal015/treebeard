@@ -16,15 +16,13 @@ import (
 
 // TOOD: check if Redis is in memory
 
-// MaxAccessCount is the maximum times we can access a bucket safely.
 const (
-	MaxAccessCount int    = 8
-	Z                     = 1
-	S                     = 9
-	shift                 = 1 // 2^shift children per node
-	host           string = "localhost:6379"
-	numDB                 = 2
-	treeHeight     int    = 3
+	Z                 = 1 // number of real blocks
+	S                 = 9 // number of dummies
+	shift             = 1 // 2^shift children per node
+	host       string = "localhost:6379"
+	numDB             = 2
+	treeHeight int    = 3
 )
 
 // TODO: at the end, we will need sth like this:
@@ -40,7 +38,7 @@ type StorageHandler struct {
 
 func NewStorageHandler() *StorageHandler {
 	s := &StorageHandler{
-		maxAccessCount: MaxAccessCount,
+		maxAccessCount: S,
 		host:           host,
 		db:             []int{1, 2},
 		key:            [][]byte{[]byte("passphrasewhichneedstobe32bytes!"), []byte("passphrasewhichneedstobe32bytes.")},
