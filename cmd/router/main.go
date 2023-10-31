@@ -16,9 +16,9 @@ import (
 func main() {
 
 	routerID := flag.Int("routerid", 0, "router id, starting consecutively from zero")
-	ip := flag.String("ip", "", "ip of this replica")
+	ip := flag.String("ip", "127.0.0.1", "ip of this replica")
 	port := flag.Int("port", 0, "node port")
-	configsPath := flag.String("conf", "", "configs directory path")
+	configsPath := flag.String("conf", "../../configs", "configs directory path")
 	logPath := flag.String("logpath", "", "path to write the logs")
 	flag.Parse()
 	utils.InitLogging(true, *logPath)
