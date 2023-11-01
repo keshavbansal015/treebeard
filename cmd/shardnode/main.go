@@ -36,6 +36,11 @@ func main() {
 	if err != nil {
 		log.Fatal().Msgf("Cannot read shard node endpoints from yaml file; %v", err)
 	}
+	redisEndpoints, err := config.ReadRedisEndpoints(path.Join(*configsPath, "redis_endpoints.yaml"))
+	if err != nil {
+		log.Fatal().Msgf("Cannot read redis endpoints from yaml file; %v", err)
+	}
+
 	rpcClients, err := shardnode.StartOramNodeRPCClients(oramNodeEndpoints)
 	if err != nil {
 		log.Fatal().Msgf("Failed to create client connections with oarm node servers; %v", err)
@@ -56,5 +61,5 @@ func main() {
 	}
 	defer stopTracingProvider(context.Background())
 
-	shardnode.StartServer(*shardNodeID, *ip, *rpcPort, *replicaID, *raftPort, *joinAddr, rpcClients, parameters, *configsPath)
+	shardnode.StartServer(*shardNodeID, *ip, *rpcPort, *replicaID, *raftPort, *joinAddr, rpcClients, parameters, len(redisEndpoints), *configsPath)
 }

@@ -1,7 +1,0 @@
-SET user1 value1
-SET user2 value2
-SET user3 value3
-SET user4 value4
-SET user5 value5
-SET user6 value6
-SET user7 value7

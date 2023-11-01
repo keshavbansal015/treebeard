@@ -21,7 +21,6 @@ import (
 
 type storage interface {
 	GetMaxAccessCount() int
-	GetRandomPathAndStorageID(context.Context) (path int, storageID int)
 	GetBlockOffset(bucketID int, storageID int, blocks []string) (offset int, isReal bool, blockFound string, err error)
 	GetAccessCount(bucketID int, storageID int) (count int, err error)
 	ReadBucket(bucketID int, storageID int) (blocks map[string]string, err error)
@@ -122,6 +121,7 @@ func (o *oramNodeServer) readAllBuckets(buckets []int, storageID int) (blocksFro
 	}
 	for _, bucket := range buckets {
 		blocks, err := o.storageHandler.ReadBucket(bucket, storageID)
+		log.Debug().Msgf("Got blocks %v from bucket %d", blocks, bucket)
 		if err != nil {
 			return nil, fmt.Errorf("unable to read bucket; %s", err)
 		}
@@ -202,6 +202,7 @@ func (o *oramNodeServer) evict(paths []int, storageID int) error {
 	}
 
 	receivedBlocksIsWritten, err := o.writeBackBlocksToAllBuckets(buckets, storageID, blocksFromReadBucket, receivedBlocks)
+	log.Debug().Msgf("Received blocks is written %v", receivedBlocksIsWritten)
 	if err != nil {
 		return fmt.Errorf("unable to perform WriteBucket on all levels; %s", err)
 	}
@@ -350,7 +351,7 @@ func (o *oramNodeServer) JoinRaftVoter(ctx context.Context, joinRaftVoterRequest
 	return &pb.JoinRaftVoterReply{Success: true}, nil
 }
 
-func StartServer(oramNodeServerID int, ip string, rpcPort int, replicaID int, raftPort int, joinAddr string, shardNodeRPCClients map[int]ReplicaRPCClientMap, parameters config.Parameters) {
+func StartServer(oramNodeServerID int, ip string, rpcPort int, replicaID int, raftPort int, joinAddr string, shardNodeRPCClients map[int]ReplicaRPCClientMap, redisEndpoints []config.RedisEndpoint, parameters config.Parameters) {
 	isFirst := joinAddr == ""
 	oramNodeFSM := newOramNodeFSM()
 	r, err := startRaftServer(isFirst, ip, replicaID, raftPort, oramNodeFSM)
@@ -387,7 +388,14 @@ func StartServer(oramNodeServerID int, ip string, rpcPort int, replicaID int, ra
 	if err != nil {
 		log.Fatal().Msgf("failed to listen: %v", err)
 	}
-	oramNodeServer := newOramNodeServer(oramNodeServerID, replicaID, r, oramNodeFSM, shardNodeRPCClients, strg.NewStorageHandler(), parameters)
+	storageHandler := strg.NewStorageHandler(parameters.TreeHeight, parameters.Z, parameters.S, parameters.Shift, redisEndpoints)
+	if oramNodeServerID == 0 && isFirst {
+		err = storageHandler.InitDatabase()
+		if err != nil {
+			log.Fatal().Msgf("failed to initialize the database: %v", err)
+		}
+	}
+	oramNodeServer := newOramNodeServer(oramNodeServerID, replicaID, r, oramNodeFSM, shardNodeRPCClients, storageHandler, parameters)
 	go func() {
 		for {
 			time.Sleep(200 * time.Millisecond)
@@ -398,7 +406,7 @@ func StartServer(oramNodeServerID int, ip string, rpcPort int, replicaID int, ra
 			}
 			oramNodeServer.readPathCounterMu.Unlock()
 			if needEviction {
-				oramNodeServer.evict([]int{0, 1, 2}, 0) // TODO: make it lexicographic
+				oramNodeServer.evict([]int{1, 2, 3, 4}, 0) // TODO: make it lexicographic
 			}
 		}
 	}()

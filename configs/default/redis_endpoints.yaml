@@ -1,0 +1,5 @@
+endpoints:
+  - exposed_ip: localhost
+    local_bind_ip: localhost
+    port: 6379
+    id: 0

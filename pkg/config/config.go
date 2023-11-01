@@ -27,6 +27,12 @@ type OramNodeEndpoint struct {
 	ReplicaID int
 }
 
+type RedisEndpoint struct {
+	IP   string `yaml:"exposed_ip"`
+	Port int
+	ID   int
+}
+
 type RouterConfig struct {
 	Endpoints []RouterEndpoint
 }
@@ -39,12 +45,20 @@ type OramNodeConfig struct {
 	Endpoints []OramNodeEndpoint
 }
 
+type RedisConfig struct {
+	Endpoints []RedisEndpoint
+}
+
 type Parameters struct {
 	MaxBlocksToSend int  `yaml:"max-blocks-to-send"`
 	EvictionRate    int  `yaml:"eviction-rate"`
 	BatchSize       int  `yaml:"batch-size"`
 	EpochTime       int  `yaml:"epoch-time"`
 	Trace           bool `yaml:"trace"`
+	Z               int  `yaml:"Z"`
+	S               int  `yaml:"S"`
+	Shift           int  `yaml:"shift"`
+	TreeHeight      int  `yaml:"tree-height"`
 }
 
 func ReadRouterEndpoints(path string) ([]RouterEndpoint, error) {
@@ -85,6 +99,21 @@ func ReadOramNodeEndpoints(path string) ([]OramNodeEndpoint, error) {
 	}
 
 	var config OramNodeConfig
+	err = yaml.Unmarshal(yamlFile, &config)
+	if err != nil {
+		return nil, err
+	}
+	return config.Endpoints, nil
+}
+
+func ReadRedisEndpoints(path string) ([]RedisEndpoint, error) {
+	log.Debug().Msgf("Reading redis endpoints from the yaml file")
+	yamlFile, err := os.ReadFile(path)
+	if err != nil {
+		return nil, err
+	}
+
+	var config RedisConfig
 	err = yaml.Unmarshal(yamlFile, &config)
 	if err != nil {
 		return nil, err

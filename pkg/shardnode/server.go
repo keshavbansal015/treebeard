@@ -27,19 +27,21 @@ type shardNodeServer struct {
 	raftNode          *raft.Raft
 	shardNodeFSM      *shardNodeFSM
 	oramNodeClients   RPCClientMap
-	storageHandler    *storage.StorageHandler
+	storageCount      int
+	storageTreeHeight int
 	batchManager      *batchManager
 }
 
-func newShardNodeServer(shardNodeServerID int, replicaID int, raftNode *raft.Raft, fsm *shardNodeFSM, oramNodeRPCClients RPCClientMap, storageHandler *storage.StorageHandler, batchManager *batchManager) *shardNodeServer {
+func newShardNodeServer(shardNodeServerID int, replicaID int, raftNode *raft.Raft, fsm *shardNodeFSM, oramNodeRPCClients RPCClientMap, storageCount int, storageTreeHeight int, batchManager *batchManager) *shardNodeServer {
 	return &shardNodeServer{
 		shardNodeServerID: shardNodeServerID,
 		replicaID:         replicaID,
 		raftNode:          raftNode,
 		shardNodeFSM:      fsm,
 		oramNodeClients:   oramNodeRPCClients,
-		storageHandler:    storageHandler,
 		batchManager:      batchManager,
+		storageCount:      storageCount,
+		storageTreeHeight: storageTreeHeight,
 	}
 }
 
@@ -55,7 +57,7 @@ const (
 func (s *shardNodeServer) getWhatToSendBasedOnRequest(ctx context.Context, block string, requestID string) (blockToRequest string, path int, storageID int) {
 	log.Debug().Msgf("Getting path and storageID based on request for block %s and requestID %s", block, requestID)
 	if !s.shardNodeFSM.isInitialRequest(block, requestID) {
-		path, storageID = s.storageHandler.GetRandomPathAndStorageID(ctx)
+		path, storageID = storage.GetRandomPathAndStorageID(s.storageTreeHeight, s.storageCount)
 		return strconv.Itoa(rand.Int()), path, storageID
 	} else {
 		s.shardNodeFSM.positionMapMu.Lock()
@@ -125,7 +127,7 @@ func (s *shardNodeServer) query(ctx context.Context, op OperationType, block str
 		return "", fmt.Errorf("unable to read requestid from request; %s", err)
 	}
 
-	newPath, newStorageID := s.storageHandler.GetRandomPathAndStorageID(ctx)
+	newPath, newStorageID := storage.GetRandomPathAndStorageID(s.storageTreeHeight, s.storageCount)
 	requestReplicationCommand, err := newRequestReplicationCommand(block, requestID, newPath, newStorageID)
 	if err != nil {
 		return "", fmt.Errorf("could not create request replication command; %s", err)
@@ -282,7 +284,7 @@ func (s *shardNodeServer) JoinRaftVoter(ctx context.Context, joinRaftVoterReques
 	return &pb.JoinRaftVoterReply{Success: true}, nil
 }
 
-func StartServer(shardNodeServerID int, ip string, rpcPort int, replicaID int, raftPort int, joinAddr string, oramNodeRPCClients map[int]ReplicaRPCClientMap, parameters config.Parameters, configsPath string) {
+func StartServer(shardNodeServerID int, ip string, rpcPort int, replicaID int, raftPort int, joinAddr string, oramNodeRPCClients map[int]ReplicaRPCClientMap, parameters config.Parameters, storageCount int, configsPath string) {
 	isFirst := joinAddr == ""
 	shardNodeFSM := newShardNodeFSM()
 	r, err := startRaftServer(isFirst, ip, replicaID, raftPort, shardNodeFSM)
@@ -322,11 +324,7 @@ func StartServer(shardNodeServerID int, ip string, rpcPort int, replicaID int, r
 	if err != nil {
 		log.Fatal().Msgf("failed to listen: %v", err)
 	}
-	storageHandler := storage.NewStorageHandler()
-	if isFirst {
-		storageHandler.InitDatabase(configsPath)
-	}
-	shardnodeServer := newShardNodeServer(shardNodeServerID, replicaID, r, shardNodeFSM, oramNodeRPCClients, storageHandler, newBatchManager(parameters.BatchSize))
+	shardnodeServer := newShardNodeServer(shardNodeServerID, replicaID, r, shardNodeFSM, oramNodeRPCClients, storageCount, parameters.TreeHeight, newBatchManager(parameters.BatchSize))
 	go shardnodeServer.sendBatchesForever()
 
 	grpcServer := grpc.NewServer(grpc.UnaryInterceptor(rpc.ContextPropagationUnaryServerInterceptor()))

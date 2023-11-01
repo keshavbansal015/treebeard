@@ -5,66 +5,64 @@ package storage
 import (
 	"context"
 	"errors"
+	"fmt"
 	"math"
 	"math/rand"
-	"path"
 	"strconv"
+	"strings"
 
+	"github.com/dsg-uwaterloo/oblishard/pkg/config"
+	"github.com/redis/go-redis/v9"
 	"github.com/rs/zerolog/log"
-	"go.opentelemetry.io/otel"
 )
 
-const (
-	Z                 = 1 // number of real blocks
-	S                 = 9 // number of dummies
-	shift             = 1 // 2^shift children per node
-	host       string = "localhost:6379"
-	numDB             = 2
-	treeHeight int    = 3
-)
-
-// TODO: at the end, we will need sth like this:
-// map[redis replica id: int] -> replicaInfo{host: "ip:port", redisDBNumber}
+// Path and bucket id start from one.
 
 // StorageHandler is responsible for handling one or multiple storage shards.
 type StorageHandler struct {
-	maxAccessCount int
-	host           string
-	db             []int
-	key            [][]byte
+	treeHeight int
+	Z          int
+	S          int
+	shift      int
+	storages   map[int]*redis.Client // map of storage id to redis client
+	key        []byte
 }
 
-func NewStorageHandler() *StorageHandler {
+func NewStorageHandler(treeHeight int, Z int, S int, shift int, redisEndpoints []config.RedisEndpoint) *StorageHandler { // map of storage id to storage info
+	log.Debug().Msgf("Creating a new storage handler")
+	storages := make(map[int]*redis.Client)
+	for _, endpoint := range redisEndpoints {
+		storages[endpoint.ID] = getClient(endpoint.IP, endpoint.Port)
+	}
 	s := &StorageHandler{
-		maxAccessCount: S,
-		host:           host,
-		db:             []int{1, 2},
-		key:            [][]byte{[]byte("passphrasewhichneedstobe32bytes!"), []byte("passphrasewhichneedstobe32bytes.")},
+		treeHeight: treeHeight,
+		Z:          Z,
+		S:          S,
+		shift:      shift,
+		storages:   storages,
+		key:        []byte("passphrasewhichneedstobe32bytes!"),
 	}
 	return s
 }
 
-func (s *StorageHandler) InitDatabase(configsPath string) {
-	log.Debug().Msgf("Initializing the redis database")
-	for i := 0; i < numDB; i++ {
-		s.databaseInit(path.Join(configsPath, "redis-data.txt"), i)
-	}
-}
-
 func (s *StorageHandler) GetMaxAccessCount() int {
-	return s.maxAccessCount
+	return s.S
 }
 
-// It returns valid randomly chosen path and storageID.
-func (s *StorageHandler) GetRandomPathAndStorageID(ctx context.Context) (path int, storageID int) {
-	log.Debug().Msgf("Getting random path and storage id")
-	tracer := otel.Tracer("")
-	_, span := tracer.Start(ctx, "get random path and storage id")
-	paths := int(math.Pow(2, float64(treeHeight-1)))
-	randomPath := rand.Intn(paths) + 1
-	randomDB := rand.Intn(numDB)
-	span.End()
-	return randomPath, randomDB
+func (s *StorageHandler) InitDatabase() error {
+	log.Debug().Msgf("Initializing the redis database")
+	for _, client := range s.storages {
+		fmt.Println(client)
+		err := client.FlushAll(context.Background()).Err()
+		if err != nil {
+			return err
+		}
+		err = s.databaseInit(client)
+		if err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // It returns a block offset based on the blocks argument.
@@ -74,7 +72,7 @@ func (s *StorageHandler) GetRandomPathAndStorageID(ctx context.Context) (path in
 func (s *StorageHandler) GetBlockOffset(bucketID int, storageID int, blocks []string) (offset int, isReal bool, blockFound string, err error) {
 	log.Debug().Msgf("Getting block offset for bucket %d and storage %d", bucketID, storageID)
 	blockMap := make(map[string]int)
-	for i := 0; i < Z; i++ {
+	for i := 0; i < s.Z; i++ {
 		pos, key, err := s.GetMetadata(bucketID, strconv.Itoa(i), storageID)
 		if err != nil {
 			return -1, false, "", err
@@ -96,7 +94,7 @@ func (s *StorageHandler) GetBlockOffset(bucketID int, storageID int, blocks []st
 // This is helpful to know when to do an early reshuffle.
 func (s *StorageHandler) GetAccessCount(bucketID int, storageID int) (count int, err error) {
 	log.Debug().Msgf("Getting access count for bucket %d and storage %d", bucketID, storageID)
-	client := s.getClient(storageID)
+	client := s.storages[storageID]
 	ctx := context.Background()
 	accessCountS, err := client.HGet(ctx, strconv.Itoa(-1*bucketID), "accessCount").Result()
 	if err != nil {
@@ -115,12 +113,12 @@ func (s *StorageHandler) GetAccessCount(bucketID int, storageID int) (count int,
 // blocks is a map of block id to block values.
 func (s *StorageHandler) ReadBucket(bucketID int, storageID int) (blocks map[string]string, err error) {
 	log.Debug().Msgf("Reading bucket %d from storage %d", bucketID, storageID)
-	client := s.getClient(storageID)
+	client := s.storages[storageID]
 	ctx := context.Background()
 	blocks = make(map[string]string)
 	i := 0
 	bit := 0
-	for i < Z {
+	for i < s.Z {
 		pos, key, err := s.GetMetadata(bucketID, strconv.Itoa(bit), storageID)
 		if err != nil {
 			return nil, err
@@ -130,7 +128,7 @@ func (s *StorageHandler) ReadBucket(bucketID int, storageID int) (blocks map[str
 			return nil, err
 		}
 		if value != "__null__" {
-			value, err = Decrypt(value, s.key[storageID])
+			value, err = Decrypt(value, s.key)
 			blocks[key] = value
 			i++
 		}
@@ -148,10 +146,10 @@ func (s *StorageHandler) ReadBucket(bucketID int, storageID int) (blocks map[str
 func (s *StorageHandler) WriteBucket(bucketID int, storageID int, readBucketBlocks map[string]string, shardNodeBlocks map[string]string, isAtomic bool) (writtenBlocks map[string]string, err error) {
 	log.Debug().Msgf("Writing bucket %d to storage %d", bucketID, storageID)
 	// TODO: It should make the counter zero
-	values := make([]string, Z+S)
-	metadatas := make([]string, Z+S)
-	realIndex := make([]int, Z+S)
-	for k := 0; k < Z+S; k++ {
+	values := make([]string, s.Z+s.S)
+	metadatas := make([]string, s.Z+s.S)
+	realIndex := make([]int, s.Z+s.S)
+	for k := 0; k < s.Z+s.S; k++ {
 		// Generate a random number between 0 and 9
 		realIndex[k] = k
 	}
@@ -159,9 +157,15 @@ func (s *StorageHandler) WriteBucket(bucketID int, storageID int, readBucketBloc
 	writtenBlocks = make(map[string]string)
 	i := 0
 	for key, value := range readBucketBlocks {
-		if len(writtenBlocks) < Z {
+		if strings.HasPrefix(key, "dummy") {
+			continue
+		}
+		if len(writtenBlocks) < s.Z {
 			writtenBlocks[key] = value
-			values[realIndex[i]] = value
+			values[realIndex[i]], err = Encrypt(value, s.key)
+			if err != nil {
+				return nil, err
+			}
 			metadatas[i] = strconv.Itoa(realIndex[i]) + key
 			i++
 			// pos_map is updated in server?
@@ -170,9 +174,15 @@ func (s *StorageHandler) WriteBucket(bucketID int, storageID int, readBucketBloc
 		}
 	}
 	for key, value := range shardNodeBlocks {
-		if len(writtenBlocks) < Z {
+		if strings.HasPrefix(key, "dummy") {
+			continue
+		}
+		if len(writtenBlocks) < s.Z {
 			writtenBlocks[key] = value
-			values[realIndex[i]] = value
+			values[realIndex[i]], err = Encrypt(value, s.key)
+			if err != nil {
+				return nil, err
+			}
 			metadatas[i] = strconv.Itoa(realIndex[i]) + key
 			i++
 		} else {
@@ -180,10 +190,10 @@ func (s *StorageHandler) WriteBucket(bucketID int, storageID int, readBucketBloc
 		}
 	}
 	dummyCount := rand.Intn(1000)
-	for ; i < Z+S; i++ {
+	for ; i < s.Z+s.S; i++ {
 		dummyID := "dummy" + strconv.Itoa(dummyCount)
 		dummyString := "b" + strconv.Itoa(bucketID) + "d" + strconv.Itoa(i)
-		dummyString, err = Encrypt(dummyString, s.key[storageID])
+		dummyString, err = Encrypt(dummyString, s.key)
 		if err != nil {
 			log.Error().Msgf("Error encrypting data")
 			return nil, err
@@ -195,12 +205,12 @@ func (s *StorageHandler) WriteBucket(bucketID int, storageID int, readBucketBloc
 		dummyCount++
 	}
 	// push content of value array and meta data array
-	err = s.Push(bucketID, values, storageID)
+	err = s.Push(bucketID, values, s.storages[storageID])
 	if err != nil {
 		log.Error().Msgf("Error pushing values to db: %v", err)
 		return nil, err
 	}
-	err = s.PushMetadata(bucketID, metadatas, storageID)
+	err = s.PushMetadata(bucketID, metadatas, s.storages[storageID])
 	if err != nil {
 		log.Error().Msgf("Error pushing metadatas to db: %v", err)
 		return nil, err
@@ -211,7 +221,7 @@ func (s *StorageHandler) WriteBucket(bucketID int, storageID int, readBucketBloc
 // ReadBlock reads a single block using the offset.
 func (s *StorageHandler) ReadBlock(bucketID int, storageID int, offset int) (value string, err error) {
 	log.Debug().Msgf("Reading block %d from bucket %d in storage %d", offset, bucketID, storageID)
-	client := s.getClient(storageID)
+	client := s.storages[storageID]
 	ctx := context.Background()
 	value, err = client.HGet(ctx, strconv.Itoa(bucketID), strconv.Itoa(offset)).Result()
 	if err != nil {
@@ -222,7 +232,7 @@ func (s *StorageHandler) ReadBlock(bucketID int, storageID int, offset int) (val
 		return "", err
 	}
 	// decode value
-	value, err = Decrypt(value, s.key[storageID])
+	value, err = Decrypt(value, s.key)
 	if err != nil {
 		return "", err
 	}
@@ -252,8 +262,8 @@ func (s *StorageHandler) GetBucketsInPaths(paths []int) (bucketIDs []int, err er
 	log.Debug().Msgf("Getting buckets in paths %v", paths)
 	buckets := make(IntSet)
 	for i := 0; i < len(paths); i++ {
-		leafID := int(math.Pow(2, float64(treeHeight-1)) + float64(paths[i]) - 1)
-		for bucketId := leafID; bucketId > 0; bucketId = bucketId >> shift {
+		leafID := int(math.Pow(2, float64(s.treeHeight-1)) + float64(paths[i]) - 1)
+		for bucketId := leafID; bucketId > 0; bucketId = bucketId >> s.shift {
 			if buckets.Contains(bucketId) {
 				break
 			} else {
@@ -268,4 +278,13 @@ func (s *StorageHandler) GetBucketsInPaths(paths []int) (bucketIDs []int, err er
 		i++
 	}
 	return bucketIDs, nil
+}
+
+// It returns valid randomly chosen path and storageID.
+func GetRandomPathAndStorageID(treeHeight int, storageCount int) (path int, storageID int) {
+	log.Debug().Msgf("Getting random path and storage id")
+	paths := int(math.Pow(2, float64(treeHeight-1)))
+	randomPath := rand.Intn(paths) + 1
+	randomStorage := rand.Intn(storageCount)
+	return randomPath, randomStorage
 }

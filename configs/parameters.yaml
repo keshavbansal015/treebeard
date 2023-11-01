@@ -3,3 +3,7 @@ eviction-rate: 40 # How many ReadPath operations before eviction
 batch-size: 2 # Size of each batch of requests  
 epoch-time: 10 # How many milliseconds between each epoch
 trace: false # Whether to use opentelemetry and jaeger
+Z: 1 # number of real blocks per bucket
+S: 9 # number of dummy blocks per bucket
+shift: 1 # 2^shift is the tree branching factor
+tree-height: 3 # height of the tree

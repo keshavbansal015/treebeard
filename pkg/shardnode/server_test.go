@@ -9,14 +9,13 @@ import (
 	"github.com/dsg-uwaterloo/oblishard/api/oramnode"
 	oramnodepb "github.com/dsg-uwaterloo/oblishard/api/oramnode"
 	shardnodepb "github.com/dsg-uwaterloo/oblishard/api/shardnode"
-	"github.com/dsg-uwaterloo/oblishard/pkg/storage"
 	"github.com/hashicorp/raft"
 	"github.com/phayes/freeport"
 	"google.golang.org/grpc/metadata"
 )
 
 func TestGetPathAndStorageBasedOnRequestWhenInitialRequestReturnsRealBlockAndPathAndStorage(t *testing.T) {
-	s := newShardNodeServer(0, 0, &raft.Raft{}, newShardNodeFSM(), nil, storage.NewStorageHandler(), newBatchManager(1))
+	s := newShardNodeServer(0, 0, &raft.Raft{}, newShardNodeFSM(), nil, 4, 5, newBatchManager(1))
 	s.shardNodeFSM.requestLog["block1"] = []string{"request1", "request2"}
 	s.shardNodeFSM.positionMap["block1"] = positionState{path: 23, storageID: 3}
 
@@ -33,7 +32,7 @@ func TestGetPathAndStorageBasedOnRequestWhenInitialRequestReturnsRealBlockAndPat
 }
 
 func TestCreateResponseChannelForRequestIDAddsChannelToResponseChannel(t *testing.T) {
-	s := newShardNodeServer(0, 0, &raft.Raft{}, newShardNodeFSM(), nil, storage.NewStorageHandler(), newBatchManager(1))
+	s := newShardNodeServer(0, 0, &raft.Raft{}, newShardNodeFSM(), nil, 4, 5, newBatchManager(1))
 	s.createResponseChannelForRequestID("req1")
 	if _, exists := s.shardNodeFSM.responseChannel["req1"]; !exists {
 		t.Errorf("Expected a new channel for key req1 but nothing found!")
@@ -41,7 +40,7 @@ func TestCreateResponseChannelForRequestIDAddsChannelToResponseChannel(t *testin
 }
 
 func TestQueryReturnsErrorForNonLeaderRaftPeer(t *testing.T) {
-	s := newShardNodeServer(0, 0, &raft.Raft{}, newShardNodeFSM(), nil, storage.NewStorageHandler(), newBatchManager(1))
+	s := newShardNodeServer(0, 0, &raft.Raft{}, newShardNodeFSM(), nil, 4, 5, newBatchManager(1))
 	_, err := s.query(context.Background(), Read, "block", "")
 	if err == nil {
 		t.Errorf("A non-leader raft peer should return error after call to query.")
@@ -116,13 +115,13 @@ func startLeaderRaftNodeServer(t *testing.T, batchSize int, withBatchReponses bo
 	if withBatchReponses {
 		oramNodeClients = getMockOramNodeClientsWithBatchResponses()
 	}
-	s := newShardNodeServer(0, 0, r, fsm, oramNodeClients, storage.NewStorageHandler(), newBatchManager(batchSize))
+	s := newShardNodeServer(0, 0, r, fsm, oramNodeClients, 4, 5, newBatchManager(batchSize))
 	go s.sendBatchesForever()
 	return s
 }
 
 func TestSendCurrentBatchesSendsQueuesExceedingBatchSizeRequests(t *testing.T) {
-	s := newShardNodeServer(0, 0, &raft.Raft{}, &shardNodeFSM{}, getMockOramNodeClientsWithBatchResponses(), storage.NewStorageHandler(), newBatchManager(3))
+	s := newShardNodeServer(0, 0, &raft.Raft{}, &shardNodeFSM{}, getMockOramNodeClientsWithBatchResponses(), 4, 5, newBatchManager(3))
 	s.batchManager.responseChannel["a"] = make(chan string)
 	s.batchManager.storageQueues[1] = []blockRequest{{block: "a", path: 1}}
 	s.batchManager.responseChannel["b"] = make(chan string)
@@ -151,7 +150,7 @@ func TestSendCurrentBatchesSendsQueuesExceedingBatchSizeRequests(t *testing.T) {
 }
 
 func TestSendCurrentBatchesOnlySendsBatchSizeRequestsAtATime(t *testing.T) {
-	s := newShardNodeServer(0, 0, &raft.Raft{}, &shardNodeFSM{}, getMockOramNodeClientsWithBatchResponses(), storage.NewStorageHandler(), newBatchManager(2))
+	s := newShardNodeServer(0, 0, &raft.Raft{}, &shardNodeFSM{}, getMockOramNodeClientsWithBatchResponses(), 4, 5, newBatchManager(2))
 	s.batchManager.responseChannel["a"] = make(chan string)
 	s.batchManager.storageQueues[1] = []blockRequest{{block: "a", path: 1}}
 	s.batchManager.responseChannel["b"] = make(chan string)
@@ -181,7 +180,7 @@ func TestSendCurrentBatchesOnlySendsBatchSizeRequestsAtATime(t *testing.T) {
 }
 
 func TestSendCurrentBatchesRemovesSentQueueAndResponseChannel(t *testing.T) {
-	s := newShardNodeServer(0, 0, &raft.Raft{}, &shardNodeFSM{}, getMockOramNodeClients(), storage.NewStorageHandler(), newBatchManager(1))
+	s := newShardNodeServer(0, 0, &raft.Raft{}, &shardNodeFSM{}, getMockOramNodeClients(), 4, 5, newBatchManager(1))
 	s.batchManager.responseChannel["a"] = make(chan string)
 	s.batchManager.storageQueues[1] = []blockRequest{{block: "a", path: 1}}
 	go s.sendCurrentBatches()
@@ -356,7 +355,7 @@ func TestQueryReturnsResponseToAllWaitingRequests(t *testing.T) {
 }
 
 func TestGetBlocksForSendReturnsAtMostMaxBlocksFromTheStash(t *testing.T) {
-	s := newShardNodeServer(0, 0, &raft.Raft{}, newShardNodeFSM(), make(RPCClientMap), storage.NewStorageHandler(), newBatchManager(1))
+	s := newShardNodeServer(0, 0, &raft.Raft{}, newShardNodeFSM(), make(RPCClientMap), 4, 5, newBatchManager(1))
 	s.shardNodeFSM.stash = map[string]stashState{
 		"block1": {value: "block1", logicalTime: 0, waitingStatus: false},
 		"block2": {value: "block2", logicalTime: 0, waitingStatus: false},
@@ -379,7 +378,7 @@ func TestGetBlocksForSendReturnsAtMostMaxBlocksFromTheStash(t *testing.T) {
 }
 
 func TestGetBlocksForSendReturnsOnlyBlocksForPathAndStorageID(t *testing.T) {
-	s := newShardNodeServer(0, 0, &raft.Raft{}, newShardNodeFSM(), make(RPCClientMap), storage.NewStorageHandler(), newBatchManager(1))
+	s := newShardNodeServer(0, 0, &raft.Raft{}, newShardNodeFSM(), make(RPCClientMap), 4, 5, newBatchManager(1))
 	s.shardNodeFSM.stash = map[string]stashState{
 		"block1": {value: "block1", logicalTime: 0, waitingStatus: false},
 		"block2": {value: "block2", logicalTime: 0, waitingStatus: false},
@@ -398,7 +397,7 @@ func TestGetBlocksForSendReturnsOnlyBlocksForPathAndStorageID(t *testing.T) {
 }
 
 func TestGetBlocksForSendDoesNotReturnsWaitingBlocks(t *testing.T) {
-	s := newShardNodeServer(0, 0, &raft.Raft{}, newShardNodeFSM(), make(RPCClientMap), storage.NewStorageHandler(), newBatchManager(1))
+	s := newShardNodeServer(0, 0, &raft.Raft{}, newShardNodeFSM(), make(RPCClientMap), 4, 5, newBatchManager(1))
 	s.shardNodeFSM.stash = map[string]stashState{
 		"block1": {value: "block1", logicalTime: 0, waitingStatus: true},
 		"block2": {value: "block2", logicalTime: 0, waitingStatus: false},
