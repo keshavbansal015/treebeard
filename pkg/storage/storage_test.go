@@ -1,8 +1,6 @@
 package storage
 
 import (
-	//"fmt"
-	"context"
 	"strconv"
 	"testing"
 
@@ -34,8 +32,9 @@ func TestGetBlockOffset(t *testing.T) {
 	expectedFound := "user1"
 	expectedValue := "value1"
 
-	s := NewStorageHandler(3, 9, 1, 1, []config.RedisEndpoint{{ID: 0, IP: "localhost", Port: 6379}})
-	s.WriteBucket(0, 0, map[string]string{"user1": "value1"}, map[string]string{}, true)
+	s := NewStorageHandler(3, 1, 9, 1, []config.RedisEndpoint{{ID: 0, IP: "localhost", Port: 6379}})
+	s.InitDatabase()
+	s.WriteBucket(1, 0, map[string]string{"user1": "value1"}, map[string]string{}, true)
 
 	offset, isReal, blockFound, err := s.GetBlockOffset(bucketId, storageId, []string{"user8", "user10", expectedFound})
 	if err != nil {
@@ -52,7 +51,7 @@ func TestGetBlockOffset(t *testing.T) {
 		t.Errorf("expecting %s, but found %s", expectedValue, val)
 	}
 	if err != nil {
-		t.Errorf("expected no erros in ReadBlock")
+		t.Errorf("expected no erros in ReadBlock %s", err)
 	}
 }
 
@@ -60,7 +59,8 @@ func TestGetBlockOffset(t *testing.T) {
 func TestReadBlock(t *testing.T) {
 	bucketId := 4
 	storageId := 0
-	s := NewStorageHandler(3, 9, 1, 1, []config.RedisEndpoint{{ID: 0, IP: "localhost", Port: 6379}})
+	s := NewStorageHandler(3, 1, 9, 1, []config.RedisEndpoint{{ID: 0, IP: "localhost", Port: 6379}})
+	s.InitDatabase()
 	for i := 0; i < s.Z+s.S; i++ {
 		val, err := s.ReadBlock(bucketId, storageId, i)
 		if err != nil {
@@ -82,8 +82,8 @@ func TestReadBlock(t *testing.T) {
 func TestWriteBucketBlock(t *testing.T) {
 	bucketId := 1
 	storageId := 0
-	s := NewStorageHandler(3, 9, 1, 1, []config.RedisEndpoint{{ID: 0, IP: "localhost", Port: 6379}})
-	s.storages[0].FlushAll(context.Background())
+	s := NewStorageHandler(3, 1, 9, 1, []config.RedisEndpoint{{ID: 0, IP: "localhost", Port: 6379}})
+	s.InitDatabase()
 	expectedWrittenBlocks := map[string]string{"user1": "value1"}
 	writtenBlocks, _ := s.WriteBucket(bucketId, storageId, map[string]string{"user1": "value1"}, map[string]string{"user10": "value10"}, true)
 	for block := range writtenBlocks {
