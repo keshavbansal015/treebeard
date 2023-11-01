@@ -90,7 +90,7 @@ func TestSimpleRequestsReturnCorrectResponses(t *testing.T) {
 		t.Errorf("unable to write data to the system; %v", err)
 	}
 	if writeValue == false {
-		t.Errorf("wirte should return success: true")
+		t.Errorf("write should return success: true")
 	}
 
 	readValue, err := routerRPCClient.Read(context.Background(), "cat")
