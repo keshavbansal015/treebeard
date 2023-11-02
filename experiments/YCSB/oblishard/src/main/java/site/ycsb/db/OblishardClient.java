@@ -47,7 +47,11 @@ public class OblishardClient extends DB {
     WriteRequest req = WriteRequest.newBuilder().setBlock(key).setValue(values.values().toArray()[0].toString()).build();
     try {
       WriteReply reply = stub.write(req);
-      return Status.OK;
+      if (reply.getSuccess()) {
+        return Status.OK;
+      } else {
+        return Status.ERROR;
+      }
     } catch (StatusRuntimeException e) {
       System.out.println(e.toString());
       return Status.ERROR;
@@ -59,7 +63,11 @@ public class OblishardClient extends DB {
     WriteRequest req = WriteRequest.newBuilder().setBlock(key).setValue(values.values().toArray()[0].toString()).build();
     try {
       WriteReply reply = stub.write(req);
-      return Status.OK;
+      if (reply.getSuccess()) {
+        return Status.OK;
+      } else {
+        return Status.ERROR;
+      }
     } catch (StatusRuntimeException e) {
       System.out.println(e.toString());
       return Status.ERROR;
