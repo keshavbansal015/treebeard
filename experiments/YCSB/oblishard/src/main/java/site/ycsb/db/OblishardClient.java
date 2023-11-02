@@ -56,7 +56,14 @@ public class OblishardClient extends DB {
 
   @Override
   public Status insert(String table, String key, Map<String, ByteIterator> values) {
-    return Status.ERROR;
+    WriteRequest req = WriteRequest.newBuilder().setBlock(key).setValue(values.values().toArray()[0].toString()).build();
+    try {
+      WriteReply reply = stub.write(req);
+      return Status.OK;
+    } catch (StatusRuntimeException e) {
+      System.out.println(e.toString());
+      return Status.ERROR;
+    }
   }
 
   @Override
