@@ -406,7 +406,8 @@ func StartServer(oramNodeServerID int, ip string, rpcPort int, replicaID int, ra
 			}
 			oramNodeServer.readPathCounterMu.Unlock()
 			if needEviction {
-				oramNodeServer.evict([]int{1, 2, 3, 4}, 0) // TODO: make it lexicographic
+				paths, storageID := strg.GetMultipleRandomPathAndStorageID(parameters.TreeHeight, len(redisEndpoints), parameters.EvictPathCount)
+				oramNodeServer.evict(paths, storageID)
 			}
 		}
 	}()

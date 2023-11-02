@@ -52,6 +52,7 @@ type RedisConfig struct {
 type Parameters struct {
 	MaxBlocksToSend int  `yaml:"max-blocks-to-send"`
 	EvictionRate    int  `yaml:"eviction-rate"`
+	EvictPathCount  int  `yaml:"evict-path-count"`
 	BatchSize       int  `yaml:"batch-size"`
 	EpochTime       int  `yaml:"epoch-time"`
 	Trace           bool `yaml:"trace"`

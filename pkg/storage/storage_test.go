@@ -92,3 +92,25 @@ func TestWriteBucketBlock(t *testing.T) {
 		}
 	}
 }
+
+func TestGetMultipleRandomPathAndStorageIDReturnsCountUniquePaths(t *testing.T) {
+	paths, storageID := GetMultipleRandomPathAndStorageID(3, 2, 2)
+	if len(paths) != 2 {
+		t.Errorf("expected 2 random paths but got %v", paths)
+	}
+	for _, path := range paths {
+		if path < 1 || path > 4 {
+			t.Errorf("expected path to be between 1 and 4")
+		}
+	}
+	if storageID < 0 || storageID > 1 {
+		t.Errorf("expected storageID to be between 0 and 1")
+	}
+}
+
+func TestGetMultipleRandomPathAndStorageIDReturnsAtMostCountPaths(t *testing.T) {
+	paths, _ := GetMultipleRandomPathAndStorageID(3, 2, 5)
+	if len(paths) != 4 {
+		t.Errorf("expected 4 random paths but got %v", paths)
+	}
+}

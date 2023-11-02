@@ -288,3 +288,23 @@ func GetRandomPathAndStorageID(treeHeight int, storageCount int) (path int, stor
 	randomStorage := rand.Intn(storageCount)
 	return randomPath, randomStorage
 }
+
+func GetMultipleRandomPathAndStorageID(treeHeight int, storageCount int, count int) (paths []int, storageID int) {
+	log.Debug().Msgf("Getting multiple random path and storage id")
+	if count > int(math.Pow(2, float64(treeHeight-1))) {
+		count = int(math.Pow(2, float64(treeHeight-1)))
+	}
+	pathMap := make(map[int]bool)
+	for i := 0; i < count; {
+		path := rand.Intn(int(math.Pow(2, float64(treeHeight-1)))) + 1
+		if _, exists := pathMap[path]; !exists {
+			pathMap[path] = true
+			i++
+		}
+	}
+	for key := range pathMap {
+		paths = append(paths, key)
+	}
+	randomStorage := rand.Intn(storageCount)
+	return paths, randomStorage
+}
