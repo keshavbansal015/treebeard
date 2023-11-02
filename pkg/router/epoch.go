@@ -4,7 +4,6 @@ import (
 	"context"
 	"math"
 	"sync"
-	"sync/atomic"
 	"time"
 
 	shardnodepb "github.com/dsg-uwaterloo/oblishard/api/shardnode"
@@ -18,7 +17,7 @@ type epochManager struct {
 	shardNodeRPCClients map[int]ReplicaRPCClientMap
 	requests            map[int][]*request            // map of epoch round to requests
 	reponseChans        map[int]map[*request]chan any // map of epoch round to map of request to response channel
-	currentEpoch        atomic.Uint64
+	currentEpoch        int
 	epochDuration       time.Duration
 	hasher              utils.Hasher
 	mu                  sync.Mutex
@@ -29,7 +28,7 @@ func newEpochManager(shardNodeRPCClients map[int]ReplicaRPCClientMap, epochDurat
 		shardNodeRPCClients: shardNodeRPCClients,
 		requests:            make(map[int][]*request),
 		reponseChans:        make(map[int]map[*request]chan any),
-		currentEpoch:        atomic.Uint64{},
+		currentEpoch:        0,
 		epochDuration:       epochDuration,
 		hasher:              utils.Hasher{KnownHashes: make(map[string]uint32)},
 	}
@@ -48,23 +47,21 @@ type request struct {
 }
 
 func (e *epochManager) addRequestToCurrentEpoch(r *request) chan any {
-	currentEpoch := int(e.currentEpoch.Load())
-
 	log.Debug().Msgf("Aquiring lock for epoch manager in addRequestToCurrentEpoch")
 	e.mu.Lock()
 	log.Debug().Msgf("Aquired lock for epoch manager in addRequestToCurrentEpoch")
-	log.Debug().Msgf("Adding request %v to epoch %d", r, currentEpoch)
+	log.Debug().Msgf("Adding request %v to epoch %d", r, e.currentEpoch)
 	defer func() {
 		log.Debug().Msgf("Releasing lock for epoch manager in addRequestToCurrentEpoch")
 		e.mu.Unlock()
 		log.Debug().Msgf("Released lock for epoch manager in addRequestToCurrentEpoch")
 	}()
-	e.requests[currentEpoch] = append(e.requests[currentEpoch], r)
-	if _, exists := e.reponseChans[currentEpoch]; !exists {
-		e.reponseChans[currentEpoch] = make(map[*request]chan any)
+	e.requests[e.currentEpoch] = append(e.requests[e.currentEpoch], r)
+	if _, exists := e.reponseChans[e.currentEpoch]; !exists {
+		e.reponseChans[e.currentEpoch] = make(map[*request]chan any)
 	}
-	e.reponseChans[currentEpoch][r] = make(chan any)
-	return e.reponseChans[currentEpoch][r]
+	e.reponseChans[e.currentEpoch][r] = make(chan any)
+	return e.reponseChans[e.currentEpoch][r]
 }
 
 func (e *epochManager) whereToForward(block string) (shardNodeID int) {
@@ -143,8 +140,9 @@ func (e *epochManager) sendWriteRequest(req *request, responseChannel chan reque
 
 // This function waits for all the responses then answers all of the requests.
 // It can time out since a request may have failed.
-func (e *epochManager) sendEpochRequestsAndAnswerThem(epochNumber int) {
+func (e *epochManager) sendEpochRequestsAndAnswerThem() {
 	e.mu.Lock()
+	epochNumber := e.currentEpoch - 1
 	responseChannel := make(chan requestResponse)
 	requestsCount := len(e.requests[epochNumber])
 	if requestsCount == 0 {
@@ -187,7 +185,9 @@ func (e *epochManager) run() {
 	for {
 		epochTimeOut := time.After(e.epochDuration)
 		<-epochTimeOut
-		go e.sendEpochRequestsAndAnswerThem(int(e.currentEpoch.Load()))
-		e.currentEpoch.Add(1)
+		e.mu.Lock()
+		e.currentEpoch++
+		e.mu.Unlock()
+		go e.sendEpochRequestsAndAnswerThem()
 	}
 }
