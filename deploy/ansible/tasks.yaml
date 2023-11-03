@@ -148,7 +148,32 @@
         dest: "/root/oblishard/{{ item[0] }}"
         mode: '0666'
       delegate_to: "{{ item[1] }}"
-      loop: "{{ ['router_endpoints.yaml', 'shardnode_endpoints.yaml', 'oramnode_endpoints.yaml', 'parameters.yaml', 'redis-data.txt', 'simple.trace'] | product(groups['all']) | list }}"
+      loop: "{{ ['router_endpoints.yaml', 'shardnode_endpoints.yaml', 'oramnode_endpoints.yaml', 'redis_endpoints.yaml', 'parameters.yaml', 'simple.trace'] | product(groups['all']) | list }}"
+
+    - name: Compile YCSB and move to server
+      block:
+        - name: Compile YCSB
+          shell:
+            cmd: "mvn clean package -Dcheckstyle.skip"
+            chdir: "../../experiments/YCSB"
+          delegate_to: 127.0.0.1
+          become: yes
+          become_user: aminst
+        - name: Move core Jar file to servers
+          copy:
+            src: "../../experiments/YCSB/core/target/core-0.18.0-SNAPSHOT-jar-with-dependencies.jar"
+            dest: "/root/oblishard/"
+            mode: '0777'
+        - name: Move oblishard Jar file to servers
+          copy:
+            src: "../../experiments/YCSB/oblishard/target/oblishard-0.18.0-SNAPSHOT.jar"
+            dest: "/root/oblishard/"
+            mode: '0777'
+        - name: Move workloads folder to servers
+          copy:
+            src: "../../experiments/YCSB/workloads"
+            dest: "/root/oblishard/"
+            mode: '0777'
 
     - name: Create oramnode systemd services
       template:

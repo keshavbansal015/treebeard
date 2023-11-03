@@ -19,7 +19,7 @@ public class OblishardClient extends DB {
 
   @Override
   public void init() throws DBException {
-    String host = "127.0.0.1";
+    String host = "192.168.252.115";
     int port = 8745;
     ManagedChannel channel = ManagedChannelBuilder.forAddress(host, port).usePlaintext().build();
     stub = RouterGrpc.newBlockingStub(channel);
