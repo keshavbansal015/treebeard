@@ -5,7 +5,6 @@ package storage
 import (
 	"context"
 	"errors"
-	"fmt"
 	"math"
 	"math/rand"
 	"strconv"
@@ -52,7 +51,6 @@ func (s *StorageHandler) GetMaxAccessCount() int {
 func (s *StorageHandler) InitDatabase() error {
 	log.Debug().Msgf("Initializing the redis database")
 	for _, client := range s.storages {
-		fmt.Println(client)
 		err := client.FlushAll(context.Background()).Err()
 		if err != nil {
 			return err
