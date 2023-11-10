@@ -5,6 +5,7 @@ import (
 	"flag"
 	"fmt"
 	"path"
+	"time"
 
 	"github.com/dsg-uwaterloo/oblishard/pkg/client"
 	"github.com/dsg-uwaterloo/oblishard/pkg/config"
@@ -34,7 +35,7 @@ func asyncRead(tracer trace.Tracer, block string, routerRPCClient client.RouterR
 	if err != nil {
 		readResponseChannel <- readResponse{block: block, value: "", err: fmt.Errorf("failed to call Read block %s on router; %v", block, err)}
 	} else if value == "" {
-		readResponseChannel <- readResponse{block: block, value: "", err: fmt.Errorf("block %s does not exist", block)}
+		readResponseChannel <- readResponse{block: block, value: "", err: nil}
 	} else {
 		readResponseChannel <- readResponse{block: block, value: value, err: nil}
 	}
@@ -96,7 +97,7 @@ func main() {
 	writeResponseChannel := make(chan writeResponse)
 	readOperations := 0
 	writeOperations := 0
-
+	startTime := time.Now()
 	for _, request := range requests {
 		if request.OperationType == client.Read {
 			readOperations++
@@ -122,4 +123,6 @@ func main() {
 			}
 		}
 	}
+	elapsed := time.Since(startTime)
+	fmt.Printf("Throughput: %f", float64(readOperations+writeOperations)/elapsed.Seconds())
 }
