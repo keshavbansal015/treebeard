@@ -19,7 +19,7 @@ func TestGetPathAndStorageBasedOnRequestWhenInitialRequestReturnsRealBlockAndPat
 	s.shardNodeFSM.requestLog["block1"] = []string{"request1", "request2"}
 	s.shardNodeFSM.positionMap["block1"] = positionState{path: 23, storageID: 3}
 
-	block, path, storageID := s.getWhatToSendBasedOnRequest(context.Background(), "block1", "request1")
+	block, path, storageID := s.getWhatToSendBasedOnRequest(context.Background(), "block1", "request1", true)
 	if block != "block1" {
 		t.Errorf("Expected block to be \"block1\" but the value is: %s", block)
 	}
@@ -34,7 +34,7 @@ func TestGetPathAndStorageBasedOnRequestWhenInitialRequestReturnsRealBlockAndPat
 func TestCreateResponseChannelForRequestIDAddsChannelToResponseChannel(t *testing.T) {
 	s := newShardNodeServer(0, 0, &raft.Raft{}, newShardNodeFSM(), nil, 4, 5, newBatchManager(1))
 	s.createResponseChannelForRequestID("req1")
-	if _, exists := s.shardNodeFSM.responseChannel["req1"]; !exists {
+	if _, exists := s.shardNodeFSM.responseChannel.Load("req1"); !exists {
 		t.Errorf("Expected a new channel for key req1 but nothing found!")
 	}
 }
@@ -115,7 +115,7 @@ func startLeaderRaftNodeServer(t *testing.T, batchSize int, withBatchReponses bo
 	if withBatchReponses {
 		oramNodeClients = getMockOramNodeClientsWithBatchResponses()
 	}
-	s := newShardNodeServer(0, 0, r, fsm, oramNodeClients, 4, 5, newBatchManager(batchSize))
+	s := newShardNodeServer(0, 0, r, fsm, oramNodeClients, 4, 5, newBatchManager(2*time.Millisecond))
 	go s.sendBatchesForever()
 	return s
 }
@@ -270,13 +270,11 @@ func TestQueryCleansTempValuesInFSMAfterExecution(t *testing.T) {
 	s.shardNodeFSM.storageIDMapMu.Lock()
 	s.shardNodeFSM.responseMapMu.Lock()
 	s.shardNodeFSM.requestLogMu.Lock()
-	s.shardNodeFSM.responseChannelMu.Lock()
 	defer func() {
 		s.shardNodeFSM.pathMapMu.Unlock()
 		s.shardNodeFSM.storageIDMapMu.Unlock()
 		s.shardNodeFSM.responseMapMu.Unlock()
 		s.shardNodeFSM.requestLogMu.Unlock()
-		s.shardNodeFSM.responseChannelMu.Unlock()
 	}()
 	if _, exists := s.shardNodeFSM.pathMap["request1"]; exists {
 		t.Errorf("query should remove the request from the pathMap after successful execution.")
@@ -290,7 +288,7 @@ func TestQueryCleansTempValuesInFSMAfterExecution(t *testing.T) {
 	if _, exists := s.shardNodeFSM.requestLog["request1"]; exists {
 		t.Errorf("query should remove the request from the requestLog after successful execution.")
 	}
-	if _, exists := s.shardNodeFSM.responseChannel["request1"]; exists {
+	if _, exists := s.shardNodeFSM.responseChannel.Load("request1"); exists {
 		t.Errorf("query should remove the request from the responseChannel after successful execution.")
 	}
 }

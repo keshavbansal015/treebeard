@@ -3,6 +3,7 @@ package shardnode
 import (
 	"context"
 	"sync"
+	"time"
 
 	"github.com/rs/zerolog/log"
 )
@@ -14,16 +15,16 @@ type blockRequest struct {
 }
 
 type batchManager struct {
-	batchSize       int
+	batchTimeout    time.Duration
 	storageQueues   map[int][]blockRequest // map of storage id to its requests
 	responseChannel map[string]chan string // map of block to its response channel
 	mu              sync.Mutex
 }
 
-func newBatchManager(batchSize int) *batchManager {
-	log.Debug().Msgf("Creating new batch manager with batch size %d", batchSize)
+func newBatchManager(batchTimeout time.Duration) *batchManager {
+	log.Debug().Msgf("Creating new batch manager with batch timout %v", batchTimeout)
 	batchManager := batchManager{}
-	batchManager.batchSize = batchSize
+	batchManager.batchTimeout = batchTimeout
 	batchManager.storageQueues = make(map[int][]blockRequest)
 	batchManager.responseChannel = make(map[string]chan string)
 	return &batchManager
@@ -43,10 +44,6 @@ func (b *batchManager) addRequestToStorageQueueAndWait(req blockRequest, storage
 
 	b.storageQueues[storageID] = append(b.storageQueues[storageID], req)
 	b.responseChannel[req.block] = make(chan string)
-	return b.responseChannel[req.block]
-}
 
-// I'm not locking the batchManager here because the sendCurrentBatches does it.
-func (b *batchManager) deleteRequestsFromQueue(storageID int, count int) {
-	b.storageQueues[storageID] = b.storageQueues[storageID][count:]
+	return b.responseChannel[req.block]
 }

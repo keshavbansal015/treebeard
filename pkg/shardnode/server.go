@@ -9,6 +9,7 @@ import (
 	"time"
 
 	pb "github.com/dsg-uwaterloo/oblishard/api/shardnode"
+	"github.com/dsg-uwaterloo/oblishard/pkg/commonerrs"
 	"github.com/dsg-uwaterloo/oblishard/pkg/config"
 	"github.com/dsg-uwaterloo/oblishard/pkg/rpc"
 	"github.com/dsg-uwaterloo/oblishard/pkg/storage"
@@ -54,11 +55,11 @@ const (
 
 // For the initial request of a block, it returns the path and storageID from the position map.
 // For other requests, it returns a random path and storageID and a random block.
-func (s *shardNodeServer) getWhatToSendBasedOnRequest(ctx context.Context, block string, requestID string) (blockToRequest string, path int, storageID int) {
+func (s *shardNodeServer) getWhatToSendBasedOnRequest(ctx context.Context, block string, requestID string, isFirst bool) (blockToRequest string, path int, storageID int) {
 	log.Debug().Msgf("Getting path and storageID based on request for block %s and requestID %s", block, requestID)
-	if !s.shardNodeFSM.isInitialRequest(block, requestID) {
+	if !isFirst {
 		path, storageID = storage.GetRandomPathAndStorageID(s.storageTreeHeight, s.storageCount)
-		return strconv.Itoa(rand.Int()), path, storageID
+		return block + strconv.Itoa(rand.Int()), path, storageID
 	} else {
 		s.shardNodeFSM.positionMapMu.Lock()
 		defer s.shardNodeFSM.positionMapMu.Unlock()
@@ -68,22 +69,15 @@ func (s *shardNodeServer) getWhatToSendBasedOnRequest(ctx context.Context, block
 
 // It creates a channel for receiving the response from the raft FSM for the current requestID.
 func (s *shardNodeServer) createResponseChannelForRequestID(requestID string) chan string {
-	log.Debug().Msgf("Aquiring lock for shard node FSM in createResponseChannelForRequestID")
-	s.shardNodeFSM.responseChannelMu.Lock()
-	log.Debug().Msgf("Aquired lock for shard node FSM in createResponseChannelForRequestID")
-	defer func() {
-		log.Debug().Msgf("Releasing lock for shard node FSM in createResponseChannelForRequestID")
-		s.shardNodeFSM.responseChannelMu.Unlock()
-		log.Debug().Msgf("Released lock for shard node FSM in createResponseChannelForRequestID")
-	}()
 	ch := make(chan string)
-	s.shardNodeFSM.responseChannel[requestID] = ch
+	s.shardNodeFSM.responseChannel.Store(requestID, ch)
 	return ch
 }
 
 // It periodically sends batches.
 func (s *shardNodeServer) sendBatchesForever() {
 	for {
+		<-time.After(s.batchManager.batchTimeout)
 		s.sendCurrentBatches()
 	}
 }
@@ -95,20 +89,24 @@ func (s *shardNodeServer) sendCurrentBatches() {
 	s.batchManager.mu.Lock() // TODO: don't lock the whole thing, it will prevent concurrent batch sends
 	defer s.batchManager.mu.Unlock()
 	for storageID, requests := range s.batchManager.storageQueues {
-		if len(requests) >= s.batchManager.batchSize {
-			oramNodeReplicaMap := s.oramNodeClients.getRandomOramNodeReplicaMap()
-			log.Debug().Msgf("Sending batch of size %d to storageID %d", s.batchManager.batchSize, storageID)
-			reply, err := oramNodeReplicaMap.readPathFromAllOramNodeReplicas(requests[0].ctx, requests[0:s.batchManager.batchSize], storageID)
-			s.batchManager.deleteRequestsFromQueue(storageID, s.batchManager.batchSize)
-			if err != nil {
-				log.Error().Msgf("Could not get value from the oramnode; %s", err)
-				continue
-				// TOOD: think about the case where the oram node doesn't return a response in 2 seconds
-			}
-			for _, readPathReply := range reply.Responses {
-				log.Debug().Msgf("Got reply from oram node replica: %v", readPathReply)
-				if _, exists := s.batchManager.responseChannel[readPathReply.Block]; exists {
-					s.batchManager.responseChannel[readPathReply.Block] <- readPathReply.Value
+		oramNodeReplicaMap := s.oramNodeClients.getRandomOramNodeReplicaMap()
+		log.Debug().Msgf("Sending batch of requests %v to storageID %d", requests, storageID)
+		reply, err := oramNodeReplicaMap.readPathFromAllOramNodeReplicas(requests[0].ctx, requests, storageID)
+		delete(s.batchManager.storageQueues, storageID)
+		if err != nil {
+			log.Error().Msgf("Could not get value from the oramnode; %s", err)
+			continue
+			// TOOD: think about the case where the oram node doesn't return a response in 2 seconds
+		}
+		for _, readPathReply := range reply.Responses {
+			log.Debug().Msgf("Got reply from oram node replica: %v", readPathReply)
+			if _, exists := s.batchManager.responseChannel[readPathReply.Block]; exists {
+				timeout := time.After(1 * time.Second)
+				select {
+				case <-timeout:
+					log.Error().Msgf("Timeout while waiting for batch response channel for block %s", readPathReply.Block)
+					continue
+				case s.batchManager.responseChannel[readPathReply.Block] <- readPathReply.Value:
 					delete(s.batchManager.responseChannel, readPathReply.Block)
 				}
 			}
@@ -118,7 +116,7 @@ func (s *shardNodeServer) sendCurrentBatches() {
 
 func (s *shardNodeServer) query(ctx context.Context, op OperationType, block string, value string) (string, error) {
 	if s.raftNode.State() != raft.Leader {
-		return "", fmt.Errorf("not the leader node")
+		return "", fmt.Errorf(commonerrs.NotTheLeaderError)
 	}
 	tracer := otel.Tracer("")
 	ctx, querySpan := tracer.Start(ctx, "shardnode query")
@@ -127,19 +125,22 @@ func (s *shardNodeServer) query(ctx context.Context, op OperationType, block str
 		return "", fmt.Errorf("unable to read requestid from request; %s", err)
 	}
 
+	responseChannel := s.createResponseChannelForRequestID(requestID)
 	newPath, newStorageID := storage.GetRandomPathAndStorageID(s.storageTreeHeight, s.storageCount)
 	requestReplicationCommand, err := newRequestReplicationCommand(block, requestID, newPath, newStorageID)
 	if err != nil {
 		return "", fmt.Errorf("could not create request replication command; %s", err)
 	}
 	_, requestReplicationSpan := tracer.Start(ctx, "apply request replication")
-	err = s.raftNode.Apply(requestReplicationCommand, 2*time.Second).Error()
+	requestApplyFuture := s.raftNode.Apply(requestReplicationCommand, 100*time.Second)
+	err = requestApplyFuture.Error()
 	requestReplicationSpan.End()
 	if err != nil {
 		return "", fmt.Errorf("could not apply log to the FSM; %s", err)
 	}
+	isFirst := requestApplyFuture.Response().(bool)
 
-	blockToRequest, path, storageID := s.getWhatToSendBasedOnRequest(ctx, block, requestID)
+	blockToRequest, path, storageID := s.getWhatToSendBasedOnRequest(ctx, block, requestID, isFirst)
 
 	var replyValue string
 	_, waitOnReplySpan := tracer.Start(ctx, "wait on reply")
@@ -149,15 +150,14 @@ func (s *shardNodeServer) query(ctx context.Context, op OperationType, block str
 	replyValue = <-oramReplyChan
 
 	waitOnReplySpan.End()
-	responseChannel := s.createResponseChannelForRequestID(requestID)
-	if s.shardNodeFSM.isInitialRequest(block, requestID) {
+	if isFirst {
 		log.Debug().Msgf("Adding response to response channel for block %s", block)
 		responseReplicationCommand, err := newResponseReplicationCommand(replyValue, requestID, block, value, op)
 		if err != nil {
 			return "", fmt.Errorf("could not create response replication command; %s", err)
 		}
 		_, responseReplicationSpan := tracer.Start(ctx, "apply response replication")
-		err = s.raftNode.Apply(responseReplicationCommand, 2*time.Second).Error()
+		err = s.raftNode.Apply(responseReplicationCommand, 1*time.Second).Error()
 		responseReplicationSpan.End()
 		if err != nil {
 			return "", fmt.Errorf("could not apply log to the FSM; %s", err)
@@ -232,7 +232,7 @@ func (s *shardNodeServer) SendBlocks(ctx context.Context, request *pb.SendBlocks
 	if err != nil {
 		return nil, fmt.Errorf("could not create sent blocks replication command; %s", err)
 	}
-	err = s.raftNode.Apply(sentBlocksReplicationCommand, 2*time.Second).Error()
+	err = s.raftNode.Apply(sentBlocksReplicationCommand, 1*time.Second).Error()
 	if err != nil {
 		return nil, fmt.Errorf("could not apply log to the FSM; %s", err)
 	}
@@ -295,13 +295,6 @@ func StartServer(shardNodeServerID int, ip string, rpcPort int, replicaID int, r
 	shardNodeFSM.raftNode = r
 	shardNodeFSM.raftNodeMu.Unlock()
 
-	go func() {
-		for {
-			time.Sleep(5 * time.Second)
-			log.Debug().Msgf(shardNodeFSM.String())
-		}
-	}()
-
 	if !isFirst {
 		conn, err := grpc.Dial(joinAddr, grpc.WithTransportCredentials(insecure.NewCredentials()))
 		if err != nil {
@@ -324,7 +317,7 @@ func StartServer(shardNodeServerID int, ip string, rpcPort int, replicaID int, r
 	if err != nil {
 		log.Fatal().Msgf("failed to listen: %v", err)
 	}
-	shardnodeServer := newShardNodeServer(shardNodeServerID, replicaID, r, shardNodeFSM, oramNodeRPCClients, storageCount, parameters.TreeHeight, newBatchManager(parameters.BatchSize))
+	shardnodeServer := newShardNodeServer(shardNodeServerID, replicaID, r, shardNodeFSM, oramNodeRPCClients, storageCount, parameters.TreeHeight, newBatchManager(time.Duration(parameters.BatchTimout)*time.Millisecond))
 	go shardnodeServer.sendBatchesForever()
 
 	grpcServer := grpc.NewServer(grpc.UnaryInterceptor(rpc.ContextPropagationUnaryServerInterceptor()))

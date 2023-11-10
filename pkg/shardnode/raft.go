@@ -41,26 +41,25 @@ func (p positionState) isPathInPaths(paths []int) bool {
 }
 
 type shardNodeFSM struct {
-	requestLog        map[string][]string // map of block to requesting requestIDs
-	requestLogMu      sync.Mutex
-	pathMap           map[string]int // map of requestID to new path
-	pathMapMu         sync.Mutex
-	storageIDMap      map[string]int // map of requestID to new storageID
-	storageIDMapMu    sync.Mutex
-	responseMap       map[string]string // map of requestID to response map[string]string
-	responseMapMu     sync.Mutex
-	stash             map[string]stashState // map of block to stashState
-	stashMu           sync.Mutex
-	responseChannel   map[string]chan string // map of requestId to their channel for receiving response
-	responseChannelMu sync.Mutex
-	acks              map[string][]string // map of requestID to array of blocks
-	acksMu            sync.Mutex
-	nacks             map[string][]string // map of requestID to array of blocks
-	nacksMu           sync.Mutex
-	positionMap       map[string]positionState // map of block to positionState
-	positionMapMu     sync.Mutex
-	raftNode          RaftNodeWIthState
-	raftNodeMu        sync.Mutex
+	requestLog      map[string][]string // map of block to requesting requestIDs
+	requestLogMu    sync.Mutex
+	pathMap         map[string]int // map of requestID to new path
+	pathMapMu       sync.Mutex
+	storageIDMap    map[string]int // map of requestID to new storageID
+	storageIDMapMu  sync.Mutex
+	responseMap     map[string]string // map of requestID to response map[string]string
+	responseMapMu   sync.Mutex
+	stash           map[string]stashState // map of block to stashState
+	stashMu         sync.Mutex
+	responseChannel sync.Map            // map of requestId to their channel for receiving response map[string] chan string
+	acks            map[string][]string // map of requestID to array of blocks
+	acksMu          sync.Mutex
+	nacks           map[string][]string // map of requestID to array of blocks
+	nacksMu         sync.Mutex
+	positionMap     map[string]positionState // map of block to positionState
+	positionMapMu   sync.Mutex
+	raftNode        RaftNodeWIthState
+	raftNodeMu      sync.Mutex
 }
 
 func newShardNodeFSM() *shardNodeFSM {
@@ -70,7 +69,7 @@ func newShardNodeFSM() *shardNodeFSM {
 		storageIDMap:    make(map[string]int),
 		responseMap:     make(map[string]string),
 		stash:           make(map[string]stashState),
-		responseChannel: make(map[string]chan string),
+		responseChannel: sync.Map{},
 		acks:            make(map[string][]string),
 		nacks:           make(map[string][]string),
 		positionMap:     make(map[string]positionState),
@@ -91,20 +90,7 @@ func (fsm *shardNodeFSM) String() string {
 	return out
 }
 
-func (fsm *shardNodeFSM) isInitialRequest(block string, requestID string) bool {
-	log.Debug().Msgf("Aquiring lock for shardNodeFSM in isInitialRequest")
-	fsm.requestLogMu.Lock()
-	log.Debug().Msgf("Aquired lock for shardNodeFSM in isInitialRequest")
-	defer func() {
-		log.Debug().Msgf("Releasing lock for shardNodeFSM in isInitialRequest")
-		fsm.requestLogMu.Unlock()
-		log.Debug().Msgf("Released lock for shardNodeFSM in isInitialRequest")
-	}()
-
-	return fsm.requestLog[block][0] == requestID
-}
-
-func (fsm *shardNodeFSM) handleReplicateRequestAndPathAndStorage(requestID string, r ReplicateRequestAndPathAndStoragePayload) {
+func (fsm *shardNodeFSM) handleReplicateRequestAndPathAndStorage(requestID string, r ReplicateRequestAndPathAndStoragePayload) (isFirst bool) {
 	log.Debug().Msgf("Aquiring lock for shardNodeFSM in handleReplicateRequestAndPathAndStorage")
 	fsm.requestLogMu.Lock()
 	fsm.pathMapMu.Lock()
@@ -121,6 +107,12 @@ func (fsm *shardNodeFSM) handleReplicateRequestAndPathAndStorage(requestID strin
 	fsm.requestLog[r.RequestedBlock] = append(fsm.requestLog[r.RequestedBlock], requestID)
 	fsm.pathMap[requestID] = r.Path
 	fsm.storageIDMap[requestID] = r.StorageID
+	if len(fsm.requestLog[r.RequestedBlock]) == 1 {
+		isFirst = true
+	} else {
+		isFirst = false
+	}
+	return isFirst
 }
 
 type localReplicaChangeHandlerFunc func(requestID string, r ReplicateResponsePayload)
@@ -135,7 +127,6 @@ func (fsm *shardNodeFSM) handleLocalResponseReplicationChanges(requestID string,
 	fsm.pathMapMu.Lock()
 	fsm.storageIDMapMu.Lock()
 	fsm.requestLogMu.Lock()
-	fsm.responseChannelMu.Lock()
 	fsm.raftNodeMu.Lock()
 	log.Debug().Msgf("Aquired lock for shardNodeFSM in handleLocalResponseReplicationChanges")
 	defer func() {
@@ -146,7 +137,6 @@ func (fsm *shardNodeFSM) handleLocalResponseReplicationChanges(requestID string,
 		fsm.pathMapMu.Unlock()
 		fsm.storageIDMapMu.Unlock()
 		fsm.requestLogMu.Unlock()
-		fsm.responseChannelMu.Unlock()
 		fsm.raftNodeMu.Unlock()
 		log.Debug().Msgf("Released lock for shardNodeFSM in handleReplicateResponse")
 	}()
@@ -172,14 +162,16 @@ func (fsm *shardNodeFSM) handleLocalResponseReplicationChanges(requestID string,
 	if fsm.raftNode.State() == raft.Leader {
 		fsm.positionMap[r.RequestedBlock] = positionState{path: fsm.pathMap[requestID], storageID: fsm.storageIDMap[requestID]}
 		for i := len(fsm.requestLog[r.RequestedBlock]) - 1; i >= 0; i-- {
-			timout := time.After(1 * time.Second) // TODO: think about this in the batching scenario
+			timeout := time.After(1 * time.Second) // TODO: think about this in the batching scenario
+			responseChan, _ := fsm.responseChannel.Load(fsm.requestLog[r.RequestedBlock][i])
 			select {
-			case <-timout:
+			case <-timeout:
+				log.Error().Msgf("timeout in sending response to concurrent requests")
 				continue
-			case fsm.responseChannel[fsm.requestLog[r.RequestedBlock][i]] <- fsm.stash[r.RequestedBlock].value:
+			case responseChan.(chan string) <- fsm.stash[r.RequestedBlock].value:
 				delete(fsm.pathMap, fsm.requestLog[r.RequestedBlock][i])
 				delete(fsm.storageIDMap, fsm.requestLog[r.RequestedBlock][i])
-				delete(fsm.responseChannel, fsm.requestLog[r.RequestedBlock][i])
+				fsm.responseChannel.Delete(fsm.requestLog[r.RequestedBlock][i])
 				fsm.requestLog[r.RequestedBlock] = append(fsm.requestLog[r.RequestedBlock][:i], fsm.requestLog[r.RequestedBlock][i+1:]...)
 			}
 		}
@@ -286,7 +278,7 @@ func (fsm *shardNodeFSM) Apply(rLog *raft.Log) interface{} {
 			if err != nil {
 				return fmt.Errorf("could not unmarshall the request replication command; %s", err)
 			}
-			fsm.handleReplicateRequestAndPathAndStorage(requestID, requestReplicationPayload)
+			return fsm.handleReplicateRequestAndPathAndStorage(requestID, requestReplicationPayload)
 		} else if command.Type == ReplicateResponseCommand {
 			log.Debug().Msgf("got replication command for replicate response")
 			var responseReplicationPayload ReplicateResponsePayload

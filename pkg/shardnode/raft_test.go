@@ -1,6 +1,7 @@
 package shardnode
 
 import (
+	"sync"
 	"testing"
 	"time"
 
@@ -89,16 +90,22 @@ type responseMessage struct {
 // This helper function gets a map of requestID to its channel.
 // It waits for all channels to recieve the determined response.
 // It will timeout if at least one channel doesn't recieve the response.
-func checkWaitingChannelsHelper(t *testing.T, waitChannels map[string]chan string, expectedResponse string) {
+func checkWaitingChannelsHelper(t *testing.T, waitChannels sync.Map, expectedResponse string) {
 	waitingSet := make(map[string]bool) // keeps the request in the set until a response for request is recieved from channel
 	agg := make(chan responseMessage)
-	for id, ch := range waitChannels {
-		waitingSet[id] = true
+	var keys []string
+	waitChannels.Range(func(key any, value any) bool {
+		keys = append(keys, key.(string))
+		return true
+	})
+	for _, key := range keys {
+		waitingSet[key] = true
+		chAny, _ := waitChannels.Load(key)
 		go func(requestID string, c chan string) {
 			for msg := range c {
 				agg <- responseMessage{requestID: requestID, response: msg}
 			}
-		}(id, ch)
+		}(key, chAny.(chan string))
 	}
 	for {
 		if len(waitingSet) == 0 {
@@ -136,9 +143,9 @@ func TestHandleLocalReplicaChangesWhenValueInStashReturnsCorrectReadValueToAllWa
 	shardNodeFSM := newShardNodeFSM()
 	shardNodeFSM.raftNode = &mockRaftNodeLeader{}
 	shardNodeFSM.requestLog["block"] = []string{"request1", "request2", "request3"}
-	shardNodeFSM.responseChannel["request1"] = make(chan string)
-	shardNodeFSM.responseChannel["request2"] = make(chan string)
-	shardNodeFSM.responseChannel["request3"] = make(chan string)
+	shardNodeFSM.responseChannel.Store("request1", make(chan string))
+	shardNodeFSM.responseChannel.Store("request2", make(chan string))
+	shardNodeFSM.responseChannel.Store("request3", make(chan string))
 	shardNodeFSM.stash["block"] = stashState{value: "test_value"}
 
 	payload := createTestReplicateResponsePayload("block", "response", "value", Read)
@@ -151,9 +158,9 @@ func TestHandleLocalReplicaChangesWhenValueInStashReturnsCorrectWriteValueToAllW
 	shardNodeFSM := newShardNodeFSM()
 	shardNodeFSM.raftNode = &mockRaftNodeLeader{}
 	shardNodeFSM.requestLog["block"] = []string{"request1", "request2", "request3"}
-	shardNodeFSM.responseChannel["request1"] = make(chan string)
-	shardNodeFSM.responseChannel["request2"] = make(chan string)
-	shardNodeFSM.responseChannel["request3"] = make(chan string)
+	shardNodeFSM.responseChannel.Store("request1", make(chan string))
+	shardNodeFSM.responseChannel.Store("request2", make(chan string))
+	shardNodeFSM.responseChannel.Store("request3", make(chan string))
 	shardNodeFSM.stash["block"] = stashState{value: "test_value"}
 
 	payload := createTestReplicateResponsePayload("block", "response", "value_write", Write)
@@ -170,9 +177,9 @@ func TestHandleLocalReplicaChangesWhenValueNotInStashReturnsResponseToAllWaiting
 	shardNodeFSM := newShardNodeFSM()
 	shardNodeFSM.raftNode = &mockRaftNodeLeader{}
 	shardNodeFSM.requestLog["block"] = []string{"request1", "request2", "request3"}
-	shardNodeFSM.responseChannel["request1"] = make(chan string)
-	shardNodeFSM.responseChannel["request2"] = make(chan string)
-	shardNodeFSM.responseChannel["request3"] = make(chan string)
+	shardNodeFSM.responseChannel.Store("request1", make(chan string))
+	shardNodeFSM.responseChannel.Store("request2", make(chan string))
+	shardNodeFSM.responseChannel.Store("request3", make(chan string))
 	shardNodeFSM.responseMap["request1"] = "response_from_oramnode"
 
 	payload := createTestReplicateResponsePayload("block", "response", "", Read)
@@ -189,9 +196,9 @@ func TestHandleLocalReplicaChangesWhenValueNotInStashReturnsWriteResponseToAllWa
 	shardNodeFSM := newShardNodeFSM()
 	shardNodeFSM.raftNode = &mockRaftNodeLeader{}
 	shardNodeFSM.requestLog["block"] = []string{"request1", "request2", "request3"}
-	shardNodeFSM.responseChannel["request1"] = make(chan string)
-	shardNodeFSM.responseChannel["request2"] = make(chan string)
-	shardNodeFSM.responseChannel["request3"] = make(chan string)
+	shardNodeFSM.responseChannel.Store("request1", make(chan string))
+	shardNodeFSM.responseChannel.Store("request2", make(chan string))
+	shardNodeFSM.responseChannel.Store("request3", make(chan string))
 	shardNodeFSM.responseMap["request1"] = "response_from_oramnode"
 
 	payload := createTestReplicateResponsePayload("block", "response", "write_val", Write)
@@ -208,18 +215,20 @@ func TestHandleLocalReplicaChangesWhenNotLeaderDoesNotWriteOnChannels(t *testing
 	shardNodeFSM := newShardNodeFSM()
 	shardNodeFSM.raftNode = &mockRaftNodeFollower{}
 	shardNodeFSM.requestLog["block"] = []string{"request1", "request2"}
-	shardNodeFSM.responseChannel["request1"] = make(chan string)
-	shardNodeFSM.responseChannel["request2"] = make(chan string)
+	shardNodeFSM.responseChannel.Store("request1", make(chan string))
+	shardNodeFSM.responseChannel.Store("request2", make(chan string))
 	shardNodeFSM.stash["block"] = stashState{value: "test_value"}
 
 	payload := createTestReplicateResponsePayload("block", "response", "", Read)
 	go shardNodeFSM.handleLocalResponseReplicationChanges("request1", payload)
 
 	for {
+		ch1Any, _ := shardNodeFSM.responseChannel.Load("request1")
+		ch2Any, _ := shardNodeFSM.responseChannel.Load("request2")
 		select {
-		case <-shardNodeFSM.responseChannel["request1"]:
+		case <-ch1Any.(chan string):
 			t.Errorf("The followers in the raft cluster should not send messages on channels!")
-		case <-shardNodeFSM.responseChannel["request2"]:
+		case <-ch2Any.(chan string):
 			t.Errorf("The followers in the raft cluster should not send messages on channels!")
 		case <-time.After(1 * time.Second):
 			return
