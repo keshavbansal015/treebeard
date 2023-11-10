@@ -25,18 +25,18 @@ func CallAllReplicas(ctx context.Context, clients []interface{}, replicaFuncs []
 			responseChannel <- result{reply: reply, err: err}
 		}(clientFunc, clients[i])
 	}
-	timeout := time.After(10 * time.Second)
+	timeout := time.After(1 * time.Second)
 	for {
 		select {
 		case result := <-responseChannel:
 			log.Debug().Msgf("Received result in CallAllReplicas %v", result)
 			if result.err != nil {
 				log.Error().Msgf("Error in CallAllReplicas %v", result.err)
+				// TODO: return leader errors, but it is hard to know because the replicas might be down and you may get other types of errors from them
+				continue
 			}
-			if result.err == nil {
-				log.Debug().Msgf("Returning result in CallAllReplicas %v", result.reply)
-				return result.reply, nil
-			}
+			log.Debug().Msgf("Returning result in CallAllReplicas %v", result.reply)
+			return result.reply, nil
 		case <-timeout:
 			return nil, fmt.Errorf("could not read blocks from the replicas")
 		}
