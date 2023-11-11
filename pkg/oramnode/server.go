@@ -9,6 +9,7 @@ import (
 	"time"
 
 	pb "github.com/dsg-uwaterloo/oblishard/api/oramnode"
+	"github.com/dsg-uwaterloo/oblishard/pkg/commonerrs"
 	"github.com/dsg-uwaterloo/oblishard/pkg/config"
 	"github.com/dsg-uwaterloo/oblishard/pkg/rpc"
 	strg "github.com/dsg-uwaterloo/oblishard/pkg/storage"
@@ -180,7 +181,7 @@ func (o *oramNodeServer) evict(paths []int, storageID int) error {
 	if err != nil {
 		return fmt.Errorf("unable to marshal begin eviction command; %s", err)
 	}
-	err = o.raftNode.Apply(beginEvictionCommand, 2*time.Second).Error()
+	err = o.raftNode.Apply(beginEvictionCommand, 0).Error()
 	if err != nil {
 		return fmt.Errorf("could not apply log to the FSM; %s", err)
 	}
@@ -213,7 +214,7 @@ func (o *oramNodeServer) evict(paths []int, storageID int) error {
 	if err != nil {
 		return fmt.Errorf("unable to marshal end eviction command; %s", err)
 	}
-	err = o.raftNode.Apply(endEvictionCommand, 2*time.Second).Error()
+	err = o.raftNode.Apply(endEvictionCommand, 0).Error()
 	if err != nil {
 		return fmt.Errorf("could not apply log to the FSM; %s", err)
 	}
@@ -239,7 +240,7 @@ func (o *oramNodeServer) getDistinctPathsInBatch(requests []*pb.BlockRequest) []
 
 func (o *oramNodeServer) ReadPath(ctx context.Context, request *pb.ReadPathRequest) (*pb.ReadPathReply, error) {
 	if o.raftNode.State() != raft.Leader {
-		return nil, fmt.Errorf("not the leader node")
+		return nil, fmt.Errorf(commonerrs.NotTheLeaderError)
 	}
 	log.Debug().Msgf("Received read path request %v", request)
 	tracer := otel.Tracer("")
@@ -259,7 +260,7 @@ func (o *oramNodeServer) ReadPath(ctx context.Context, request *pb.ReadPathReque
 		return nil, fmt.Errorf("unable to create begin read path replication command; %v", err)
 	}
 	_, beginReadPathReplicationSpan := tracer.Start(ctx, "replicate begin read path")
-	err = o.raftNode.Apply(beginReadPathCommand, 2*time.Second).Error()
+	err = o.raftNode.Apply(beginReadPathCommand, 0).Error()
 	if err != nil {
 		return nil, fmt.Errorf("could not apply log to the FSM; %s", err)
 	}
@@ -358,13 +359,6 @@ func StartServer(oramNodeServerID int, ip string, rpcPort int, replicaID int, ra
 	if err != nil {
 		log.Fatal().Msgf("The raft node creation did not succeed; %s", err)
 	}
-
-	go func() {
-		for {
-			time.Sleep(5 * time.Second)
-			log.Debug().Msgf(oramNodeFSM.String())
-		}
-	}()
 
 	if !isFirst {
 		conn, err := grpc.Dial(joinAddr, grpc.WithTransportCredentials(insecure.NewCredentials()))

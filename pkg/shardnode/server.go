@@ -132,7 +132,7 @@ func (s *shardNodeServer) query(ctx context.Context, op OperationType, block str
 		return "", fmt.Errorf("could not create request replication command; %s", err)
 	}
 	_, requestReplicationSpan := tracer.Start(ctx, "apply request replication")
-	requestApplyFuture := s.raftNode.Apply(requestReplicationCommand, 100*time.Second)
+	requestApplyFuture := s.raftNode.Apply(requestReplicationCommand, 0)
 	err = requestApplyFuture.Error()
 	requestReplicationSpan.End()
 	if err != nil {
@@ -157,7 +157,7 @@ func (s *shardNodeServer) query(ctx context.Context, op OperationType, block str
 			return "", fmt.Errorf("could not create response replication command; %s", err)
 		}
 		_, responseReplicationSpan := tracer.Start(ctx, "apply response replication")
-		err = s.raftNode.Apply(responseReplicationCommand, 1*time.Second).Error()
+		err = s.raftNode.Apply(responseReplicationCommand, 0).Error()
 		responseReplicationSpan.End()
 		if err != nil {
 			return "", fmt.Errorf("could not apply log to the FSM; %s", err)
@@ -232,7 +232,7 @@ func (s *shardNodeServer) SendBlocks(ctx context.Context, request *pb.SendBlocks
 	if err != nil {
 		return nil, fmt.Errorf("could not create sent blocks replication command; %s", err)
 	}
-	err = s.raftNode.Apply(sentBlocksReplicationCommand, 1*time.Second).Error()
+	err = s.raftNode.Apply(sentBlocksReplicationCommand, 0).Error()
 	if err != nil {
 		return nil, fmt.Errorf("could not apply log to the FSM; %s", err)
 	}
@@ -260,7 +260,7 @@ func (s *shardNodeServer) AckSentBlocks(ctx context.Context, reply *pb.AckSentBl
 	if err != nil {
 		return nil, fmt.Errorf("could not create acks/nacks replication command")
 	}
-	err = s.raftNode.Apply(acksNacksReplicationCommand, 1*time.Second).Error()
+	err = s.raftNode.Apply(acksNacksReplicationCommand, 0).Error()
 	if err != nil {
 		return nil, fmt.Errorf("could not apply log to the FSM; %s", err)
 	}
