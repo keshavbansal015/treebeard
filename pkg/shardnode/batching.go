@@ -2,9 +2,9 @@ package shardnode
 
 import (
 	"context"
-	"sync"
 	"time"
 
+	"github.com/dsg-uwaterloo/oblishard/pkg/utils"
 	"github.com/rs/zerolog/log"
 )
 
@@ -18,7 +18,7 @@ type batchManager struct {
 	batchTimeout    time.Duration
 	storageQueues   map[int][]blockRequest // map of storage id to its requests
 	responseChannel map[string]chan string // map of block to its response channel
-	mu              sync.Mutex
+	mu              utils.PriorityLock
 }
 
 func newBatchManager(batchTimeout time.Duration) *batchManager {
@@ -27,6 +27,7 @@ func newBatchManager(batchTimeout time.Duration) *batchManager {
 	batchManager.batchTimeout = batchTimeout
 	batchManager.storageQueues = make(map[int][]blockRequest)
 	batchManager.responseChannel = make(map[string]chan string)
+	batchManager.mu = utils.NewPriorityPreferenceLock()
 	return &batchManager
 }
 

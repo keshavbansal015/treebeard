@@ -162,7 +162,7 @@ func (fsm *shardNodeFSM) handleLocalResponseReplicationChanges(requestID string,
 	if fsm.raftNode.State() == raft.Leader {
 		fsm.positionMap[r.RequestedBlock] = positionState{path: fsm.pathMap[requestID], storageID: fsm.storageIDMap[requestID]}
 		for i := len(fsm.requestLog[r.RequestedBlock]) - 1; i >= 0; i-- {
-			timeout := time.After(1 * time.Second) // TODO: think about this in the batching scenario
+			timeout := time.After(5 * time.Second) // TODO: think about this in the batching scenario
 			responseChan, _ := fsm.responseChannel.Load(fsm.requestLog[r.RequestedBlock][i])
 			select {
 			case <-timeout:

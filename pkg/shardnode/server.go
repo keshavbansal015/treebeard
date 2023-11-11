@@ -86,13 +86,24 @@ func (s *shardNodeServer) sendBatchesForever() {
 // The logic here assumes that there are no duplicate blocks in the requests (which is fine since we only send a real request for the first one).
 // It will not work otherwise because it will delete the response channel for a block after getting the first response.
 func (s *shardNodeServer) sendCurrentBatches() {
-	s.batchManager.mu.Lock() // TODO: don't lock the whole thing, it will prevent concurrent batch sends
-	defer s.batchManager.mu.Unlock()
+	// TODO: don't lock the whole thing, it will prevent concurrent batch sends
+	storageQueues := make(map[int][]blockRequest)
+	responseChannels := make(map[string]chan string)
+	s.batchManager.mu.HighPriorityLock()
 	for storageID, requests := range s.batchManager.storageQueues {
-		oramNodeReplicaMap := s.oramNodeClients.getRandomOramNodeReplicaMap()
-		log.Debug().Msgf("Sending batch of requests %v to storageID %d", requests, storageID)
-		reply, err := oramNodeReplicaMap.readPathFromAllOramNodeReplicas(requests[0].ctx, requests, storageID)
+		storageQueues[storageID] = append(storageQueues[storageID], requests...)
 		delete(s.batchManager.storageQueues, storageID)
+	}
+	for block, responseChannel := range s.batchManager.responseChannel {
+		responseChannels[block] = responseChannel
+		delete(s.batchManager.responseChannel, block)
+	}
+	s.batchManager.mu.HighPriorityUnlock()
+
+	for storageID, requests := range storageQueues {
+		oramNodeReplicaMap := s.oramNodeClients.getRandomOramNodeReplicaMap()
+		log.Debug().Msgf("Sending batch of requests to storageID %d with size %d", storageID, len(requests))
+		reply, err := oramNodeReplicaMap.readPathFromAllOramNodeReplicas(context.Background(), requests, storageID)
 		if err != nil {
 			log.Error().Msgf("Could not get value from the oramnode; %s", err)
 			continue
@@ -100,14 +111,13 @@ func (s *shardNodeServer) sendCurrentBatches() {
 		}
 		for _, readPathReply := range reply.Responses {
 			log.Debug().Msgf("Got reply from oram node replica: %v", readPathReply)
-			if _, exists := s.batchManager.responseChannel[readPathReply.Block]; exists {
+			if _, exists := responseChannels[readPathReply.Block]; exists {
 				timeout := time.After(1 * time.Second)
 				select {
 				case <-timeout:
 					log.Error().Msgf("Timeout while waiting for batch response channel for block %s", readPathReply.Block)
 					continue
-				case s.batchManager.responseChannel[readPathReply.Block] <- readPathReply.Value:
-					delete(s.batchManager.responseChannel, readPathReply.Block)
+				case responseChannels[readPathReply.Block] <- readPathReply.Value:
 				}
 			}
 		}
@@ -148,6 +158,7 @@ func (s *shardNodeServer) query(ctx context.Context, op OperationType, block str
 	log.Debug().Msgf("Adding request to storage queue and waiting for block %s", block)
 	oramReplyChan := s.batchManager.addRequestToStorageQueueAndWait(blockRequest{ctx: ctx, block: blockToRequest, path: path}, storageID)
 	replyValue = <-oramReplyChan
+	log.Debug().Msgf("Got reply from oram node channel for block %s; value: %s", block, replyValue)
 
 	waitOnReplySpan.End()
 	if isFirst {
