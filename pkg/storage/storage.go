@@ -9,6 +9,7 @@ import (
 	"math/rand"
 	"strconv"
 	"strings"
+	"sync"
 
 	"github.com/dsg-uwaterloo/oblishard/pkg/config"
 	"github.com/redis/go-redis/v9"
@@ -24,6 +25,7 @@ type StorageHandler struct {
 	S          int
 	shift      int
 	storages   map[int]*redis.Client // map of storage id to redis client
+	storageMus map[int]*sync.Mutex   // map of storage id to mutex
 	key        []byte
 }
 
@@ -33,12 +35,17 @@ func NewStorageHandler(treeHeight int, Z int, S int, shift int, redisEndpoints [
 	for _, endpoint := range redisEndpoints {
 		storages[endpoint.ID] = getClient(endpoint.IP, endpoint.Port)
 	}
+	storageMus := make(map[int]*sync.Mutex)
+	for storageID := range storages {
+		storageMus[storageID] = &sync.Mutex{}
+	}
 	s := &StorageHandler{
 		treeHeight: treeHeight,
 		Z:          Z,
 		S:          S,
 		shift:      shift,
 		storages:   storages,
+		storageMus: storageMus,
 		key:        []byte("passphrasewhichneedstobe32bytes!"),
 	}
 	return s
@@ -46,6 +53,18 @@ func NewStorageHandler(treeHeight int, Z int, S int, shift int, redisEndpoints [
 
 func (s *StorageHandler) GetMaxAccessCount() int {
 	return s.S
+}
+
+func (s *StorageHandler) LockStorage(storageID int) {
+	log.Debug().Msgf("Aquiring lock for storage %d", storageID)
+	s.storageMus[storageID].Lock()
+	log.Debug().Msgf("Aquired lock for storage %d", storageID)
+}
+
+func (s *StorageHandler) UnlockStorage(storageID int) {
+	log.Debug().Msgf("Releasing lock for storage %d", storageID)
+	s.storageMus[storageID].Unlock()
+	log.Debug().Msgf("Released lock for storage %d", storageID)
 }
 
 func (s *StorageHandler) InitDatabase() error {
@@ -141,7 +160,7 @@ func (s *StorageHandler) ReadBucket(bucketID int, storageID int) (blocks map[str
 // WriteBucket writes readBucketBlocks and shardNodeBlocks to the storage shard.
 // It priorotizes readBucketBlocks to shardNodeBlocks.
 // It returns the blocks that were written into the storage shard in the writtenBlocks variable.
-func (s *StorageHandler) WriteBucket(bucketID int, storageID int, readBucketBlocks map[string]string, shardNodeBlocks map[string]string, isAtomic bool) (writtenBlocks map[string]string, err error) {
+func (s *StorageHandler) WriteBucket(bucketID int, storageID int, readBucketBlocks map[string]string, shardNodeBlocks map[string]string) (writtenBlocks map[string]string, err error) {
 	log.Debug().Msgf("Writing bucket %d to storage %d", bucketID, storageID)
 	// TODO: It should make the counter zero
 	values := make([]string, s.Z+s.S)

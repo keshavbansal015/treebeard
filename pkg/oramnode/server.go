@@ -22,10 +22,12 @@ import (
 
 type storage interface {
 	GetMaxAccessCount() int
+	LockStorage(storageID int)
+	UnlockStorage(storageID int)
 	GetBlockOffset(bucketID int, storageID int, blocks []string) (offset int, isReal bool, blockFound string, err error)
 	GetAccessCount(bucketID int, storageID int) (count int, err error)
 	ReadBucket(bucketID int, storageID int) (blocks map[string]string, err error)
-	WriteBucket(bucketID int, storageID int, ReadBucketBlocks map[string]string, shardNodeBlocks map[string]string, isAtomic bool) (writtenBlocks map[string]string, err error)
+	WriteBucket(bucketID int, storageID int, ReadBucketBlocks map[string]string, shardNodeBlocks map[string]string) (writtenBlocks map[string]string, err error)
 	ReadBlock(bucketID int, storageID int, offset int) (value string, err error)
 	GetBucketsInPaths(paths []int) (bucketIDs []int, err error)
 }
@@ -89,29 +91,55 @@ func (o *oramNodeServer) performFailedOperations() error {
 func (o *oramNodeServer) earlyReshuffle(buckets []int, storageID int) error {
 	log.Debug().Msgf("Performing early reshuffle with buckets %v and storageID %d", buckets, storageID)
 	// TODO: can we make this a background thread?
+	errorChan := make(chan error)
 	for _, bucket := range buckets {
-		accessCount, err := o.storageHandler.GetAccessCount(bucket, storageID)
-		if err != nil {
-			return fmt.Errorf("unable to get access count from the server; %s", err)
-		}
-		if accessCount < o.storageHandler.GetMaxAccessCount() {
-			continue
-		}
-		localStash, err := o.storageHandler.ReadBucket(bucket, storageID)
-		if err != nil {
-			return fmt.Errorf("unable to read bucket from the server; %s", err)
-		}
-		writtenBlocks, err := o.storageHandler.WriteBucket(bucket, storageID, localStash, nil, false)
-		if err != nil {
-			return fmt.Errorf("unable to write bucket from the server; %s", err)
-		}
-		for block := range localStash {
-			if _, exists := writtenBlocks[block]; !exists {
-				return fmt.Errorf("unable to write all blocks to the bucket")
+		go func(bucket int) {
+			accessCount, err := o.storageHandler.GetAccessCount(bucket, storageID)
+			if err != nil {
+				errorChan <- fmt.Errorf("unable to get access count from the server; %s", err)
+				return
 			}
+			if accessCount < o.storageHandler.GetMaxAccessCount() {
+				errorChan <- nil
+				return
+			}
+			localStash, err := o.storageHandler.ReadBucket(bucket, storageID)
+			if err != nil {
+				errorChan <- fmt.Errorf("unable to read bucket from the server; %s", err)
+				return
+			}
+			writtenBlocks, err := o.storageHandler.WriteBucket(bucket, storageID, localStash, nil)
+			if err != nil {
+				errorChan <- fmt.Errorf("unable to write bucket from the server; %s", err)
+				return
+			}
+			for block := range localStash {
+				if _, exists := writtenBlocks[block]; !exists {
+					errorChan <- fmt.Errorf("unable to write all blocks to the bucket")
+					return
+				}
+			}
+			errorChan <- nil
+		}(bucket)
+	}
+	for i := 0; i < len(buckets); i++ {
+		err := <-errorChan
+		if err != nil {
+			return err
 		}
 	}
 	return nil
+}
+
+type readBucketResponse struct {
+	bucket int
+	blocks map[string]string
+	err    error
+}
+
+func (o *oramNodeServer) asyncReadBucket(bucket int, storageID int, responseChan chan readBucketResponse) {
+	blocks, err := o.storageHandler.ReadBucket(bucket, storageID)
+	responseChan <- readBucketResponse{bucket: bucket, blocks: blocks, err: err}
 }
 
 func (o *oramNodeServer) readAllBuckets(buckets []int, storageID int) (blocksFromReadBucket map[int]map[string]string, err error) {
@@ -120,17 +148,21 @@ func (o *oramNodeServer) readAllBuckets(buckets []int, storageID int) (blocksFro
 	if err != nil {
 		return nil, fmt.Errorf("unable to get bucket ids for early reshuffle path; %v", err)
 	}
+	readBucketResponseChan := make(chan readBucketResponse)
 	for _, bucket := range buckets {
-		blocks, err := o.storageHandler.ReadBucket(bucket, storageID)
-		log.Debug().Msgf("Got blocks %v from bucket %d", blocks, bucket)
+		go o.asyncReadBucket(bucket, storageID, readBucketResponseChan)
+	}
+	for i := 0; i < len(buckets); i++ {
+		response := <-readBucketResponseChan
+		log.Debug().Msgf("Got blocks %v from bucket %d", response.blocks, response.bucket)
 		if err != nil {
 			return nil, fmt.Errorf("unable to read bucket; %s", err)
 		}
-		if blocksFromReadBucket[bucket] == nil {
-			blocksFromReadBucket[bucket] = make(map[string]string)
+		if blocksFromReadBucket[response.bucket] == nil {
+			blocksFromReadBucket[response.bucket] = make(map[string]string)
 		}
-		for block, value := range blocks {
-			blocksFromReadBucket[bucket][block] = value
+		for block, value := range response.blocks {
+			blocksFromReadBucket[response.bucket][block] = value
 		}
 	}
 	return blocksFromReadBucket, nil
@@ -161,7 +193,7 @@ func (o *oramNodeServer) writeBackBlocksToAllBuckets(buckets []int, storageID in
 		receivedBlocksIsWritten[block] = false
 	}
 	for i := len(buckets) - 1; i >= 0; i-- {
-		writtenBlocks, err := o.storageHandler.WriteBucket(buckets[i], storageID, blocksFromReadBucket[buckets[i]], receivedBlocksCopy, true)
+		writtenBlocks, err := o.storageHandler.WriteBucket(buckets[i], storageID, blocksFromReadBucket[buckets[i]], receivedBlocksCopy)
 		if err != nil {
 			return nil, fmt.Errorf("unable to atomic write bucket; %s", err)
 		}
@@ -176,6 +208,8 @@ func (o *oramNodeServer) writeBackBlocksToAllBuckets(buckets []int, storageID in
 }
 
 func (o *oramNodeServer) evict(paths []int, storageID int) error {
+	o.storageHandler.LockStorage(storageID)
+	defer o.storageHandler.UnlockStorage(storageID)
 	log.Debug().Msgf("Evicting with paths %v and storageID %d", paths, storageID)
 	beginEvictionCommand, err := newReplicateBeginEvictionCommand(paths, storageID)
 	if err != nil {
@@ -238,6 +272,30 @@ func (o *oramNodeServer) getDistinctPathsInBatch(requests []*pb.BlockRequest) []
 	return pathList
 }
 
+type blockOffsetResponse struct {
+	bucketID   int
+	offset     int
+	isReal     bool
+	blockFound string
+	err        error
+}
+
+func (o *oramNodeServer) asyncGetBlockOffset(bucketID int, storageID int, blocks []string, responseChan chan blockOffsetResponse) {
+	offset, isReal, blockFound, err := o.storageHandler.GetBlockOffset(bucketID, storageID, blocks)
+	responseChan <- blockOffsetResponse{bucketID: bucketID, offset: offset, isReal: isReal, blockFound: blockFound, err: err}
+}
+
+type readBlockResponse struct {
+	block string
+	value string
+	err   error
+}
+
+func (o *oramNodeServer) asyncReadBlock(block string, bucketID int, storageID int, offset int, responseChan chan readBlockResponse) {
+	value, err := o.storageHandler.ReadBlock(bucketID, storageID, offset)
+	responseChan <- readBlockResponse{block: block, value: value, err: err}
+}
+
 func (o *oramNodeServer) ReadPath(ctx context.Context, request *pb.ReadPathRequest) (*pb.ReadPathReply, error) {
 	if o.raftNode.State() != raft.Leader {
 		return nil, fmt.Errorf(commonerrs.NotTheLeaderError)
@@ -245,6 +303,8 @@ func (o *oramNodeServer) ReadPath(ctx context.Context, request *pb.ReadPathReque
 	log.Debug().Msgf("Received read path request %v", request)
 	tracer := otel.Tracer("")
 	ctx, span := tracer.Start(ctx, "oramnode read path request")
+	o.storageHandler.LockStorage(int(request.StorageId))
+	defer o.storageHandler.UnlockStorage(int(request.StorageId))
 
 	var blocks []string
 	for _, request := range request.Requests {
@@ -272,17 +332,21 @@ func (o *oramNodeServer) ReadPath(ctx context.Context, request *pb.ReadPathReque
 		return nil, fmt.Errorf("could not get bucket ids in the paths; %v", err)
 	}
 	_, getBlockOffsetsSpan := tracer.Start(ctx, "get block offsets")
+	offsetListResponseChan := make(chan blockOffsetResponse)
 	for _, bucketID := range buckets {
-		offset, isReal, blockFound, err := o.storageHandler.GetBlockOffset(bucketID, int(request.StorageId), blocks)
-		if err != nil {
-			return nil, fmt.Errorf("could not get offset from storage")
-		}
-		if isReal {
-			realBlockBucketMapping[bucketID] = blockFound
-		}
-		offsetList[bucketID] = offset
+		go o.asyncGetBlockOffset(bucketID, int(request.StorageId), blocks, offsetListResponseChan)
 	}
 	getBlockOffsetsSpan.End()
+	for i := 0; i < len(buckets); i++ {
+		response := <-offsetListResponseChan
+		if response.err != nil {
+			return nil, fmt.Errorf("could not get offset from storage")
+		}
+		if response.isReal {
+			realBlockBucketMapping[response.bucketID] = response.blockFound
+		}
+		offsetList[response.bucketID] = response.offset
+	}
 	log.Debug().Msgf("Got offsets %v", offsetList)
 
 	returnValues := make(map[string]string) // map of block to value
@@ -290,16 +354,22 @@ func (o *oramNodeServer) ReadPath(ctx context.Context, request *pb.ReadPathReque
 		returnValues[block] = ""
 	}
 	_, readBlocksSpan := tracer.Start(ctx, "read blocks")
+	readBlockResponseChan := make(chan readBlockResponse)
+	realReadCount := 0
 	for _, bucketID := range buckets {
 		if block, exists := realBlockBucketMapping[bucketID]; exists {
-			value, err := o.storageHandler.ReadBlock(bucketID, int(request.StorageId), offsetList[bucketID])
-			if err != nil {
-				return nil, err
-			}
-			returnValues[block] = value
+			go o.asyncReadBlock(block, bucketID, int(request.StorageId), offsetList[bucketID], readBlockResponseChan)
+			realReadCount++
 		} else {
-			o.storageHandler.ReadBlock(bucketID, int(request.StorageId), offsetList[bucketID])
+			go o.storageHandler.ReadBlock(bucketID, int(request.StorageId), offsetList[bucketID])
 		}
+	}
+	for i := 0; i < realReadCount; i++ {
+		response := <-readBlockResponseChan
+		if response.err != nil {
+			return nil, err
+		}
+		returnValues[response.block] = response.value
 	}
 	readBlocksSpan.End()
 	log.Debug().Msgf("Going to return values %v", returnValues)

@@ -103,7 +103,7 @@ type mockStorageHandler struct {
 	levelCount               int
 	maxAccessCount           int
 	latestReadBlock          int
-	writeBucketFunc          func(bucketID int, storageID int, ReadBucketBlocks map[string]string, shardNodeBlocks map[string]string, isAtomic bool) (writtenBlocks map[string]string, err error)
+	writeBucketFunc          func(bucketID int, storageID int, ReadBucketBlocks map[string]string, shardNodeBlocks map[string]string) (writtenBlocks map[string]string, err error)
 	readBlockAccessedOffsets []int
 }
 
@@ -112,7 +112,7 @@ func newMockStorageHandler(levelCount int, maxAccessCount int) *mockStorageHandl
 		levelCount:      levelCount,
 		maxAccessCount:  maxAccessCount,
 		latestReadBlock: 0,
-		writeBucketFunc: func(_ int, _ int, ReadBucketBlocks map[string]string, shardNodeBlocks map[string]string, _ bool) (writtenBlocks map[string]string, err error) {
+		writeBucketFunc: func(_ int, _ int, ReadBucketBlocks map[string]string, shardNodeBlocks map[string]string) (writtenBlocks map[string]string, err error) {
 			writtenBlocks = make(map[string]string)
 			for block, value := range ReadBucketBlocks {
 				writtenBlocks[block] = value
@@ -125,13 +125,19 @@ func newMockStorageHandler(levelCount int, maxAccessCount int) *mockStorageHandl
 	}
 }
 
-func (m *mockStorageHandler) withCustomWriteFunc(customeWriteFunc func(bucketID int, storageID int, ReadBucketBlocks map[string]string, shardNodeBlocks map[string]string, isAtomic bool) (writtenBlocks map[string]string, err error)) *mockStorageHandler {
+func (m *mockStorageHandler) withCustomWriteFunc(customeWriteFunc func(bucketID int, storageID int, ReadBucketBlocks map[string]string, shardNodeBlocks map[string]string) (writtenBlocks map[string]string, err error)) *mockStorageHandler {
 	m.writeBucketFunc = customeWriteFunc
 	return m
 }
 
 func (m *mockStorageHandler) GetMaxAccessCount() int {
 	return m.maxAccessCount
+}
+
+func (m *mockStorageHandler) LockStorage(storageID int) {
+}
+
+func (m *mockStorageHandler) UnlockStorage(storageID int) {
 }
 
 func (m *mockStorageHandler) GetRandomPathAndStorageID(context.Context) (path int, storageID int) {
@@ -155,8 +161,8 @@ func (m *mockStorageHandler) ReadBucket(bucketID int, storageID int) (blocks map
 	return blocks, nil
 }
 
-func (m *mockStorageHandler) WriteBucket(bucketID int, storageID int, readBucketBlocks map[string]string, shardNodeBlocks map[string]string, isAtomic bool) (writtenBlocks map[string]string, err error) {
-	return m.writeBucketFunc(bucketID, storageID, readBucketBlocks, shardNodeBlocks, isAtomic)
+func (m *mockStorageHandler) WriteBucket(bucketID int, storageID int, readBucketBlocks map[string]string, shardNodeBlocks map[string]string) (writtenBlocks map[string]string, err error) {
+	return m.writeBucketFunc(bucketID, storageID, readBucketBlocks, shardNodeBlocks)
 }
 
 func (m *mockStorageHandler) ReadBlock(bucketID int, storageID int, offset int) (value string, err error) {
@@ -259,7 +265,7 @@ func TestWriteBackBlocksToAllBucketsPushesReceivedBlocksToTree(t *testing.T) {
 
 func TestWriteBackBlocksToAllBucketsReturnsFalseForNotPushedReceivedBlocks(t *testing.T) {
 	o := startLeaderRaftNodeServer(t).withMockStorageHandler(newMockStorageHandler(3, 4).withCustomWriteFunc(
-		func(_ int, _ int, _ map[string]string, shardNodeBlocks map[string]string, _ bool) (writtenBlocks map[string]string, err error) {
+		func(_ int, _ int, _ map[string]string, shardNodeBlocks map[string]string) (writtenBlocks map[string]string, err error) {
 			writtenBlocks = make(map[string]string)
 			for block, val := range shardNodeBlocks {
 				if block != "a" {

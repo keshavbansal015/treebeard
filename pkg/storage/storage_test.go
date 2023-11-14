@@ -34,7 +34,7 @@ func TestGetBlockOffset(t *testing.T) {
 
 	s := NewStorageHandler(3, 1, 9, 1, []config.RedisEndpoint{{ID: 0, IP: "localhost", Port: 6379}})
 	s.InitDatabase()
-	s.WriteBucket(1, 0, map[string]string{"user1": "value1"}, map[string]string{}, true)
+	s.WriteBucket(1, 0, map[string]string{"user1": "value1"}, map[string]string{})
 
 	offset, isReal, blockFound, err := s.GetBlockOffset(bucketId, storageId, []string{"user8", "user10", expectedFound})
 	if err != nil {
@@ -85,7 +85,7 @@ func TestWriteBucketBlock(t *testing.T) {
 	s := NewStorageHandler(3, 1, 9, 1, []config.RedisEndpoint{{ID: 0, IP: "localhost", Port: 6379}})
 	s.InitDatabase()
 	expectedWrittenBlocks := map[string]string{"user1": "value1"}
-	writtenBlocks, _ := s.WriteBucket(bucketId, storageId, map[string]string{"user1": "value1"}, map[string]string{"user10": "value10"}, true)
+	writtenBlocks, _ := s.WriteBucket(bucketId, storageId, map[string]string{"user1": "value1"}, map[string]string{"user10": "value10"})
 	for block := range writtenBlocks {
 		if _, exist := expectedWrittenBlocks[block]; !exist {
 			t.Errorf("%s was written", block)
