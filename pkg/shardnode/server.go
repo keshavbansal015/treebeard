@@ -86,7 +86,6 @@ func (s *shardNodeServer) sendBatchesForever() {
 // The logic here assumes that there are no duplicate blocks in the requests (which is fine since we only send a real request for the first one).
 // It will not work otherwise because it will delete the response channel for a block after getting the first response.
 func (s *shardNodeServer) sendCurrentBatches() {
-	// TODO: don't lock the whole thing, it will prevent concurrent batch sends
 	storageQueues := make(map[int][]blockRequest)
 	responseChannels := make(map[string]chan string)
 	s.batchManager.mu.HighPriorityLock()

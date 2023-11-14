@@ -120,13 +120,16 @@ func startLeaderRaftNodeServer(t *testing.T, batchSize int, withBatchReponses bo
 	return s
 }
 
-func TestSendCurrentBatchesSendsQueuesExceedingBatchSizeRequests(t *testing.T) {
-	s := newShardNodeServer(0, 0, &raft.Raft{}, &shardNodeFSM{}, getMockOramNodeClientsWithBatchResponses(), 4, 5, newBatchManager(3))
-	s.batchManager.responseChannel["a"] = make(chan string)
+func TestSendCurrentBatchesSendsQueuesAfterBatchTimeout(t *testing.T) {
+	s := newShardNodeServer(0, 0, &raft.Raft{}, &shardNodeFSM{}, getMockOramNodeClientsWithBatchResponses(), 4, 5, newBatchManager(1*time.Millisecond))
+	chA := make(chan string)
+	s.batchManager.responseChannel["a"] = chA
 	s.batchManager.storageQueues[1] = []blockRequest{{block: "a", path: 1}}
-	s.batchManager.responseChannel["b"] = make(chan string)
+	chB := make(chan string)
+	s.batchManager.responseChannel["b"] = chB
 	s.batchManager.storageQueues[1] = append(s.batchManager.storageQueues[1], blockRequest{block: "b", path: 1})
-	s.batchManager.responseChannel["c"] = make(chan string)
+	chC := make(chan string)
+	s.batchManager.responseChannel["c"] = chC
 	s.batchManager.storageQueues[1] = append(s.batchManager.storageQueues[1], blockRequest{block: "c", path: 1})
 	go s.sendCurrentBatches()
 	timout := time.After(3 * time.Second)
@@ -139,43 +142,13 @@ func TestSendCurrentBatchesSendsQueuesExceedingBatchSizeRequests(t *testing.T) {
 		case <-timout:
 			t.Errorf("the batches were not sent")
 			return
-		case <-s.batchManager.responseChannel["a"]:
+		case <-chA:
 			receivedResponsesCount++
-		case <-s.batchManager.responseChannel["b"]:
+		case <-chB:
 			receivedResponsesCount++
-		case <-s.batchManager.responseChannel["c"]:
-			receivedResponsesCount++
-		}
-	}
-}
-
-func TestSendCurrentBatchesOnlySendsBatchSizeRequestsAtATime(t *testing.T) {
-	s := newShardNodeServer(0, 0, &raft.Raft{}, &shardNodeFSM{}, getMockOramNodeClientsWithBatchResponses(), 4, 5, newBatchManager(2))
-	s.batchManager.responseChannel["a"] = make(chan string)
-	s.batchManager.storageQueues[1] = []blockRequest{{block: "a", path: 1}}
-	s.batchManager.responseChannel["b"] = make(chan string)
-	s.batchManager.storageQueues[1] = append(s.batchManager.storageQueues[1], blockRequest{block: "b", path: 1})
-	s.batchManager.responseChannel["c"] = make(chan string)
-	s.batchManager.storageQueues[1] = append(s.batchManager.storageQueues[1], blockRequest{block: "c", path: 1})
-	go s.sendCurrentBatches()
-	timout := time.After(3 * time.Second)
-	receivedResponsesCount := 0
-	for {
-		if receivedResponsesCount == 2 {
-			break
-		}
-		select {
-		case <-timout:
-			t.Errorf("the batches were not sent")
-			return
-		case <-s.batchManager.responseChannel["a"]:
-			receivedResponsesCount++
-		case <-s.batchManager.responseChannel["b"]:
+		case <-chC:
 			receivedResponsesCount++
 		}
-	}
-	if len(s.batchManager.storageQueues[1]) != 1 || s.batchManager.storageQueues[1][0].block != "c" {
-		t.Errorf("the remaining request should be c")
 	}
 }
 
