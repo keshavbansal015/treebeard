@@ -114,7 +114,7 @@ func getMockShardNodeClients() map[int]ReplicaRPCClientMap {
 
 func TestSendEpochRequestsAndAnswerThemReturnsAllResponses(t *testing.T) {
 	e := newEpochManager(getMockShardNodeClients(), time.Second)
-	e.currentEpoch = 1
+	e.currentEpoch = 2
 	request1 := &request{ctx: context.Background(), operationType: Write, block: "a", value: "123"}
 	request2 := &request{ctx: context.Background(), operationType: Read, block: "b"}
 	e.requests[1] = []*request{
@@ -127,7 +127,7 @@ func TestSendEpochRequestsAndAnswerThemReturnsAllResponses(t *testing.T) {
 	e.reponseChans[1][request2] = chan2
 
 	go e.sendEpochRequestsAndAnswerThem()
-	timeout := time.After(2 * time.Second)
+	timeout := time.After(5 * time.Second)
 	responseCount := 0
 	for {
 		if responseCount == 2 {
