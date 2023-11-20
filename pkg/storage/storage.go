@@ -222,14 +222,9 @@ func (s *StorageHandler) WriteBucket(bucketID int, storageID int, readBucketBloc
 		dummyCount++
 	}
 	// push content of value array and meta data array
-	err = s.Push(bucketID, values, s.storages[storageID])
+	err = s.PushDataAndMetadata(bucketID, values, metadatas, s.storages[storageID])
 	if err != nil {
 		log.Error().Msgf("Error pushing values to db: %v", err)
-		return nil, err
-	}
-	err = s.PushMetadata(bucketID, metadatas, s.storages[storageID])
-	if err != nil {
-		log.Error().Msgf("Error pushing metadatas to db: %v", err)
 		return nil, err
 	}
 	return writtenBlocks, nil

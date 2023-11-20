@@ -61,42 +61,33 @@ func (s *StorageHandler) databaseInit(redisClient *redis.Client) (err error) {
 			dummyCount++
 		}
 		// push content of value array and meta data array
-		err = s.Push(bucketID, values, redisClient)
+		err := s.PushDataAndMetadata(bucketID, values, metadatas, redisClient)
 		if err != nil {
 			log.Error().Msgf("Error pushing values to db: %v", err)
 			return err
 		}
-		err = s.PushMetadata(bucketID, metadatas, redisClient)
-		if err != nil {
-			log.Error().Msgf("Error pushing metadatas to db: %v", err)
-			return err
-		}
 	}
 	return nil
 }
 
-func (s *StorageHandler) Push(bucketId int, value []string, client *redis.Client) (err error) {
+func (s *StorageHandler) PushDataAndMetadata(bucketId int, valueData []string, valueMetadata []string, client *redis.Client) (err error) {
 	ctx := context.Background()
-	kvpMap := make(map[string]interface{})
-	for i := 0; i < len(value); i++ {
-		kvpMap[strconv.Itoa(i)] = value[i]
+	kvpMapData := make(map[string]interface{})
+	for i := 0; i < len(valueData); i++ {
+		kvpMapData[strconv.Itoa(i)] = valueData[i]
 	}
-	err = client.HMSet(ctx, strconv.Itoa(bucketId), kvpMap).Err()
-	if err != nil {
-		return err
-	}
-	return nil
-}
 
-func (s *StorageHandler) PushMetadata(bucketId int, value []string, client *redis.Client) (err error) {
-	ctx := context.Background()
-	kvpMap := make(map[string]interface{})
-	for i := 0; i < len(value); i++ {
-		kvpMap[strconv.Itoa(i)] = value[i]
+	kvpMapMetadata := make(map[string]interface{})
+	for i := 0; i < len(valueMetadata); i++ {
+		kvpMapMetadata[strconv.Itoa(i)] = valueMetadata[i]
 	}
-	kvpMap["nextDummy"] = s.Z
-	kvpMap["accessCount"] = 0
-	err = client.HMSet(ctx, strconv.Itoa(-1*bucketId), kvpMap).Err()
+	kvpMapMetadata["nextDummy"] = s.Z
+	kvpMapMetadata["accessCount"] = 0
+
+	pipe := client.TxPipeline()
+	pipe.HMSet(ctx, strconv.Itoa(bucketId), kvpMapData)
+	pipe.HMSet(ctx, strconv.Itoa(-1*bucketId), kvpMapMetadata)
+	_, err = pipe.Exec(ctx)
 	if err != nil {
 		return err
 	}
