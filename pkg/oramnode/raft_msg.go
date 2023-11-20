@@ -21,8 +21,13 @@ type Command struct {
 }
 
 type ReplicateBeginEvictionPayload struct {
-	Paths     []int
-	StorageID int
+	CurrentEvictionCount int
+	StorageID            int
+}
+
+type ReplicateEndEvictionPayload struct {
+	UpdatedEvictionCount int
+	StorageID            int
 }
 
 type ReplicateBeginReadPathPayload struct {
@@ -30,11 +35,11 @@ type ReplicateBeginReadPathPayload struct {
 	StorageID int
 }
 
-func newReplicateBeginEvictionCommand(paths []int, storageID int) ([]byte, error) {
+func newReplicateBeginEvictionCommand(currentEvictionCount int, storageID int) ([]byte, error) {
 	payload, err := msgpack.Marshal(
 		&ReplicateBeginEvictionPayload{
-			Paths:     paths,
-			StorageID: storageID,
+			CurrentEvictionCount: currentEvictionCount,
+			StorageID:            storageID,
 		},
 	)
 	if err != nil {
@@ -53,11 +58,20 @@ func newReplicateBeginEvictionCommand(paths []int, storageID int) ([]byte, error
 	return command, nil
 }
 
-func newReplicateEndEvictionCommand() ([]byte, error) {
+func newReplicateEndEvictionCommand(updatedEvictionCount int, storageID int) ([]byte, error) {
+	payload, err := msgpack.Marshal(
+		&ReplicateEndEvictionPayload{
+			UpdatedEvictionCount: updatedEvictionCount,
+			StorageID:            storageID,
+		},
+	)
+	if err != nil {
+		return nil, fmt.Errorf("could not marshall payload for the end eviction command; %s", err)
+	}
 	command, err := msgpack.Marshal(
 		&Command{
 			Type:    ReplicateEndEviction,
-			Payload: []byte{},
+			Payload: payload,
 		},
 	)
 	if err != nil {

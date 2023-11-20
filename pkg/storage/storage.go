@@ -12,6 +12,7 @@ import (
 	"sync"
 
 	"github.com/dsg-uwaterloo/oblishard/pkg/config"
+	"github.com/dsg-uwaterloo/oblishard/pkg/utils"
 	"github.com/redis/go-redis/v9"
 	"github.com/rs/zerolog/log"
 )
@@ -38,6 +39,10 @@ func NewStorageHandler(treeHeight int, Z int, S int, shift int, redisEndpoints [
 	storageMus := make(map[int]*sync.Mutex)
 	for storageID := range storages {
 		storageMus[storageID] = &sync.Mutex{}
+	}
+	storageLatestEviction := make(map[int]int)
+	for _, endpoint := range redisEndpoints {
+		storageLatestEviction[endpoint.ID] = 0
 	}
 	s := &StorageHandler{
 		treeHeight: treeHeight,
@@ -301,22 +306,25 @@ func GetRandomPathAndStorageID(treeHeight int, storageCount int) (path int, stor
 	return randomPath, randomStorage
 }
 
-func GetMultipleRandomPathAndStorageID(treeHeight int, storageCount int, count int) (paths []int, storageID int) {
-	log.Debug().Msgf("Getting multiple random path and storage id")
-	if count > int(math.Pow(2, float64(treeHeight-1))) {
-		count = int(math.Pow(2, float64(treeHeight-1)))
+func (s *StorageHandler) GetRandomStorageID() int {
+	log.Debug().Msgf("Getting random storage id")
+	return rand.Intn(len(s.storages))
+}
+
+func (s *StorageHandler) GetMultipleReverseLexicographicPaths(evictionCount int, count int) (paths []int) {
+	log.Debug().Msgf("Getting multiple reverse lexicographic paths")
+	paths = make([]int, count)
+	for i := 0; i < count; i++ {
+		paths[i] = GetNextReverseLexicographicPath(evictionCount, s.treeHeight)
+		evictionCount++
 	}
-	pathMap := make(map[int]bool)
-	for i := 0; i < count; {
-		path := rand.Intn(int(math.Pow(2, float64(treeHeight-1)))) + 1
-		if _, exists := pathMap[path]; !exists {
-			pathMap[path] = true
-			i++
-		}
-	}
-	for key := range pathMap {
-		paths = append(paths, key)
-	}
-	randomStorage := rand.Intn(storageCount)
-	return paths, randomStorage
+	return paths
+}
+
+// evictionCount starts from zero and goes forward
+func GetNextReverseLexicographicPath(evictionCount int, treeHeight int) (nextPath int) {
+	evictionCount = evictionCount % int(math.Pow(2, float64(treeHeight-1)))
+	log.Debug().Msgf("Getting next reverse lexicographic path")
+	reverseBinary := utils.BinaryReverse(evictionCount, treeHeight-1)
+	return reverseBinary + 1
 }

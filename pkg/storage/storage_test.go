@@ -93,24 +93,29 @@ func TestWriteBucketBlock(t *testing.T) {
 	}
 }
 
-func TestGetMultipleRandomPathAndStorageIDReturnsCountUniquePaths(t *testing.T) {
-	paths, storageID := GetMultipleRandomPathAndStorageID(3, 2, 2)
-	if len(paths) != 2 {
-		t.Errorf("expected 2 random paths but got %v", paths)
-	}
-	for _, path := range paths {
-		if path < 1 || path > 4 {
-			t.Errorf("expected path to be between 1 and 4")
+func TestGetNextReverseLexicographicPath(t *testing.T) {
+	numberOfEvictions := []int{0, 1, 2, 3, 4, 5, 6, 7, 8}
+	expectedPaths := []int{1, 3, 2, 4, 1, 3, 2, 4, 1}
+	for i, eviction := range numberOfEvictions {
+		path := GetNextReverseLexicographicPath(eviction, 3)
+		if path != expectedPaths[i] {
+			t.Errorf("expected path %d, but got %d", expectedPaths[i], path)
 		}
-	}
-	if storageID < 0 || storageID > 1 {
-		t.Errorf("expected storageID to be between 0 and 1")
 	}
 }
 
-func TestGetMultipleRandomPathAndStorageIDReturnsAtMostCountPaths(t *testing.T) {
-	paths, _ := GetMultipleRandomPathAndStorageID(3, 2, 5)
-	if len(paths) != 4 {
-		t.Errorf("expected 4 random paths but got %v", paths)
+func TestGetMultipleReverseLexicographicPaths(t *testing.T) {
+	pathCount := 5
+	currentEvictionCount := 1
+	expectedPaths := []int{3, 2, 4, 1, 3}
+	s := NewStorageHandler(3, 1, 9, 1, []config.RedisEndpoint{{ID: 0, IP: "localhost", Port: 6379}})
+	paths := s.GetMultipleReverseLexicographicPaths(currentEvictionCount, pathCount)
+	if len(paths) != pathCount {
+		t.Errorf("expected %d paths, but got %d", pathCount, len(paths))
+	}
+	for i, path := range paths {
+		if path != expectedPaths[i] {
+			t.Errorf("expected path %d, but got %d", expectedPaths[i], path)
+		}
 	}
 }

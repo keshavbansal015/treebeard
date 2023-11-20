@@ -18,8 +18,8 @@ import (
 )
 
 type beginEvictionData struct {
-	paths     []int
-	storageID int
+	currentEvictionCount int
+	storageID            int
 }
 
 type beginReadPathData struct {
@@ -32,6 +32,7 @@ type oramNodeFSM struct {
 	unfinishedEvictionMu sync.Mutex
 	unfinishedReadPath   *beginReadPathData // unfinished read path
 	unfinishedReadPathMu sync.Mutex
+	evictionCountMap     map[int]int // map of storage id to number of evictions
 }
 
 func (fsm *oramNodeFSM) String() string {
@@ -41,10 +42,12 @@ func (fsm *oramNodeFSM) String() string {
 }
 
 func newOramNodeFSM() *oramNodeFSM {
-	return &oramNodeFSM{}
+	return &oramNodeFSM{
+		evictionCountMap: make(map[int]int),
+	}
 }
 
-func (fsm *oramNodeFSM) handleBeginEvictionCommand(paths []int, storageID int) {
+func (fsm *oramNodeFSM) handleBeginEvictionCommand(currentEvictionCount int, storageID int) {
 	log.Debug().Msgf("Aquiring lock for oramNodeFSM in handleBeginEvictionCommand")
 	fsm.unfinishedEvictionMu.Lock()
 	log.Debug().Msgf("Aquired lock for oramNodeFSM in handleBeginEvictionCommand")
@@ -54,10 +57,10 @@ func (fsm *oramNodeFSM) handleBeginEvictionCommand(paths []int, storageID int) {
 		log.Debug().Msgf("Released lock for oramNodeFSM in handleBeginEvictionCommand")
 	}()
 
-	fsm.unfinishedEviction = &beginEvictionData{paths, storageID}
+	fsm.unfinishedEviction = &beginEvictionData{currentEvictionCount, storageID}
 }
 
-func (fsm *oramNodeFSM) handleEndEvictionCommand() {
+func (fsm *oramNodeFSM) handleEndEvictionCommand(updatedEvictionCount int, storageID int) {
 	log.Debug().Msgf("Aquiring lock for oramNodeFSM in handleEndEvictionCommand")
 	fsm.unfinishedEvictionMu.Lock()
 	log.Debug().Msgf("Aquired lock for oramNodeFSM in handleEndEvictionCommand")
@@ -67,6 +70,7 @@ func (fsm *oramNodeFSM) handleEndEvictionCommand() {
 		log.Debug().Msgf("Released lock for oramNodeFSM in handleEndEvictionCommand")
 	}()
 	fsm.unfinishedEviction = nil
+	fsm.evictionCountMap[storageID] = updatedEvictionCount
 }
 
 func (fsm *oramNodeFSM) handleBeginReadPathCommand(paths []int, storageID int) {
@@ -112,10 +116,15 @@ func (fsm *oramNodeFSM) Apply(rLog *raft.Log) interface{} {
 			if err != nil {
 				return fmt.Errorf("could not unmarshall the begin eviction replication command; %s", err)
 			}
-			fsm.handleBeginEvictionCommand(payload.Paths, payload.StorageID)
+			fsm.handleBeginEvictionCommand(payload.CurrentEvictionCount, payload.StorageID)
 		} else if command.Type == ReplicateEndEviction {
 			log.Debug().Msgf("got replication command for replicate end eviction")
-			fsm.handleEndEvictionCommand()
+			var payload ReplicateEndEvictionPayload
+			err := msgpack.Unmarshal(command.Payload, &payload)
+			if err != nil {
+				return fmt.Errorf("could not unmarshall the end eviction replication command; %s", err)
+			}
+			fsm.handleEndEvictionCommand(payload.UpdatedEvictionCount, payload.StorageID)
 		} else if command.Type == ReplicateBeginReadPath {
 			log.Debug().Msgf("got replication command for replicate begin read path")
 			var payload ReplicateBeginReadPathPayload

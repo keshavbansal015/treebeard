@@ -30,6 +30,8 @@ type storage interface {
 	WriteBucket(bucketID int, storageID int, ReadBucketBlocks map[string]string, shardNodeBlocks map[string]string) (writtenBlocks map[string]string, err error)
 	ReadBlock(bucketID int, storageID int, offset int) (value string, err error)
 	GetBucketsInPaths(paths []int) (bucketIDs []int, err error)
+	GetRandomStorageID() int
+	GetMultipleReverseLexicographicPaths(evictionCount int, count int) (paths []int)
 }
 
 type oramNodeServer struct {
@@ -69,11 +71,10 @@ func (o *oramNodeServer) performFailedOperations() error {
 	o.oramNodeFSM.unfinishedReadPathMu.Unlock()
 	if needsEviction != nil {
 		o.oramNodeFSM.unfinishedEvictionMu.Lock()
-		paths := o.oramNodeFSM.unfinishedEviction.paths
 		storageID := o.oramNodeFSM.unfinishedEviction.storageID
 		o.oramNodeFSM.unfinishedEvictionMu.Unlock()
-		log.Debug().Msgf("Performing failed eviction with paths %v and storageID %d", paths, storageID)
-		o.evict(paths, storageID)
+		log.Debug().Msgf("Performing failed eviction for storageID %d", storageID)
+		o.evict(storageID)
 	}
 	if needsReadPath != nil {
 		log.Debug().Msgf("Performing failed read path")
@@ -207,11 +208,13 @@ func (o *oramNodeServer) writeBackBlocksToAllBuckets(buckets []int, storageID in
 	return receivedBlocksIsWritten, nil
 }
 
-func (o *oramNodeServer) evict(paths []int, storageID int) error {
+func (o *oramNodeServer) evict(storageID int) error {
 	o.storageHandler.LockStorage(storageID)
 	defer o.storageHandler.UnlockStorage(storageID)
+	currentEvictionCount := o.oramNodeFSM.evictionCountMap[storageID]
+	paths := o.storageHandler.GetMultipleReverseLexicographicPaths(currentEvictionCount, o.parameters.EvictPathCount)
 	log.Debug().Msgf("Evicting with paths %v and storageID %d", paths, storageID)
-	beginEvictionCommand, err := newReplicateBeginEvictionCommand(paths, storageID)
+	beginEvictionCommand, err := newReplicateBeginEvictionCommand(currentEvictionCount, storageID)
 	if err != nil {
 		return fmt.Errorf("unable to marshal begin eviction command; %s", err)
 	}
@@ -244,7 +247,7 @@ func (o *oramNodeServer) evict(paths []int, storageID int) error {
 
 	randomShardNode.sendBackAcksNacks(receivedBlocksIsWritten)
 
-	endEvictionCommand, err := newReplicateEndEvictionCommand()
+	endEvictionCommand, err := newReplicateEndEvictionCommand(currentEvictionCount+o.parameters.EvictPathCount, storageID)
 	if err != nil {
 		return fmt.Errorf("unable to marshal end eviction command; %s", err)
 	}
@@ -470,8 +473,8 @@ func StartServer(oramNodeServerID int, ip string, rpcPort int, replicaID int, ra
 			}
 			oramNodeServer.readPathCounterMu.Unlock()
 			if needEviction {
-				paths, storageID := strg.GetMultipleRandomPathAndStorageID(parameters.TreeHeight, len(redisEndpoints), parameters.EvictPathCount)
-				oramNodeServer.evict(paths, storageID)
+				storageID := oramNodeServer.storageHandler.GetRandomStorageID()
+				oramNodeServer.evict(storageID)
 			}
 		}
 	}()

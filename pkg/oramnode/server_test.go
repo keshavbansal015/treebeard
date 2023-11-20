@@ -177,6 +177,17 @@ func (m *mockStorageHandler) GetBucketsInPaths(paths []int) (bucketIDs []int, er
 	return bucketIDs, nil
 }
 
+func (m *mockStorageHandler) GetMultipleReverseLexicographicPaths(evictionCount int, count int) (paths []int) {
+	for i := 0; i < count; i++ {
+		paths = append(paths, 1)
+	}
+	return paths
+}
+
+func (m *mockStorageHandler) GetRandomStorageID() int {
+	return 0
+}
+
 func startLeaderRaftNodeServer(t *testing.T) *oramNodeServer {
 	fsm := newOramNodeFSM()
 	raftPort, err := freeport.GetFreePort()
@@ -304,7 +315,7 @@ func TestWriteBackBlocksToAllBucketsReturnsFalseForNotPushedReceivedBlocks(t *te
 
 func TestEvictCleansUpBeginEvictionAfterSuccessfulExecution(t *testing.T) {
 	o := startLeaderRaftNodeServer(t)
-	o.evict([]int{1, 7, 16}, 0)
+	o.evict(0)
 	o.oramNodeFSM.unfinishedEvictionMu.Lock()
 	defer o.oramNodeFSM.unfinishedEvictionMu.Unlock()
 
@@ -315,7 +326,7 @@ func TestEvictCleansUpBeginEvictionAfterSuccessfulExecution(t *testing.T) {
 
 func TestEvictKeepsBeginEvictionInFailureScenario(t *testing.T) {
 	o := startLeaderRaftNodeServer(t).withFailedShardNodeClients()
-	o.evict([]int{1, 7, 16}, 0)
+	o.evict(0)
 	o.oramNodeFSM.unfinishedEvictionMu.Lock()
 	defer o.oramNodeFSM.unfinishedEvictionMu.Unlock()
 	if o.oramNodeFSM.unfinishedEviction == nil {
@@ -325,7 +336,7 @@ func TestEvictKeepsBeginEvictionInFailureScenario(t *testing.T) {
 
 func TestEvictResetsReadPathCounter(t *testing.T) {
 	o := startLeaderRaftNodeServer(t)
-	o.evict([]int{1, 7, 16}, 0)
+	o.evict(0)
 	o.readPathCounterMu.Lock()
 	defer o.readPathCounterMu.Unlock()
 	if o.readPathCounter != 0 {
