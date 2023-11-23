@@ -60,6 +60,7 @@ type Parameters struct {
 	S               int  `yaml:"S"`
 	Shift           int  `yaml:"shift"`
 	TreeHeight      int  `yaml:"tree-height"`
+	MaxRequests     int  `yaml:"max-requests"`
 }
 
 func ReadRouterEndpoints(path string) ([]RouterEndpoint, error) {

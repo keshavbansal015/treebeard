@@ -28,9 +28,12 @@ type writeResponse struct {
 	err     error
 }
 
-func asyncRead(tracer trace.Tracer, block string, routerRPCClient client.RouterRPCClient, readResponseChannel chan readResponse) {
+// TODO: Add client struct that contains the routerRPCClient and the rateLimit
+func asyncRead(ratelimit *client.RateLimit, tracer trace.Tracer, block string, routerRPCClient client.RouterRPCClient, readResponseChannel chan readResponse) {
+	ratelimit.Wait()
 	ctx, span := tracer.Start(context.Background(), "client read request")
 	value, err := routerRPCClient.Read(ctx, block)
+	ratelimit.AddToken()
 	span.End()
 	if err != nil {
 		readResponseChannel <- readResponse{block: block, value: "", err: fmt.Errorf("failed to call Read block %s on router; %v", block, err)}
@@ -41,9 +44,11 @@ func asyncRead(tracer trace.Tracer, block string, routerRPCClient client.RouterR
 	}
 }
 
-func asyncWrite(tracer trace.Tracer, block string, newValue string, routerRPCClient client.RouterRPCClient, writeResponseChannel chan writeResponse) {
+func asyncWrite(ratelimit *client.RateLimit, tracer trace.Tracer, block string, newValue string, routerRPCClient client.RouterRPCClient, writeResponseChannel chan writeResponse) {
+	ratelimit.Wait()
 	ctx, span := tracer.Start(context.Background(), "client write request")
 	value, err := routerRPCClient.Write(ctx, block, newValue)
+	ratelimit.AddToken()
 	span.End()
 	if err != nil {
 		writeResponseChannel <- writeResponse{block: block, success: false, err: fmt.Errorf("failed to call Write block %s on router; %v", block, err)}
@@ -57,7 +62,7 @@ func main() {
 	logPath := flag.String("logpath", "", "path to write logs")
 	configsPath := flag.String("conf", "../../configs/default", "configs directory path")
 	flag.Parse()
-	utils.InitLogging(true, *logPath)
+	utils.InitLogging(false, *logPath)
 
 	routerEndpoints, err := config.ReadRouterEndpoints(path.Join(*configsPath, "router_endpoints.yaml"))
 	if err != nil {
@@ -97,26 +102,30 @@ func main() {
 	writeResponseChannel := make(chan writeResponse)
 	readOperations := 0
 	writeOperations := 0
+	rateLimit := client.NewRateLimit(parameters.MaxRequests)
+	rateLimit.Start()
 	startTime := time.Now()
 	for _, request := range requests {
 		if request.OperationType == client.Read {
 			readOperations++
-			go asyncRead(tracer, request.Block, routerRPCClient, readResponseChannel)
+			go asyncRead(rateLimit, tracer, request.Block, routerRPCClient, readResponseChannel)
 		} else if request.OperationType == client.Write {
 			writeOperations++
-			go asyncWrite(tracer, request.Block, request.NewValue, routerRPCClient, writeResponseChannel)
+			go asyncWrite(rateLimit, tracer, request.Block, request.NewValue, routerRPCClient, writeResponseChannel)
 		}
 	}
 	for i := 0; i < readOperations+writeOperations; i++ {
 		select {
 		case readResponse := <-readResponseChannel:
 			if readResponse.err != nil {
+				fmt.Println(readResponse.err.Error())
 				log.Error().Msgf(readResponse.err.Error())
 			} else {
 				log.Debug().Msgf("Sucess in Read of block %s. Got value: %v\n", readResponse.block, readResponse.value)
 			}
 		case writeResponse := <-writeResponseChannel:
 			if writeResponse.err != nil {
+				fmt.Println(writeResponse.err.Error())
 				log.Error().Msgf(writeResponse.err.Error())
 			} else {
 				log.Debug().Msgf("Finished writing block %s. Success: %v\n", writeResponse.block, writeResponse.success)
