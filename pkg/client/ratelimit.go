@@ -10,7 +10,7 @@ type RateLimit struct {
 func NewRateLimit(tokensLimit int) *RateLimit {
 	return &RateLimit{
 		tokensLimit:     tokensLimit,
-		availableTokens: make(chan struct{}, tokensLimit),
+		availableTokens: make(chan struct{}),
 	}
 }
 
