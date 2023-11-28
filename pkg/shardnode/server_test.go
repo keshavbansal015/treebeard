@@ -106,9 +106,7 @@ func startLeaderRaftNodeServer(t *testing.T, batchSize int, withBatchReponses bo
 	if err != nil {
 		t.Errorf("unable to start raft server; %v", err)
 	}
-	fsm.raftNodeMu.Lock()
 	fsm.raftNode = r
-	fsm.raftNodeMu.Unlock()
 	<-r.LeaderCh() // wait to become the leader
 	oramNodeClients := getMockOramNodeClients()
 	if withBatchReponses {
@@ -238,24 +236,11 @@ func TestQueryCleansTempValuesInFSMAfterExecution(t *testing.T) {
 	s := startLeaderRaftNodeServer(t, 1, false)
 	ctx := metadata.NewIncomingContext(context.Background(), metadata.Pairs("requestid", "request1"))
 	s.query(ctx, Write, "a", "val")
-	s.shardNodeFSM.pathMapMu.Lock()
-	s.shardNodeFSM.storageIDMapMu.Lock()
-	s.shardNodeFSM.responseMapMu.Lock()
-	s.shardNodeFSM.requestLogMu.Lock()
-	defer func() {
-		s.shardNodeFSM.pathMapMu.Unlock()
-		s.shardNodeFSM.storageIDMapMu.Unlock()
-		s.shardNodeFSM.responseMapMu.Unlock()
-		s.shardNodeFSM.requestLogMu.Unlock()
-	}()
 	if _, exists := s.shardNodeFSM.pathMap["request1"]; exists {
 		t.Errorf("query should remove the request from the pathMap after successful execution.")
 	}
 	if _, exists := s.shardNodeFSM.storageIDMap["request1"]; exists {
 		t.Errorf("query should remove the request from the storageIDMap after successful execution.")
-	}
-	if _, exists := s.shardNodeFSM.responseMap["request1"]; exists {
-		t.Errorf("query should remove the request from the responseMap after successful execution.")
 	}
 	if _, exists := s.shardNodeFSM.requestLog["request1"]; exists {
 		t.Errorf("query should remove the request from the requestLog after successful execution.")

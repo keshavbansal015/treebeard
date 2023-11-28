@@ -9,6 +9,7 @@ import (
 	"time"
 
 	pb "github.com/dsg-uwaterloo/oblishard/api/shardnode"
+	"github.com/dsg-uwaterloo/oblishard/pkg/commonerrs"
 	"github.com/dsg-uwaterloo/oblishard/pkg/config"
 	"github.com/dsg-uwaterloo/oblishard/pkg/rpc"
 	"github.com/dsg-uwaterloo/oblishard/pkg/storage"
@@ -87,6 +88,11 @@ func (s *shardNodeServer) sendBatchesForever() {
 func (s *shardNodeServer) sendCurrentBatches() {
 	storageQueues := make(map[int][]blockRequest)
 	responseChannels := make(map[string]chan string)
+	// TODO: I have another idea instead of the high priority lock.
+	// I can have a seperate go routine that has a for loop that manages the lock
+	// It has two channels one for low priority and one for high priority
+	// It will always start by trying to read from the high priority channel,
+	// if it is empty, it will read from the low priority channel.
 	s.batchManager.mu.HighPriorityLock()
 	for storageID, requests := range s.batchManager.storageQueues {
 		storageQueues[storageID] = append(storageQueues[storageID], requests...)
@@ -109,6 +115,7 @@ func (s *shardNodeServer) sendCurrentBatches() {
 			log.Error().Msgf("Could not get value from the oramnode; %s", response.err)
 			continue
 		}
+		log.Debug().Msgf("Got batch response from oram node replica: %v", response)
 		go func(response batchResponse) {
 			for _, readPathReply := range response.Responses {
 				log.Debug().Msgf("Got reply from oram node replica: %v", readPathReply)
@@ -127,6 +134,9 @@ func (s *shardNodeServer) sendCurrentBatches() {
 }
 
 func (s *shardNodeServer) query(ctx context.Context, op OperationType, block string, value string) (string, error) {
+	if s.raftNode.State() != raft.Leader {
+		return "", fmt.Errorf(commonerrs.NotTheLeaderError)
+	}
 	tracer := otel.Tracer("")
 	ctx, querySpan := tracer.Start(ctx, "shardnode query")
 	requestID, err := rpc.GetRequestIDFromContext(ctx)
@@ -167,11 +177,15 @@ func (s *shardNodeServer) query(ctx context.Context, op OperationType, block str
 			return "", fmt.Errorf("could not create response replication command; %s", err)
 		}
 		_, responseReplicationSpan := tracer.Start(ctx, "apply response replication")
-		err = s.raftNode.Apply(responseReplicationCommand, 0).Error()
+		responseApplyFuture := s.raftNode.Apply(responseReplicationCommand, 0)
 		responseReplicationSpan.End()
+		err = responseApplyFuture.Error()
 		if err != nil {
 			return "", fmt.Errorf("could not apply log to the FSM; %s", err)
 		}
+		response := responseApplyFuture.Response().(string)
+		log.Debug().Msgf("Got is first response from response channel for block %s; value: %s", block, response)
+		return response, nil
 	}
 	responseValue := <-responseChannel
 	log.Debug().Msgf("Got response from response channel for block %s; value: %s", block, responseValue)
@@ -301,9 +315,7 @@ func StartServer(shardNodeServerID int, ip string, rpcPort int, replicaID int, r
 	if err != nil {
 		log.Fatal().Msgf("The raft node creation did not succeed; %s", err)
 	}
-	shardNodeFSM.raftNodeMu.Lock()
 	shardNodeFSM.raftNode = r
-	shardNodeFSM.raftNodeMu.Unlock()
 
 	if !isFirst {
 		conn, err := grpc.Dial(joinAddr, grpc.WithTransportCredentials(insecure.NewCredentials()))
