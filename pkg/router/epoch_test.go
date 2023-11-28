@@ -126,7 +126,7 @@ func TestSendEpochRequestsAndAnswerThemReturnsAllResponses(t *testing.T) {
 	e.reponseChans[1][request1] = chan1
 	e.reponseChans[1][request2] = chan2
 
-	go e.sendEpochRequestsAndAnswerThem()
+	go e.sendEpochRequestsAndAnswerThem(1, e.requests[1], e.reponseChans[1])
 	timeout := time.After(5 * time.Second)
 	responseCount := 0
 	for {

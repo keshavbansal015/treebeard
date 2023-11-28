@@ -140,24 +140,20 @@ func (e *epochManager) sendWriteRequest(req *request, responseChannel chan reque
 
 // This function waits for all the responses then answers all of the requests.
 // It can time out since a request may have failed.
-func (e *epochManager) sendEpochRequestsAndAnswerThem() {
-	e.mu.Lock()
-	epochNumber := e.currentEpoch - 1
+func (e *epochManager) sendEpochRequestsAndAnswerThem(epochNumber int, requests []*request, responseChans map[*request]chan any) {
 	responseChannel := make(chan requestResponse)
-	requestsCount := len(e.requests[epochNumber])
+	requestsCount := len(requests)
 	if requestsCount == 0 {
-		e.mu.Unlock()
 		return
 	}
 	log.Debug().Msgf("Sending epoch requests and answering them for epoch %d with %d requests", epochNumber, requestsCount)
-	for _, r := range e.requests[epochNumber] {
+	for _, r := range requests {
 		if r.operationType == Read {
 			go e.sendReadRequest(r, responseChannel)
 		} else if r.operationType == Write {
 			go e.sendWriteRequest(r, responseChannel)
 		}
 	}
-	e.mu.Unlock()
 	timeout := time.After(10 * time.Second) // TODO: make this a parameter
 	responsesReceived := make(map[*request]any)
 
@@ -172,11 +168,9 @@ func (e *epochManager) sendEpochRequestsAndAnswerThem() {
 			responsesReceived[requestResponse.req] = requestResponse.response
 		}
 	}
-	e.mu.Lock()
-	defer e.mu.Unlock()
 	log.Debug().Msgf("Answering epoch requests for epoch %d", epochNumber)
 	for req, response := range responsesReceived {
-		e.reponseChans[epochNumber][req] <- response
+		responseChans[req] <- response
 	}
 }
 
@@ -187,7 +181,8 @@ func (e *epochManager) run() {
 		<-epochTimeOut
 		e.mu.Lock()
 		e.currentEpoch++
+		epochNumber := e.currentEpoch - 1
+		go e.sendEpochRequestsAndAnswerThem(epochNumber, e.requests[epochNumber], e.reponseChans[epochNumber])
 		e.mu.Unlock()
-		go e.sendEpochRequestsAndAnswerThem()
 	}
 }
