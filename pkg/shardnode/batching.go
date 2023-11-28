@@ -4,6 +4,7 @@ import (
 	"context"
 	"time"
 
+	"github.com/dsg-uwaterloo/oblishard/api/oramnode"
 	"github.com/dsg-uwaterloo/oblishard/pkg/utils"
 	"github.com/rs/zerolog/log"
 )
@@ -47,4 +48,15 @@ func (b *batchManager) addRequestToStorageQueueAndWait(req blockRequest, storage
 	b.responseChannel[req.block] = make(chan string)
 
 	return b.responseChannel[req.block]
+}
+
+type batchResponse struct {
+	*oramnode.ReadPathReply
+	err error
+}
+
+func (b *batchManager) asyncBatchRequests(ctx context.Context, storageID int, requests []blockRequest, oramNodeReplicaMap ReplicaRPCClientMap, responseChan chan batchResponse) {
+	log.Debug().Msgf("Sending batch of requests to storageID %d with size %d", storageID, len(requests))
+	reply, err := oramNodeReplicaMap.readPathFromAllOramNodeReplicas(context.Background(), requests, storageID)
+	responseChan <- batchResponse{reply, err}
 }

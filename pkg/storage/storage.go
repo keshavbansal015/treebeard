@@ -308,7 +308,14 @@ func GetRandomPathAndStorageID(treeHeight int, storageCount int) (path int, stor
 
 func (s *StorageHandler) GetRandomStorageID() int {
 	log.Debug().Msgf("Getting random storage id")
-	return rand.Intn(len(s.storages))
+	index := rand.Intn(len(s.storages))
+	for storageID := range s.storages {
+		if index == 0 {
+			return storageID
+		}
+		index--
+	}
+	return -1
 }
 
 func (s *StorageHandler) GetMultipleReverseLexicographicPaths(evictionCount int, count int) (paths []int) {

@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"flag"
+	"os"
 	"path"
 
 	"github.com/dsg-uwaterloo/oblishard/pkg/config"
@@ -21,7 +22,11 @@ func main() {
 	configsPath := flag.String("conf", "../../configs/default", "configs directory path")
 	logPath := flag.String("logpath", "", "path to write the logs")
 	flag.Parse()
-	utils.InitLogging(true, *logPath)
+	parameters, err := config.ReadParameters(path.Join(*configsPath, "parameters.yaml"))
+	if err != nil {
+		os.Exit(1)
+	}
+	utils.InitLogging(parameters.Log, *logPath)
 	if *port == 0 {
 		log.Fatal().Msgf("The port should be provided with the -port flag")
 	}
@@ -33,11 +38,6 @@ func main() {
 	rpcClients, err := router.StartShardNodeRPCClients(shardNodeEndpoints)
 	if err != nil {
 		log.Fatal().Msgf("Failed to create client connections with shard node servers; %v", err)
-	}
-
-	parameters, err := config.ReadParameters(path.Join(*configsPath, "parameters.yaml"))
-	if err != nil {
-		log.Fatal().Msgf("Failed to read parameters from yaml file; %v", err)
 	}
 
 	tracingProvider, err := tracing.NewProvider(context.Background(), "router", "localhost:4317", !parameters.Trace)

@@ -38,7 +38,8 @@ func startShardNode(replicaID int, rpcPort int, raftPort int, joinAddr string) {
 	if err != nil {
 		log.Fatal().Msgf("Failed to read parameters from yaml file; %v", err)
 	}
-	shardnode.StartServer(0, "localhost", rpcPort, replicaID, raftPort, joinAddr, rpcClients, parameters, 1, "../../configs")
+	redisEndpoints := []config.RedisEndpoint{{ID: 0, IP: "localhost", Port: 6379}}
+	shardnode.StartServer(0, "localhost", rpcPort, replicaID, raftPort, joinAddr, rpcClients, parameters, redisEndpoints, "../../configs")
 }
 
 func startOramNode(replicaID int, rpcPort int, raftPort int, joinAddr string) {

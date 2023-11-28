@@ -455,8 +455,14 @@ func StartServer(oramNodeServerID int, ip string, rpcPort int, replicaID int, ra
 	if err != nil {
 		log.Fatal().Msgf("failed to listen: %v", err)
 	}
-	storageHandler := strg.NewStorageHandler(parameters.TreeHeight, parameters.Z, parameters.S, parameters.Shift, redisEndpoints)
-	if oramNodeServerID == 0 && isFirst {
+	var storages []config.RedisEndpoint
+	for _, redisEndpoint := range redisEndpoints {
+		if redisEndpoint.ORAMNodeID == oramNodeServerID {
+			storages = append(storages, redisEndpoint)
+		}
+	}
+	storageHandler := strg.NewStorageHandler(parameters.TreeHeight, parameters.Z, parameters.S, parameters.Shift, storages)
+	if isFirst {
 		err = storageHandler.InitDatabase()
 		if err != nil {
 			log.Fatal().Msgf("failed to initialize the database: %v", err)

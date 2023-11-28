@@ -57,7 +57,7 @@ type shardNodeFSM struct {
 	nacks           map[string][]string // map of requestID to array of blocks
 	nacksMu         sync.Mutex
 	positionMap     map[string]positionState // map of block to positionState
-	positionMapMu   sync.Mutex
+	positionMapMu   sync.RWMutex
 	raftNode        RaftNodeWIthState
 	raftNodeMu      sync.Mutex
 }

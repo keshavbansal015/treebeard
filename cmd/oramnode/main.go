@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"flag"
+	"os"
 	"path"
 
 	"github.com/dsg-uwaterloo/oblishard/pkg/config"
@@ -23,7 +24,11 @@ func main() {
 	configsPath := flag.String("conf", "../../configs/default", "configs directory path")
 	logPath := flag.String("logpath", "", "path to write logs")
 	flag.Parse()
-	utils.InitLogging(true, *logPath)
+	parameters, err := config.ReadParameters(path.Join(*configsPath, "parameters.yaml"))
+	if err != nil {
+		os.Exit(1)
+	}
+	utils.InitLogging(parameters.Log, *logPath)
 	if *rpcPort == 0 {
 		log.Fatal().Msgf("The rpc port should be provided with the -rpcport flag")
 	}
@@ -41,11 +46,6 @@ func main() {
 	redisEndpoints, err := config.ReadRedisEndpoints(path.Join(*configsPath, "redis_endpoints.yaml"))
 	if err != nil {
 		log.Fatal().Msgf("Cannot read redis endpoints from yaml file; %v", err)
-	}
-
-	parameters, err := config.ReadParameters(path.Join(*configsPath, "parameters.yaml"))
-	if err != nil {
-		log.Fatal().Msgf("Failed to read parameters from yaml file; %v", err)
 	}
 
 	tracingProvider, err := tracing.NewProvider(context.Background(), "oramnode", "localhost:4317", !parameters.Trace)

@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"flag"
+	"os"
 	"path"
 
 	"github.com/dsg-uwaterloo/oblishard/pkg/config"
@@ -23,8 +24,11 @@ func main() {
 	configsPath := flag.String("conf", "../../configs/default", "configs directory path")
 	logPath := flag.String("logpath", "", "path to write logs")
 	flag.Parse()
-
-	utils.InitLogging(true, *logPath)
+	parameters, err := config.ReadParameters(path.Join(*configsPath, "parameters.yaml"))
+	if err != nil {
+		os.Exit(1)
+	}
+	utils.InitLogging(parameters.Log, *logPath)
 	if *rpcPort == 0 {
 		log.Fatal().Msgf("The rpc port should be provided with the -rpcport flag")
 	}
@@ -46,11 +50,6 @@ func main() {
 		log.Fatal().Msgf("Failed to create client connections with oarm node servers; %v", err)
 	}
 
-	parameters, err := config.ReadParameters(path.Join(*configsPath, "parameters.yaml"))
-	if err != nil {
-		log.Fatal().Msgf("Failed to read parameters from yaml file; %v", err)
-	}
-
 	tracingProvider, err := tracing.NewProvider(context.Background(), "shardnode", "localhost:4317", !parameters.Trace)
 	if err != nil {
 		log.Fatal().Msgf("Failed to create tracing provider; %v", err)
@@ -61,5 +60,5 @@ func main() {
 	}
 	defer stopTracingProvider(context.Background())
 
-	shardnode.StartServer(*shardNodeID, *ip, *rpcPort, *replicaID, *raftPort, *joinAddr, rpcClients, parameters, len(redisEndpoints), *configsPath)
+	shardnode.StartServer(*shardNodeID, *ip, *rpcPort, *replicaID, *raftPort, *joinAddr, rpcClients, parameters, redisEndpoints, *configsPath)
 }

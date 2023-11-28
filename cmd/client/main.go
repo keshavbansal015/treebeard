@@ -4,6 +4,7 @@ import (
 	"context"
 	"flag"
 	"fmt"
+	"os"
 	"path"
 	"time"
 
@@ -62,7 +63,11 @@ func main() {
 	logPath := flag.String("logpath", "", "path to write logs")
 	configsPath := flag.String("conf", "../../configs/default", "configs directory path")
 	flag.Parse()
-	utils.InitLogging(false, *logPath)
+	parameters, err := config.ReadParameters(path.Join(*configsPath, "parameters.yaml"))
+	if err != nil {
+		os.Exit(1)
+	}
+	utils.InitLogging(parameters.Log, *logPath)
 
 	routerEndpoints, err := config.ReadRouterEndpoints(path.Join(*configsPath, "router_endpoints.yaml"))
 	if err != nil {
@@ -78,13 +83,6 @@ func main() {
 	if err != nil {
 		log.Fatal().Msgf("Failed to read trace file; %v", err)
 	}
-
-	parameters, err := config.ReadParameters(path.Join(*configsPath, "parameters.yaml"))
-	if err != nil {
-		log.Fatal().Msgf("Failed to read parameters from yaml file; %v", err)
-	}
-
-	routerRPCClient := rpcClients.GetRandomRouter()
 
 	tracingProvider, err := tracing.NewProvider(context.Background(), "client", "localhost:4317", !parameters.Trace)
 	if err != nil {
@@ -106,6 +104,7 @@ func main() {
 	rateLimit.Start()
 	startTime := time.Now()
 	for _, request := range requests {
+		routerRPCClient := rpcClients.GetRandomRouter()
 		if request.OperationType == client.Read {
 			readOperations++
 			go asyncRead(rateLimit, tracer, request.Block, routerRPCClient, readResponseChannel)
@@ -133,5 +132,6 @@ func main() {
 		}
 	}
 	elapsed := time.Since(startTime)
+	// TODO: seperate read and write throughput
 	fmt.Printf("Throughput: %f", float64(readOperations+writeOperations)/elapsed.Seconds())
 }

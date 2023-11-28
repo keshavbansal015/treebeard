@@ -3,7 +3,6 @@ package shardnode
 import (
 	"context"
 	"fmt"
-	"math/rand"
 
 	oramnodepb "github.com/dsg-uwaterloo/oblishard/api/oramnode"
 	"github.com/dsg-uwaterloo/oblishard/pkg/config"
@@ -21,14 +20,6 @@ type oramNodeRPCClient struct {
 type ReplicaRPCClientMap map[int]oramNodeRPCClient
 
 type RPCClientMap map[int]ReplicaRPCClientMap
-
-func (r RPCClientMap) getRandomOramNodeReplicaMap() ReplicaRPCClientMap {
-	log.Debug().Msgf("Getting random oram node replica map from RPC client map %v", r)
-	oramNodesLen := len(r)
-	randomOramNodeIndex := rand.Intn(oramNodesLen)
-	randomOramNode := r[randomOramNodeIndex]
-	return randomOramNode
-}
 
 func (r *ReplicaRPCClientMap) readPathFromAllOramNodeReplicas(ctx context.Context, requests []blockRequest, storageID int) (*oramnodepb.ReadPathReply, error) {
 	var replicaFuncs []rpc.CallFunc

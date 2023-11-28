@@ -28,9 +28,10 @@ type OramNodeEndpoint struct {
 }
 
 type RedisEndpoint struct {
-	IP   string `yaml:"exposed_ip"`
-	Port int
-	ID   int
+	IP         string `yaml:"exposed_ip"`
+	Port       int
+	ID         int
+	ORAMNodeID int `yaml:"oramnode_id"`
 }
 
 type RouterConfig struct {
@@ -61,6 +62,7 @@ type Parameters struct {
 	Shift           int  `yaml:"shift"`
 	TreeHeight      int  `yaml:"tree-height"`
 	MaxRequests     int  `yaml:"max-requests"`
+	Log             bool `yaml:"log"`
 }
 
 func ReadRouterEndpoints(path string) ([]RouterEndpoint, error) {
