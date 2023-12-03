@@ -32,10 +32,11 @@ type writeResponse struct {
 // TODO: Add client struct that contains the routerRPCClient and the rateLimit
 func asyncRead(ratelimit *client.RateLimit, tracer trace.Tracer, block string, routerRPCClient client.RouterRPCClient, readResponseChannel chan readResponse) {
 	ratelimit.Wait()
+	log.Debug().Msgf("Sending read request for block %s", block)
 	ctx, span := tracer.Start(context.Background(), "client read request")
 	value, err := routerRPCClient.Read(ctx, block)
-	ratelimit.AddToken()
 	span.End()
+	ratelimit.AddToken()
 	if err != nil {
 		readResponseChannel <- readResponse{block: block, value: "", err: fmt.Errorf("failed to call Read block %s on router; %v", block, err)}
 	} else if value == "" {
@@ -47,10 +48,11 @@ func asyncRead(ratelimit *client.RateLimit, tracer trace.Tracer, block string, r
 
 func asyncWrite(ratelimit *client.RateLimit, tracer trace.Tracer, block string, newValue string, routerRPCClient client.RouterRPCClient, writeResponseChannel chan writeResponse) {
 	ratelimit.Wait()
+	log.Debug().Msgf("Sending write request for block %s with value %s", block, newValue)
 	ctx, span := tracer.Start(context.Background(), "client write request")
 	value, err := routerRPCClient.Write(ctx, block, newValue)
-	ratelimit.AddToken()
 	span.End()
+	ratelimit.AddToken()
 	if err != nil {
 		writeResponseChannel <- writeResponse{block: block, success: false, err: fmt.Errorf("failed to call Write block %s on router; %v", block, err)}
 	} else {
