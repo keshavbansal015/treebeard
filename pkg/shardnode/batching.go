@@ -57,6 +57,6 @@ type batchResponse struct {
 
 func (b *batchManager) asyncBatchRequests(ctx context.Context, storageID int, requests []blockRequest, oramNodeReplicaMap ReplicaRPCClientMap, responseChan chan batchResponse) {
 	log.Debug().Msgf("Sending batch of requests to storageID %d with size %d", storageID, len(requests))
-	reply, err := oramNodeReplicaMap.readPathFromAllOramNodeReplicas(context.Background(), requests, storageID)
+	reply, err := oramNodeReplicaMap.readPathFromAllOramNodeReplicas(ctx, requests, storageID)
 	responseChan <- batchResponse{reply, err}
 }
