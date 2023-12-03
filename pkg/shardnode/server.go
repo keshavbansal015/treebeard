@@ -105,11 +105,17 @@ func (s *shardNodeServer) sendCurrentBatches() {
 	s.batchManager.mu.HighPriorityUnlock()
 
 	batchRequestResponseChan := make(chan batchResponse)
+	waitingBatchCount := 0
 	for storageID, requests := range storageQueues {
+		if len(requests) == 0 {
+			continue
+		}
+		waitingBatchCount++
 		oramNodeReplicaMap := s.oramNodeClients[s.storageORAMNodeMap[storageID]]
-		go s.batchManager.asyncBatchRequests(context.Background(), storageID, requests, oramNodeReplicaMap, batchRequestResponseChan)
+		go s.batchManager.asyncBatchRequests(requests[0].ctx, storageID, requests, oramNodeReplicaMap, batchRequestResponseChan)
 	}
-	for range storageQueues {
+
+	for i := 0; i < waitingBatchCount; i++ {
 		response := <-batchRequestResponseChan
 		if response.err != nil {
 			log.Error().Msgf("Could not get value from the oramnode; %s", response.err)

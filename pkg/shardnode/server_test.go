@@ -163,6 +163,20 @@ func TestSendCurrentBatchesRemovesSentQueueAndResponseChannel(t *testing.T) {
 	}
 }
 
+func TestSendCurrentBatchesIgnoresEmptyQueues(t *testing.T) {
+	s := newShardNodeServer(0, 0, &raft.Raft{}, &shardNodeFSM{}, getMockOramNodeClients(), map[int]int{0: 0}, 5, newBatchManager(1))
+	chA := make(chan string)
+	s.batchManager.responseChannel["a"] = chA
+	s.batchManager.storageQueues[1] = []blockRequest{{block: "a", path: 1}}
+	s.batchManager.storageQueues[2] = []blockRequest{}
+	go s.sendCurrentBatches()
+	select {
+	case <-chA:
+	case <-time.After(1 * time.Second):
+		t.Errorf("SendCurrentBatches should ignore empty queues")
+	}
+}
+
 func TestQueryReturnsResponseRecievedFromOramNode(t *testing.T) {
 	s := startLeaderRaftNodeServer(t, 1, false)
 
