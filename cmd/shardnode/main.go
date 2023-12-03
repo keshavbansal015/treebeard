@@ -3,10 +3,12 @@ package main
 import (
 	"context"
 	"flag"
+	"fmt"
 	"os"
 	"path"
 
 	"github.com/dsg-uwaterloo/oblishard/pkg/config"
+	"github.com/dsg-uwaterloo/oblishard/pkg/profile"
 	shardnode "github.com/dsg-uwaterloo/oblishard/pkg/shardnode"
 	"github.com/dsg-uwaterloo/oblishard/pkg/tracing"
 	"github.com/dsg-uwaterloo/oblishard/pkg/utils"
@@ -59,6 +61,13 @@ func main() {
 		log.Fatal().Msgf("Failed to register tracing provider; %v", err)
 	}
 	defer stopTracingProvider(context.Background())
+
+	if parameters.Profile {
+		fileName := fmt.Sprintf("shardnode_cpu_%d_%d.prof", *shardNodeID, *replicaID)
+		cpuProfile := profile.NewCPUProfile(fileName)
+		cpuProfile.Start()
+		defer cpuProfile.Stop()
+	}
 
 	shardnode.StartServer(*shardNodeID, *ip, *rpcPort, *replicaID, *raftPort, *joinAddr, rpcClients, parameters, redisEndpoints, *configsPath)
 }

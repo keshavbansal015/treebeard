@@ -3,10 +3,12 @@ package main
 import (
 	"context"
 	"flag"
+	"fmt"
 	"os"
 	"path"
 
 	"github.com/dsg-uwaterloo/oblishard/pkg/config"
+	"github.com/dsg-uwaterloo/oblishard/pkg/profile"
 	router "github.com/dsg-uwaterloo/oblishard/pkg/router"
 	"github.com/dsg-uwaterloo/oblishard/pkg/tracing"
 	"github.com/dsg-uwaterloo/oblishard/pkg/utils"
@@ -49,6 +51,13 @@ func main() {
 		log.Fatal().Msgf("Failed to register tracing provider; %v", err)
 	}
 	defer stopTracingProvider(context.Background())
+
+	if parameters.Profile {
+		fileName := fmt.Sprintf("router_cpu_%d.prof", *routerID)
+		cpuProfile := profile.NewCPUProfile(fileName)
+		cpuProfile.Start()
+		defer cpuProfile.Stop()
+	}
 
 	router.StartRPCServer(*ip, rpcClients, *routerID, *port, parameters)
 }

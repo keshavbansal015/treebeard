@@ -3,11 +3,13 @@ package main
 import (
 	"context"
 	"flag"
+	"fmt"
 	"os"
 	"path"
 
 	"github.com/dsg-uwaterloo/oblishard/pkg/config"
 	oramnode "github.com/dsg-uwaterloo/oblishard/pkg/oramnode"
+	"github.com/dsg-uwaterloo/oblishard/pkg/profile"
 	"github.com/dsg-uwaterloo/oblishard/pkg/tracing"
 	"github.com/dsg-uwaterloo/oblishard/pkg/utils"
 	"github.com/rs/zerolog/log"
@@ -57,6 +59,13 @@ func main() {
 		log.Fatal().Msgf("Failed to register tracing provider; %v", err)
 	}
 	defer stopTracingProvider(context.Background())
+
+	if parameters.Profile {
+		fileName := fmt.Sprintf("oramnode_cpu_%d_%d.prof", *oramNodeID, *replicaID)
+		cpuProfile := profile.NewCPUProfile(fileName)
+		cpuProfile.Start()
+		defer cpuProfile.Stop()
+	}
 
 	oramnode.StartServer(*oramNodeID, *ip, *rpcPort, *replicaID, *raftPort, *joinAddr, rpcClients, redisEndpoints, parameters)
 }
