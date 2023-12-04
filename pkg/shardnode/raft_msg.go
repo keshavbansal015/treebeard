@@ -9,40 +9,41 @@ import (
 type CommandType int
 
 const (
-	ReplicateRequestAndPathAndStorageCommand CommandType = iota
+	BatchReplicateRequestAndPathAndStorageCommand CommandType = iota
 	ReplicateResponseCommand
 	ReplicateSentBlocksCommand
 	ReplicateAcksNacksCommand
 )
 
 type Command struct {
-	Type      CommandType
-	RequestID string
-	Payload   []byte
+	Type    CommandType
+	Payload []byte
 }
 
 type ReplicateRequestAndPathAndStoragePayload struct {
 	RequestedBlock string
 	Path           int
 	StorageID      int
+	RequestID      string
 }
 
-func newRequestReplicationCommand(block string, requestID string, path int, storageID int) ([]byte, error) {
-	requestReplicationPayload, err := msgpack.Marshal(
-		&ReplicateRequestAndPathAndStoragePayload{
-			RequestedBlock: block,
-			Path:           path,
-			StorageID:      storageID,
+type BatchReplicateRequestAndPathAndStoragePayload struct {
+	Requests []ReplicateRequestAndPathAndStoragePayload
+}
+
+func newRequestReplicationCommand(requests []ReplicateRequestAndPathAndStoragePayload) ([]byte, error) {
+	batchRequestReplicationPayload, err := msgpack.Marshal(
+		&BatchReplicateRequestAndPathAndStoragePayload{
+			Requests: requests,
 		},
 	)
 	if err != nil {
-		return nil, fmt.Errorf("could not marshal the request, path, storage replication payload %s", err)
+		return nil, fmt.Errorf("could not marshal the batch request, path, storage replication payload %s", err)
 	}
 	requestReplicationCommand, err := msgpack.Marshal(
 		&Command{
-			Type:      ReplicateRequestAndPathAndStorageCommand,
-			RequestID: requestID,
-			Payload:   requestReplicationPayload,
+			Type:    BatchReplicateRequestAndPathAndStorageCommand,
+			Payload: batchRequestReplicationPayload,
 		},
 	)
 	if err != nil {
@@ -57,6 +58,7 @@ type ReplicateResponsePayload struct {
 	Response       string
 	NewValue       string
 	OpType         OperationType
+	RequestID      string
 }
 
 func newResponseReplicationCommand(response string, requestID string, block string, newValue string, opType OperationType) ([]byte, error) {
@@ -66,6 +68,7 @@ func newResponseReplicationCommand(response string, requestID string, block stri
 			RequestedBlock: block,
 			NewValue:       newValue,
 			OpType:         opType,
+			RequestID:      requestID,
 		},
 	)
 	if err != nil {
@@ -73,9 +76,8 @@ func newResponseReplicationCommand(response string, requestID string, block stri
 	}
 	responseReplicationCommand, err := msgpack.Marshal(
 		&Command{
-			Type:      ReplicateResponseCommand,
-			RequestID: requestID,
-			Payload:   responseReplicationPayload,
+			Type:    ReplicateResponseCommand,
+			Payload: responseReplicationPayload,
 		},
 	)
 	if err != nil {

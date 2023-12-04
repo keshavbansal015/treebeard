@@ -10,7 +10,6 @@ import (
 	shardnodepb "github.com/dsg-uwaterloo/oblishard/api/shardnode"
 	"github.com/hashicorp/raft"
 	"github.com/phayes/freeport"
-	"google.golang.org/grpc/metadata"
 )
 
 func TestGetPathAndStorageBasedOnRequestWhenInitialRequestReturnsRealBlockAndPathAndStorage(t *testing.T) {
@@ -30,17 +29,34 @@ func TestGetPathAndStorageBasedOnRequestWhenInitialRequestReturnsRealBlockAndPat
 	}
 }
 
-func TestCreateResponseChannelForRequestIDAddsChannelToResponseChannel(t *testing.T) {
+func TestCreateResponseChannelForBatchAddsChannelToResponseChannel(t *testing.T) {
 	s := newShardNodeServer(0, 0, &raft.Raft{}, newShardNodeFSM(), nil, map[int]int{0: 0, 1: 1, 2: 2, 3: 3}, 5, newBatchManager(1))
-	s.createResponseChannelForRequestID("req1")
-	if _, exists := s.shardNodeFSM.responseChannel.Load("req1"); !exists {
-		t.Errorf("Expected a new channel for key req1 but nothing found!")
+	readRequests := []*shardnodepb.ReadRequest{
+		{Block: "a", RequestId: "req1"},
+		{Block: "b", RequestId: "req2"},
+		{Block: "c", RequestId: "req3"},
+	}
+	writeRequests := []*shardnodepb.WriteRequest{
+		{Block: "a", RequestId: "req1", Value: "val1"},
+		{Block: "b", RequestId: "req2", Value: "val2"},
+		{Block: "c", RequestId: "req3", Value: "val3"},
+	}
+	s.createResponseChannelForBatch(readRequests, writeRequests)
+	for _, request := range readRequests {
+		if _, exists := s.shardNodeFSM.responseChannel.Load(request.RequestId); !exists {
+			t.Errorf("Expected a new channel for key %s but nothing found!", request.RequestId)
+		}
+	}
+	for _, request := range writeRequests {
+		if _, exists := s.shardNodeFSM.responseChannel.Load(request.RequestId); !exists {
+			t.Errorf("Expected a new channel for key %s but nothing found!", request.RequestId)
+		}
 	}
 }
 
-func TestQueryReturnsErrorForNonLeaderRaftPeer(t *testing.T) {
+func TestQueryBatchReturnsErrorForNonLeaderRaftPeer(t *testing.T) {
 	s := newShardNodeServer(0, 0, &raft.Raft{}, newShardNodeFSM(), nil, map[int]int{0: 0, 1: 1, 2: 2, 3: 3}, 5, newBatchManager(1))
-	_, err := s.query(context.Background(), Read, "block", "")
+	_, err := s.queryBatch(context.Background(), nil)
 	if err == nil {
 		t.Errorf("A non-leader raft peer should return error after call to query.")
 	}
@@ -177,29 +193,64 @@ func TestSendCurrentBatchesIgnoresEmptyQueues(t *testing.T) {
 	}
 }
 
-func TestQueryReturnsResponseRecievedFromOramNode(t *testing.T) {
+func TestQueryBatchReturnsResponseRecievedFromOramNode(t *testing.T) {
 	s := startLeaderRaftNodeServer(t, 1, false)
 
-	ctx := metadata.NewIncomingContext(context.Background(), metadata.Pairs("requestid", "request1"))
-	response, err := s.query(ctx, Read, "a", "")
-	if response != "response_from_leader" {
-		t.Errorf("expected the response to be \"response_from_leader\" but it is: %s", response)
+	readRequests := []*shardnodepb.ReadRequest{
+		{Block: "a", RequestId: "request1"},
+		{Block: "b", RequestId: "request2"},
+	}
+	writeRequests := []*shardnodepb.WriteRequest{
+		{Block: "c", RequestId: "request3", Value: "val1"},
+	}
+
+	response, err := s.queryBatch(context.Background(), &shardnodepb.RequestBatch{ReadRequests: readRequests, WriteRequests: writeRequests})
+	if response == nil {
+		t.Errorf("expected a response from the queryBatch call")
 	}
 	if err != nil {
-		t.Errorf("expected no error in call to query")
+		t.Errorf("expected no error in call to queryBatch")
+	}
+	expectedReadReplies := map[string]bool{
+		"request1": true,
+		"request2": true,
+	}
+	expectedWriteReplies := map[string]bool{
+		"request3": true,
+	}
+	for _, readResponse := range response.ReadReplies {
+		if _, exists := expectedReadReplies[readResponse.RequestId]; !exists {
+			t.Errorf("expected the request id to be in the expectedReadReplies")
+		}
+		if readResponse.Value != "response_from_leader" {
+			t.Errorf("expected the response to be \"response_from_leader\" but it is: %s", readResponse.Value)
+		}
+	}
+	for _, writeResponse := range response.WriteReplies {
+		if _, exists := expectedWriteReplies[writeResponse.RequestId]; !exists {
+			t.Errorf("expected the request id to be in the expectedWriteReplies")
+		}
+		if !writeResponse.Success {
+			t.Errorf("expected the write to be successful")
+		}
 	}
 }
 
-func TestQueryReturnsResponseRecievedFromOramNodeWithBatching(t *testing.T) {
+func TestQueryBatchReturnsResponseRecievedFromOramNodeWithBatching(t *testing.T) {
 	s := startLeaderRaftNodeServer(t, 3, true)
 
 	responseChan := make(chan string)
 	for _, el := range []string{"a", "b", "c"} {
 		go func(block string) {
-			ctx := metadata.NewIncomingContext(context.Background(), metadata.Pairs("requestid", fmt.Sprintf("request:%s", block)))
-			response, err := s.query(ctx, Read, block, "")
+			requestBatch := &shardnodepb.RequestBatch{
+				ReadRequests: []*shardnodepb.ReadRequest{
+					{Block: block, RequestId: "request1"},
+				},
+				WriteRequests: []*shardnodepb.WriteRequest{},
+			}
+			response, err := s.queryBatch(context.Background(), requestBatch)
 			if err == nil {
-				responseChan <- response
+				responseChan <- response.ReadReplies[0].Value
 			}
 		}(el)
 	}
@@ -219,14 +270,19 @@ func TestQueryReturnsResponseRecievedFromOramNodeWithBatching(t *testing.T) {
 	}
 }
 
-func TestQueryPrioritizesStashValueToOramNodeResponse(t *testing.T) {
+func TestQueryBatchPrioritizesStashValueToOramNodeResponse(t *testing.T) {
 	s := startLeaderRaftNodeServer(t, 1, false)
-	ctx := metadata.NewIncomingContext(context.Background(), metadata.Pairs("requestid", "request1"))
 	s.shardNodeFSM.stashMu.Lock()
 	s.shardNodeFSM.stash["a"] = stashState{value: "stash_value", logicalTime: 0, waitingStatus: false}
 	s.shardNodeFSM.stashMu.Unlock()
-	response, err := s.query(ctx, Read, "a", "")
-	if response != "stash_value" {
+	requestBatch := &shardnodepb.RequestBatch{
+		ReadRequests: []*shardnodepb.ReadRequest{
+			{Block: "a", RequestId: "request1"},
+		},
+		WriteRequests: []*shardnodepb.WriteRequest{},
+	}
+	response, err := s.queryBatch(context.Background(), requestBatch)
+	if response.ReadReplies[0].Value != "stash_value" {
 		t.Errorf("expected the response to be \"stash_value\" but it is: %s", response)
 	}
 	if err != nil {
@@ -234,40 +290,43 @@ func TestQueryPrioritizesStashValueToOramNodeResponse(t *testing.T) {
 	}
 }
 
-func TestQueryReturnsSentValueForWriteRequests(t *testing.T) {
+func TestQueryBatchCleansTempValuesInFSMAfterExecution(t *testing.T) {
 	s := startLeaderRaftNodeServer(t, 1, false)
-	ctx := metadata.NewIncomingContext(context.Background(), metadata.Pairs("requestid", "request1"))
-	response, err := s.query(ctx, Write, "a", "val")
-	if response != "val" {
-		t.Errorf("expected the response to be \"val\" but it is: %s", response)
+	requestBatch := &shardnodepb.RequestBatch{
+		ReadRequests: []*shardnodepb.ReadRequest{
+			{Block: "a", RequestId: "request1"},
+			{Block: "b", RequestId: "request2"},
+		},
+		WriteRequests: []*shardnodepb.WriteRequest{
+			{Block: "c", RequestId: "request3", Value: "val1"},
+		},
 	}
-	if err != nil {
-		t.Errorf("expected no error in call to query")
+	s.queryBatch(context.Background(), requestBatch)
+	for _, request := range []string{"request1", "request2", "request3"} {
+		if _, exists := s.shardNodeFSM.pathMap[request]; exists {
+			t.Errorf("query should remove the request from the pathMap after successful execution.")
+		}
+		if _, exists := s.shardNodeFSM.storageIDMap[request]; exists {
+			t.Errorf("query should remove the request from the storageIDMap after successful execution.")
+		}
+		if _, exists := s.shardNodeFSM.requestLog[request]; exists {
+			t.Errorf("query should remove the request from the requestLog after successful execution.")
+		}
+		if _, exists := s.shardNodeFSM.responseChannel.Load(request); exists {
+			t.Errorf("query should remove the request from the responseChannel after successful execution.")
+		}
 	}
 }
 
-func TestQueryCleansTempValuesInFSMAfterExecution(t *testing.T) {
+func TestQueryBatchAddsReadValueToStash(t *testing.T) {
 	s := startLeaderRaftNodeServer(t, 1, false)
-	ctx := metadata.NewIncomingContext(context.Background(), metadata.Pairs("requestid", "request1"))
-	s.query(ctx, Write, "a", "val")
-	if _, exists := s.shardNodeFSM.pathMap["request1"]; exists {
-		t.Errorf("query should remove the request from the pathMap after successful execution.")
+	requestBatch := &shardnodepb.RequestBatch{
+		ReadRequests: []*shardnodepb.ReadRequest{
+			{Block: "a", RequestId: "request1"},
+		},
+		WriteRequests: []*shardnodepb.WriteRequest{},
 	}
-	if _, exists := s.shardNodeFSM.storageIDMap["request1"]; exists {
-		t.Errorf("query should remove the request from the storageIDMap after successful execution.")
-	}
-	if _, exists := s.shardNodeFSM.requestLog["request1"]; exists {
-		t.Errorf("query should remove the request from the requestLog after successful execution.")
-	}
-	if _, exists := s.shardNodeFSM.responseChannel.Load("request1"); exists {
-		t.Errorf("query should remove the request from the responseChannel after successful execution.")
-	}
-}
-
-func TestQueryAddsReadValueToStash(t *testing.T) {
-	s := startLeaderRaftNodeServer(t, 1, false)
-	ctx := metadata.NewIncomingContext(context.Background(), metadata.Pairs("requestid", "request1"))
-	s.query(ctx, Read, "a", "")
+	s.queryBatch(context.Background(), requestBatch)
 	s.shardNodeFSM.stashMu.Lock()
 	defer s.shardNodeFSM.stashMu.Unlock()
 	if s.shardNodeFSM.stash["a"].value != "response_from_leader" {
@@ -275,51 +334,36 @@ func TestQueryAddsReadValueToStash(t *testing.T) {
 	}
 }
 
-func TestQueryAddsWriteValueToStash(t *testing.T) {
+func TestQueryBatchAddsWriteValueToStash(t *testing.T) {
 	s := startLeaderRaftNodeServer(t, 1, false)
-	ctx := metadata.NewIncomingContext(context.Background(), metadata.Pairs("requestid", "request1"))
-	s.query(ctx, Write, "a", "valW")
+	requestBatch := &shardnodepb.RequestBatch{
+		ReadRequests: []*shardnodepb.ReadRequest{},
+		WriteRequests: []*shardnodepb.WriteRequest{
+			{Block: "a", RequestId: "request1", Value: "val1"},
+		},
+	}
+	s.queryBatch(context.Background(), requestBatch)
 	s.shardNodeFSM.stashMu.Lock()
 	defer s.shardNodeFSM.stashMu.Unlock()
-	if s.shardNodeFSM.stash["a"].value != "valW" {
+	if s.shardNodeFSM.stash["a"].value != "val1" {
 		t.Errorf("The write value should be added to the stash")
 	}
 }
 
-func TestQueryUpdatesPositionMap(t *testing.T) {
+func TestQueryBatchUpdatesPositionMap(t *testing.T) {
 	s := startLeaderRaftNodeServer(t, 1, false)
-	ctx := metadata.NewIncomingContext(context.Background(), metadata.Pairs("requestid", "request1"))
 	s.shardNodeFSM.positionMap["a"] = positionState{path: 13423432, storageID: 3223113}
-	s.query(ctx, Write, "a", "valW")
+	requestBatch := &shardnodepb.RequestBatch{
+		ReadRequests: []*shardnodepb.ReadRequest{},
+		WriteRequests: []*shardnodepb.WriteRequest{
+			{Block: "a", RequestId: "request1", Value: "val1"},
+		},
+	}
+	s.queryBatch(context.Background(), requestBatch)
 	s.shardNodeFSM.positionMapMu.Lock()
 	defer s.shardNodeFSM.positionMapMu.Unlock()
 	if s.shardNodeFSM.positionMap["a"].path == 13423432 || s.shardNodeFSM.positionMap["a"].storageID == 3223113 {
 		t.Errorf("position map should get updated after request")
-	}
-}
-
-func TestQueryReturnsResponseToAllWaitingRequests(t *testing.T) {
-	s := startLeaderRaftNodeServer(t, 1, false)
-	responseChannel := make(chan string)
-	for i := 0; i < 3; i++ {
-		go func(idx int) {
-			ctx := metadata.NewIncomingContext(context.Background(), metadata.Pairs("requestid", fmt.Sprintf("request%d", idx)))
-			response, _ := s.query(ctx, Read, "a", "")
-			responseChannel <- response
-		}(i)
-	}
-	responseCount := 0
-	timout := time.After(10 * time.Second)
-	for {
-		if responseCount == 2 {
-			break
-		}
-		select {
-		case <-responseChannel:
-			responseCount++
-		case <-timout:
-			t.Errorf("timeout before receiving all responses")
-		}
 	}
 }
 

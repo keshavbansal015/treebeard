@@ -68,10 +68,17 @@ func (s *shardNodeServer) getWhatToSendBasedOnRequest(ctx context.Context, block
 }
 
 // It creates a channel for receiving the response from the raft FSM for the current requestID.
-func (s *shardNodeServer) createResponseChannelForRequestID(requestID string) chan string {
-	ch := make(chan string)
-	s.shardNodeFSM.responseChannel.Store(requestID, ch)
-	return ch
+func (s *shardNodeServer) createResponseChannelForBatch(readRequests []*pb.ReadRequest, writeRequests []*pb.WriteRequest) map[string]chan string {
+	channelMap := make(map[string]chan string)
+	for _, req := range readRequests {
+		channelMap[req.RequestId] = make(chan string)
+		s.shardNodeFSM.responseChannel.Store(req.RequestId, channelMap[req.RequestId])
+	}
+	for _, req := range writeRequests {
+		channelMap[req.RequestId] = make(chan string)
+		s.shardNodeFSM.responseChannel.Store(req.RequestId, channelMap[req.RequestId])
+	}
+	return channelMap
 }
 
 // It periodically sends batches.
@@ -112,7 +119,7 @@ func (s *shardNodeServer) sendCurrentBatches() {
 		}
 		waitingBatchCount++
 		oramNodeReplicaMap := s.oramNodeClients[s.storageORAMNodeMap[storageID]]
-		go s.batchManager.asyncBatchRequests(requests[0].ctx, storageID, requests, oramNodeReplicaMap, batchRequestResponseChan)
+		go s.batchManager.asyncBatchRequests(context.Background(), storageID, requests, oramNodeReplicaMap, batchRequestResponseChan)
 	}
 
 	for i := 0; i < waitingBatchCount; i++ {
@@ -139,82 +146,127 @@ func (s *shardNodeServer) sendCurrentBatches() {
 	}
 }
 
-func (s *shardNodeServer) query(ctx context.Context, op OperationType, block string, value string) (string, error) {
+func (s *shardNodeServer) getRequestReplicationBlocks(readRequests []*pb.ReadRequest, writeRequests []*pb.WriteRequest) (requestReplicationBlocks []ReplicateRequestAndPathAndStoragePayload) {
+	for _, readRequest := range readRequests {
+		newPath, newStorageID := storage.GetRandomPathAndStorageID(s.storageTreeHeight, len(s.storageORAMNodeMap))
+		requestReplicationBlocks = append(requestReplicationBlocks, ReplicateRequestAndPathAndStoragePayload{
+			RequestedBlock: readRequest.Block,
+			RequestID:      readRequest.RequestId,
+			Path:           newPath,
+			StorageID:      newStorageID,
+		})
+	}
+	for _, writeRequest := range writeRequests {
+		newPath, newStorageID := storage.GetRandomPathAndStorageID(s.storageTreeHeight, len(s.storageORAMNodeMap))
+		requestReplicationBlocks = append(requestReplicationBlocks, ReplicateRequestAndPathAndStoragePayload{
+			RequestedBlock: writeRequest.Block,
+			RequestID:      writeRequest.RequestId,
+			Path:           newPath,
+			StorageID:      newStorageID,
+		})
+	}
+	return requestReplicationBlocks
+}
+
+type finalResponse struct {
+	requestId string
+	value     string
+	opType    OperationType
+	err       error
+}
+
+func (s *shardNodeServer) query(ctx context.Context, block string, requestID string, isFirst bool, newVal string, opType OperationType, raftResponseChannel chan string, finalResponseChannel chan finalResponse) {
+	tracer := otel.Tracer("")
+
+	blockToRequest, path, storageID := s.getWhatToSendBasedOnRequest(ctx, block, requestID, isFirst)
+	var replyValue string
+	_, waitOnReplySpan := tracer.Start(ctx, "wait on reply")
+	log.Debug().Msgf("Adding request to storage queue and waiting for block %s", blockToRequest)
+	oramReplyChan := s.batchManager.addRequestToStorageQueueAndWait(blockRequest{ctx: ctx, block: blockToRequest, path: path}, storageID)
+	replyValue = <-oramReplyChan
+	log.Debug().Msgf("Got reply from oram node channel for block %s; value: %s", blockToRequest, replyValue)
+	waitOnReplySpan.End()
+
+	if isFirst {
+		log.Debug().Msgf("Adding response to response channel for block %s", blockToRequest)
+		responseReplicationCommand, err := newResponseReplicationCommand(replyValue, requestID, block, newVal, opType)
+		if err != nil {
+			finalResponseChannel <- finalResponse{requestId: requestID, value: "", opType: opType, err: fmt.Errorf("could not create response replication command; %s", err)}
+			return
+		}
+		_, responseReplicationSpan := tracer.Start(ctx, "apply response replication")
+		responseApplyFuture := s.raftNode.Apply(responseReplicationCommand, 0)
+		err = responseApplyFuture.Error()
+		responseReplicationSpan.End()
+		if err != nil {
+			finalResponseChannel <- finalResponse{requestId: requestID, value: "", opType: opType, err: fmt.Errorf("could not apply log to the FSM; %s", err)}
+			return
+		}
+		response := responseApplyFuture.Response().(string)
+		log.Debug().Msgf("Got is first response from response channel for block %s; value: %s", block, response)
+		finalResponseChannel <- finalResponse{requestId: requestID, value: response, opType: opType, err: nil}
+		return
+	}
+	responseValue := <-raftResponseChannel
+	log.Debug().Msgf("Got response from response channel for block %s; value: %s", block, responseValue)
+	finalResponseChannel <- finalResponse{requestId: requestID, value: responseValue, opType: opType, err: nil}
+}
+
+func (s *shardNodeServer) queryBatch(ctx context.Context, request *pb.RequestBatch) (reply *pb.ReplyBatch, err error) {
 	if s.raftNode.State() != raft.Leader {
-		return "", fmt.Errorf(commonerrs.NotTheLeaderError)
+		return nil, fmt.Errorf(commonerrs.NotTheLeaderError)
 	}
 	tracer := otel.Tracer("")
 	ctx, querySpan := tracer.Start(ctx, "shardnode query")
-	requestID, err := rpc.GetRequestIDFromContext(ctx)
-	if err != nil {
-		return "", fmt.Errorf("unable to read requestid from request; %s", err)
-	}
 
-	responseChannel := s.createResponseChannelForRequestID(requestID)
-	newPath, newStorageID := storage.GetRandomPathAndStorageID(s.storageTreeHeight, len(s.storageORAMNodeMap))
-	requestReplicationCommand, err := newRequestReplicationCommand(block, requestID, newPath, newStorageID)
+	responseChannel := s.createResponseChannelForBatch(request.ReadRequests, request.WriteRequests)
+	requestReplicationBlocks := s.getRequestReplicationBlocks(request.ReadRequests, request.WriteRequests)
+	requestReplicationCommand, err := newRequestReplicationCommand(requestReplicationBlocks)
 	if err != nil {
-		return "", fmt.Errorf("could not create request replication command; %s", err)
+		return nil, fmt.Errorf("could not create request replication command; %s", err)
 	}
 	_, requestReplicationSpan := tracer.Start(ctx, "apply request replication")
 	requestApplyFuture := s.raftNode.Apply(requestReplicationCommand, 0)
 	err = requestApplyFuture.Error()
 	requestReplicationSpan.End()
 	if err != nil {
-		return "", fmt.Errorf("could not apply log to the FSM; %s", err)
+		return nil, fmt.Errorf("could not apply log to the FSM; %s", err)
 	}
-	isFirst := requestApplyFuture.Response().(bool)
+	isFirstMap := requestApplyFuture.Response().(map[string]bool)
 
-	blockToRequest, path, storageID := s.getWhatToSendBasedOnRequest(ctx, block, requestID, isFirst)
-
-	var replyValue string
-	_, waitOnReplySpan := tracer.Start(ctx, "wait on reply")
-
-	log.Debug().Msgf("Adding request to storage queue and waiting for block %s", block)
-	oramReplyChan := s.batchManager.addRequestToStorageQueueAndWait(blockRequest{ctx: ctx, block: blockToRequest, path: path}, storageID)
-	replyValue = <-oramReplyChan
-	log.Debug().Msgf("Got reply from oram node channel for block %s; value: %s", block, replyValue)
-
-	waitOnReplySpan.End()
-	if isFirst {
-		log.Debug().Msgf("Adding response to response channel for block %s", block)
-		responseReplicationCommand, err := newResponseReplicationCommand(replyValue, requestID, block, value, op)
-		if err != nil {
-			return "", fmt.Errorf("could not create response replication command; %s", err)
-		}
-		_, responseReplicationSpan := tracer.Start(ctx, "apply response replication")
-		responseApplyFuture := s.raftNode.Apply(responseReplicationCommand, 0)
-		responseReplicationSpan.End()
-		err = responseApplyFuture.Error()
-		if err != nil {
-			return "", fmt.Errorf("could not apply log to the FSM; %s", err)
-		}
-		response := responseApplyFuture.Response().(string)
-		log.Debug().Msgf("Got is first response from response channel for block %s; value: %s", block, response)
-		return response, nil
+	finalResponseChan := make(chan finalResponse)
+	for _, readRequest := range request.ReadRequests {
+		go s.query(ctx, readRequest.Block, readRequest.RequestId, isFirstMap[readRequest.RequestId], "", Read, responseChannel[readRequest.RequestId], finalResponseChan)
 	}
-	responseValue := <-responseChannel
-	log.Debug().Msgf("Got response from response channel for block %s; value: %s", block, responseValue)
+	for _, writeRequest := range request.WriteRequests {
+		go s.query(ctx, writeRequest.Block, writeRequest.RequestId, isFirstMap[writeRequest.RequestId], writeRequest.Value, Write, responseChannel[writeRequest.RequestId], finalResponseChan)
+	}
+
+	var readReplies []*pb.ReadReply
+	var writeReplies []*pb.WriteReply
+	for i := 0; i < len(request.ReadRequests)+len(request.WriteRequests); i++ {
+		response := <-finalResponseChan
+		if response.err != nil {
+			return nil, fmt.Errorf("could not get response from the oramnode; %s", response.err)
+		}
+		if response.opType == Read {
+			readReplies = append(readReplies, &pb.ReadReply{RequestId: response.requestId, Value: response.value})
+		} else {
+			writeReplies = append(writeReplies, &pb.WriteReply{RequestId: response.requestId, Success: true})
+		}
+	}
 	querySpan.End()
-	return responseValue, nil
+	return &pb.ReplyBatch{ReadReplies: readReplies, WriteReplies: writeReplies}, nil
 }
 
-func (s *shardNodeServer) Read(ctx context.Context, readRequest *pb.ReadRequest) (*pb.ReadReply, error) {
-	log.Debug().Msgf("Received read request for block %s", readRequest.Block)
-	val, err := s.query(ctx, Read, readRequest.Block, "")
+func (s *shardNodeServer) BatchQuery(ctx context.Context, request *pb.RequestBatch) (*pb.ReplyBatch, error) {
+	log.Debug().Msgf("Received request batch request %v", request)
+	reply, err := s.queryBatch(ctx, request)
 	if err != nil {
 		return nil, err
 	}
-	return &pb.ReadReply{Value: val}, nil
-}
-
-func (s *shardNodeServer) Write(ctx context.Context, writeRequest *pb.WriteRequest) (*pb.WriteReply, error) {
-	log.Debug().Msgf("Received write request for block %s", writeRequest.Block)
-	val, err := s.query(ctx, Write, writeRequest.Block, writeRequest.Value)
-	if err != nil {
-		return nil, err
-	}
-	return &pb.WriteReply{Success: val == writeRequest.Value}, nil
+	log.Debug().Msgf("Returning request batch reply %v", reply)
+	return reply, nil
 }
 
 // It gets maxBlocks from the stash to send to the requesting oram node.

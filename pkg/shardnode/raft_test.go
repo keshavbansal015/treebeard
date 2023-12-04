@@ -8,26 +8,41 @@ import (
 	"github.com/hashicorp/raft"
 )
 
-func createTestReplicateRequestAndPathAndStoragePayload(block string, path int, storageID int) ReplicateRequestAndPathAndStoragePayload {
-	return ReplicateRequestAndPathAndStoragePayload{
-		RequestedBlock: block,
-		Path:           path,
-		StorageID:      storageID,
-	}
-}
-
-func TestHandleReplicateRequestAndPathAndStorageToEmptyFSM(t *testing.T) {
+func TestHandleBatchReplicateRequestAndPathAndStorageToEmptyFSM(t *testing.T) {
 	shardNodeFSM := newShardNodeFSM()
-	payload := createTestReplicateRequestAndPathAndStoragePayload("block", 11, 12)
-	shardNodeFSM.handleReplicateRequestAndPathAndStorage("request1", payload)
-	if len(shardNodeFSM.requestLog["block"]) != 1 || shardNodeFSM.requestLog["block"][0] != "request1" {
-		t.Errorf("Expected request1 to be in the requestLog, but the array is equal to %v", shardNodeFSM.requestLog["block"])
+	payload := BatchReplicateRequestAndPathAndStoragePayload{
+		Requests: []ReplicateRequestAndPathAndStoragePayload{
+			{RequestedBlock: "block1", Path: 1, StorageID: 2, RequestID: "request1"},
+			{RequestedBlock: "block2", Path: 3, StorageID: 4, RequestID: "request2"},
+		},
 	}
-	if shardNodeFSM.pathMap["request1"] != 11 {
-		t.Errorf("Expected path for request1 to be equal to 11, but the path is equal to %d", shardNodeFSM.pathMap["request1"])
+	isFirstMap := shardNodeFSM.handleBatchReplicateRequestAndPathAndStorage(payload)
+	expectedIsFirstMap := map[string]bool{"request1": true, "request2": true}
+	if len(isFirstMap) != len(expectedIsFirstMap) {
+		t.Errorf("Expected isFirstMap to have length %d, but it has length %d", len(expectedIsFirstMap), len(isFirstMap))
 	}
-	if shardNodeFSM.storageIDMap["request1"] != 12 {
-		t.Errorf("Expected storage id for request1 to be equal to 12, but the storage id is equal to %d", shardNodeFSM.storageIDMap["request1"])
+	for key, val := range isFirstMap {
+		if val != expectedIsFirstMap[key] {
+			t.Errorf("Expected isFirstMap[%s] to be %t, but it's %t", key, expectedIsFirstMap[key], val)
+		}
+	}
+	if len(shardNodeFSM.requestLog["block1"]) != 1 || shardNodeFSM.requestLog["block1"][0] != "request1" {
+		t.Errorf("Expected request1 to be in the requestLog, but the array is equal to %v", shardNodeFSM.requestLog["block1"])
+	}
+	if len(shardNodeFSM.requestLog["block2"]) != 1 || shardNodeFSM.requestLog["block2"][0] != "request2" {
+		t.Errorf("Expected request2 to be in the requestLog, but the array is equal to %v", shardNodeFSM.requestLog["block2"])
+	}
+	if shardNodeFSM.pathMap["request1"] != 1 {
+		t.Errorf("Expected path for request1 to be equal to 1, but the path is equal to %d", shardNodeFSM.pathMap["request1"])
+	}
+	if shardNodeFSM.pathMap["request2"] != 3 {
+		t.Errorf("Expected path for request2 to be equal to 3, but the path is equal to %d", shardNodeFSM.pathMap["request2"])
+	}
+	if shardNodeFSM.storageIDMap["request1"] != 2 {
+		t.Errorf("Expected storage id for request1 to be equal to 2, but the storage id is equal to %d", shardNodeFSM.storageIDMap["request1"])
+	}
+	if shardNodeFSM.storageIDMap["request2"] != 4 {
+		t.Errorf("Expected storage id for request2 to be equal to 4, but the storage id is equal to %d", shardNodeFSM.storageIDMap["request2"])
 	}
 }
 
@@ -36,12 +51,27 @@ func TestHandleReplicateRequestAndPathAndStorageToWithValueFSM(t *testing.T) {
 	shardNodeFSM.requestLog["block"] = []string{"randomrequest"}
 	shardNodeFSM.pathMap["request1"] = 20
 	shardNodeFSM.storageIDMap["request1"] = 30
-	payload := createTestReplicateRequestAndPathAndStoragePayload("block", 11, 12)
-	shardNodeFSM.handleReplicateRequestAndPathAndStorage("request1", payload)
-	if len(shardNodeFSM.requestLog["block"]) != 2 ||
+	payload := BatchReplicateRequestAndPathAndStoragePayload{
+		Requests: []ReplicateRequestAndPathAndStoragePayload{
+			{RequestedBlock: "block", Path: 11, StorageID: 12, RequestID: "request1"},
+			{RequestedBlock: "block", Path: 3, StorageID: 4, RequestID: "request2"},
+		},
+	}
+	isFirstMap := shardNodeFSM.handleBatchReplicateRequestAndPathAndStorage(payload)
+	expectedIsFirstMap := map[string]bool{"request1": false, "request2": false}
+	if len(isFirstMap) != len(expectedIsFirstMap) {
+		t.Errorf("Expected isFirstMap to have length %d, but it has length %d", len(expectedIsFirstMap), len(isFirstMap))
+	}
+	for key, val := range isFirstMap {
+		if val != expectedIsFirstMap[key] {
+			t.Errorf("Expected isFirstMap[%s] to be %t, but it's %t", key, expectedIsFirstMap[key], val)
+		}
+	}
+	if len(shardNodeFSM.requestLog["block"]) != 3 ||
 		shardNodeFSM.requestLog["block"][0] != "randomrequest" ||
-		shardNodeFSM.requestLog["block"][1] != "request1" {
-		t.Errorf("Expected request1 to be in the second position of requestLog, but the array is equal to %v", shardNodeFSM.requestLog["block"])
+		shardNodeFSM.requestLog["block"][1] != "request1" ||
+		shardNodeFSM.requestLog["block"][2] != "request2" {
+		t.Errorf("Expected request1 and request2 to be in the requestLog, but the array is equal to %v", shardNodeFSM.requestLog["block"])
 	}
 	if shardNodeFSM.pathMap["request1"] != 11 {
 		t.Errorf("Expected path for request1 to be equal to 11, but the path is equal to %d", shardNodeFSM.pathMap["request1"])
@@ -49,11 +79,18 @@ func TestHandleReplicateRequestAndPathAndStorageToWithValueFSM(t *testing.T) {
 	if shardNodeFSM.storageIDMap["request1"] != 12 {
 		t.Errorf("Expected storage id for request1 to be equal to 12, but the storage id is equal to %d", shardNodeFSM.storageIDMap["request1"])
 	}
+	if shardNodeFSM.pathMap["request2"] != 3 {
+		t.Errorf("Expected path for request2 to be equal to 3, but the path is equal to %d", shardNodeFSM.pathMap["request2"])
+	}
+	if shardNodeFSM.storageIDMap["request2"] != 4 {
+		t.Errorf("Expected storage id for request2 to be equal to 4, but the storage id is equal to %d", shardNodeFSM.storageIDMap["request2"])
+	}
 }
 
-func createTestReplicateResponsePayload(block string, response string, value string, op OperationType) ReplicateResponsePayload {
+func createTestReplicateResponsePayload(block string, requestID string, response string, value string, op OperationType) ReplicateResponsePayload {
 	return ReplicateResponsePayload{
 		RequestedBlock: block,
+		RequestID:      requestID,
 		Response:       response,
 		NewValue:       value,
 		OpType:         op,
@@ -125,8 +162,8 @@ func TestHandleReplicateResponseWhenValueInStashReturnsCorrectReadValueToAllWait
 	shardNodeFSM.responseChannel.Store("request3", make(chan string))
 	shardNodeFSM.stash["block"] = stashState{value: "test_value"}
 
-	payload := createTestReplicateResponsePayload("block", "response", "value", Read)
-	go shardNodeFSM.handleReplicateResponse("request1", payload)
+	payload := createTestReplicateResponsePayload("block", "request1", "response", "value", Read)
+	go shardNodeFSM.handleReplicateResponse(payload)
 
 	checkWaitingChannelsHelper(t, shardNodeFSM.responseChannel, "test_value")
 }
@@ -139,8 +176,8 @@ func TestHandleReplicateResponseWhenValueInStashReturnsCorrectWriteValueToAllWai
 	shardNodeFSM.responseChannel.Store("request3", make(chan string))
 	shardNodeFSM.stash["block"] = stashState{value: "test_value"}
 
-	payload := createTestReplicateResponsePayload("block", "response", "value_write", Write)
-	go shardNodeFSM.handleReplicateResponse("request1", payload)
+	payload := createTestReplicateResponsePayload("block", "request1", "response", "value_write", Write)
+	go shardNodeFSM.handleReplicateResponse(payload)
 
 	checkWaitingChannelsHelper(t, shardNodeFSM.responseChannel, "value_write")
 
@@ -156,8 +193,8 @@ func TestHandleReplicateResponseWhenValueNotInStashReturnsResponseToAllWaitingRe
 	shardNodeFSM.responseChannel.Store("request2", make(chan string))
 	shardNodeFSM.responseChannel.Store("request3", make(chan string))
 
-	payload := createTestReplicateResponsePayload("block", "response_from_oramnode", "", Read)
-	go shardNodeFSM.handleReplicateResponse("request1", payload)
+	payload := createTestReplicateResponsePayload("block", "request1", "response_from_oramnode", "", Read)
+	go shardNodeFSM.handleReplicateResponse(payload)
 
 	checkWaitingChannelsHelper(t, shardNodeFSM.responseChannel, "response_from_oramnode")
 
@@ -173,8 +210,8 @@ func TestHandleReplicateResponseWhenValueNotInStashReturnsWriteResponseToAllWait
 	shardNodeFSM.responseChannel.Store("request2", make(chan string))
 	shardNodeFSM.responseChannel.Store("request3", make(chan string))
 
-	payload := createTestReplicateResponsePayload("block", "response", "write_val", Write)
-	go shardNodeFSM.handleReplicateResponse("request1", payload)
+	payload := createTestReplicateResponsePayload("block", "request1", "response", "write_val", Write)
+	go shardNodeFSM.handleReplicateResponse(payload)
 
 	checkWaitingChannelsHelper(t, shardNodeFSM.responseChannel, "write_val")
 
@@ -191,8 +228,8 @@ func TestHandleReplicateResponseWhenNotLeaderDoesNotWriteOnChannels(t *testing.T
 	shardNodeFSM.responseChannel.Store("request2", make(chan string))
 	shardNodeFSM.stash["block"] = stashState{value: "test_value"}
 
-	payload := createTestReplicateResponsePayload("block", "response", "", Read)
-	go shardNodeFSM.handleReplicateResponse("request1", payload)
+	payload := createTestReplicateResponsePayload("block", "request1", "response", "", Read)
+	go shardNodeFSM.handleReplicateResponse(payload)
 
 	for {
 		ch1Any, _ := shardNodeFSM.responseChannel.Load("request1")

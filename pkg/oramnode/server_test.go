@@ -22,6 +22,10 @@ type mockShardNodeClient struct {
 	ackSentBlocksReply func() (*shardnodepb.AckSentBlocksReply, error)
 }
 
+func (m *mockShardNodeClient) BatchQuery(ctx context.Context, in *shardnodepb.RequestBatch, opts ...grpc.CallOption) (*shardnodepb.ReplyBatch, error) {
+	return nil, nil
+}
+
 func (m *mockShardNodeClient) Read(ctx context.Context, in *shardnodepb.ReadRequest, opts ...grpc.CallOption) (*shardnodepb.ReadReply, error) {
 	return nil, nil
 }

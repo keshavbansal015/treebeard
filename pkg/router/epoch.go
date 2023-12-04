@@ -15,8 +15,8 @@ import (
 
 type epochManager struct {
 	shardNodeRPCClients map[int]ReplicaRPCClientMap
-	requests            map[int][]*request            // map of epoch round to requests
-	reponseChans        map[int]map[*request]chan any // map of epoch round to map of request to response channel
+	requests            map[int][]*request          // map of epoch round to requests
+	reponseChans        map[int]map[string]chan any // map of epoch round to map of request id to response channel
 	currentEpoch        int
 	epochDuration       time.Duration
 	hasher              utils.Hasher
@@ -27,7 +27,7 @@ func newEpochManager(shardNodeRPCClients map[int]ReplicaRPCClientMap, epochDurat
 	return &epochManager{
 		shardNodeRPCClients: shardNodeRPCClients,
 		requests:            make(map[int][]*request),
-		reponseChans:        make(map[int]map[*request]chan any),
+		reponseChans:        make(map[int]map[string]chan any),
 		currentEpoch:        0,
 		epochDuration:       epochDuration,
 		hasher:              utils.Hasher{KnownHashes: make(map[string]uint32)},
@@ -41,6 +41,7 @@ const (
 
 type request struct {
 	ctx           context.Context
+	requestId     string
 	operationType int
 	block         string
 	value         string
@@ -58,10 +59,10 @@ func (e *epochManager) addRequestToCurrentEpoch(r *request) chan any {
 	}()
 	e.requests[e.currentEpoch] = append(e.requests[e.currentEpoch], r)
 	if _, exists := e.reponseChans[e.currentEpoch]; !exists {
-		e.reponseChans[e.currentEpoch] = make(map[*request]chan any)
+		e.reponseChans[e.currentEpoch] = make(map[string]chan any)
 	}
-	e.reponseChans[e.currentEpoch][r] = make(chan any)
-	return e.reponseChans[e.currentEpoch][r]
+	e.reponseChans[e.currentEpoch][r.requestId] = make(chan any)
+	return e.reponseChans[e.currentEpoch][r.requestId]
 }
 
 func (e *epochManager) whereToForward(block string) (shardNodeID int) {
@@ -79,98 +80,87 @@ type writeResponse struct {
 	err     error
 }
 
-type requestResponse struct {
-	req      *request
-	response any
+type batchResponse struct {
+	readResponses  []*shardnodepb.ReadReply
+	writeResponses []*shardnodepb.WriteReply
+	err            error
 }
 
-func (e *epochManager) sendReadRequest(req *request, responseChannel chan requestResponse) {
-	log.Debug().Msgf("Sending read request %v", req)
-	whereToForward := e.whereToForward(req.block)
-	shardNodeRPCClient := e.shardNodeRPCClients[whereToForward]
-
+func (e *epochManager) sendBatch(ctx context.Context, shardnodeClient ReplicaRPCClientMap, requestBatch *shardnodepb.RequestBatch, batchResponseChan chan batchResponse) {
+	log.Debug().Msgf("Sending batch of requests %v to shardnode", requestBatch)
 	var replicaFuncs []rpc.CallFunc
 	var clients []any
-	for _, c := range shardNodeRPCClient {
+	for _, client := range shardnodeClient {
 		replicaFuncs = append(replicaFuncs,
 			func(ctx context.Context, client any, request any, opts ...grpc.CallOption) (any, error) {
-				return client.(ShardNodeRPCClient).ClientAPI.Read(ctx, request.(*shardnodepb.ReadRequest), opts...)
+				return client.(ShardNodeRPCClient).ClientAPI.BatchQuery(ctx, request.(*shardnodepb.RequestBatch), opts...)
 			},
 		)
-		clients = append(clients, c)
+		clients = append(clients, client)
 	}
-	reply, err := rpc.CallAllReplicas(req.ctx, clients, replicaFuncs, &shardnodepb.ReadRequest{Block: req.block})
+	reply, err := rpc.CallAllReplicas(ctx, clients, replicaFuncs, requestBatch)
 	if err != nil {
-		log.Error().Msgf("Error sending read request %v", err)
-		responseChannel <- requestResponse{req: req, response: readResponse{err: err}}
-	} else {
-		shardNodeReply := reply.(*shardnodepb.ReadReply)
-		log.Debug().Msgf("Received read reply %v", shardNodeReply)
-		responseChannel <- requestResponse{req: req, response: readResponse{value: shardNodeReply.Value, err: err}}
-		log.Debug().Msgf("Sent read reply %v", shardNodeReply)
+		batchResponseChan <- batchResponse{err: err}
+		return
 	}
+	log.Debug().Msgf("Received batch of requests from shardnode; reply: %v", reply)
+	batchResponseChan <- batchResponse{readResponses: reply.(*shardnodepb.ReplyBatch).ReadReplies, writeResponses: reply.(*shardnodepb.ReplyBatch).WriteReplies, err: nil}
 }
 
-func (e *epochManager) sendWriteRequest(req *request, responseChannel chan requestResponse) {
-	log.Debug().Msgf("Sending write request %v", req)
-	whereToForward := e.whereToForward(req.block)
-	shardNodeRPCClient := e.shardNodeRPCClients[whereToForward]
-
-	var replicaFuncs []rpc.CallFunc
-	var clients []any
-	for _, c := range shardNodeRPCClient {
-		replicaFuncs = append(replicaFuncs,
-			func(ctx context.Context, client any, request any, opts ...grpc.CallOption) (any, error) {
-				return client.(ShardNodeRPCClient).ClientAPI.Write(ctx, request.(*shardnodepb.WriteRequest), opts...)
-			},
-		)
-		clients = append(clients, c)
+func (e *epochManager) getShardnodeBatches(requests []*request) map[int]*shardnodepb.RequestBatch {
+	requestBatches := make(map[int]*shardnodepb.RequestBatch)
+	for _, r := range requests {
+		shardNodeID := e.whereToForward(r.block)
+		if _, exists := requestBatches[shardNodeID]; !exists {
+			requestBatches[shardNodeID] = &shardnodepb.RequestBatch{}
+		}
+		if r.operationType == Read {
+			requestBatches[shardNodeID].ReadRequests = append(requestBatches[shardNodeID].ReadRequests, &shardnodepb.ReadRequest{RequestId: r.requestId, Block: r.block})
+		} else {
+			requestBatches[shardNodeID].WriteRequests = append(requestBatches[shardNodeID].WriteRequests, &shardnodepb.WriteRequest{RequestId: r.requestId, Block: r.block, Value: r.value})
+		}
 	}
-
-	reply, err := rpc.CallAllReplicas(req.ctx, clients, replicaFuncs, &shardnodepb.WriteRequest{Block: req.block, Value: req.value})
-	if err != nil {
-		log.Error().Msgf("Error sending write request %v", err)
-		responseChannel <- requestResponse{req: req, response: writeResponse{err: err}}
-	} else {
-		shardNodeReply := reply.(*shardnodepb.WriteReply)
-		log.Debug().Msgf("Received write reply %v", shardNodeReply)
-		responseChannel <- requestResponse{req: req, response: writeResponse{success: shardNodeReply.Success, err: err}}
-	}
+	return requestBatches
 }
 
 // This function waits for all the responses then answers all of the requests.
 // It can time out since a request may have failed.
-func (e *epochManager) sendEpochRequestsAndAnswerThem(epochNumber int, requests []*request, responseChans map[*request]chan any) {
-	responseChannel := make(chan requestResponse)
+func (e *epochManager) sendEpochRequestsAndAnswerThem(epochNumber int, requests []*request, responseChans map[string]chan any) {
 	requestsCount := len(requests)
 	if requestsCount == 0 {
 		return
 	}
 	log.Debug().Msgf("Sending epoch requests and answering them for epoch %d with %d requests", epochNumber, requestsCount)
-	for _, r := range requests {
-		if r.operationType == Read {
-			go e.sendReadRequest(r, responseChannel)
-		} else if r.operationType == Write {
-			go e.sendWriteRequest(r, responseChannel)
+	batchRequests := e.getShardnodeBatches(requests)
+	batchResponseChan := make(chan batchResponse)
+	waitingCount := 0
+	for shardNodeID, shardNodeRequests := range batchRequests {
+		if len(shardNodeRequests.ReadRequests) == 0 && len(shardNodeRequests.WriteRequests) == 0 {
+			continue
 		}
+		waitingCount++
+		go e.sendBatch(context.Background(), e.shardNodeRPCClients[shardNodeID], shardNodeRequests, batchResponseChan)
 	}
-	timeout := time.After(10 * time.Second) // TODO: make this a parameter
-	responsesReceived := make(map[*request]any)
-
-	for {
-		if len(responsesReceived) == requestsCount {
-			break
-		}
+	timeout := time.After(10 * time.Second)
+	for i := 0; i < waitingCount; i++ {
 		select {
 		case <-timeout:
+			log.Error().Msgf("Timed out while waiting for batch response")
 			return
-		case requestResponse := <-responseChannel:
-			responsesReceived[requestResponse.req] = requestResponse.response
+		case reply := <-batchResponseChan:
+			if reply.err != nil {
+				log.Error().Msgf("Error while sending batch of requests; %s", reply.err)
+				continue
+			}
+			log.Debug().Msgf("Received batch reply %v", reply)
+			log.Debug().Msgf("Answering epoch requests for epoch %d", epochNumber)
+			for _, r := range reply.readResponses {
+				responseChans[r.RequestId] <- readResponse{value: r.Value}
+			}
+			for _, r := range reply.writeResponses {
+				responseChans[r.RequestId] <- writeResponse{success: r.Success}
+			}
 		}
-	}
-	log.Debug().Msgf("Answering epoch requests for epoch %d", epochNumber)
-	for req, response := range responsesReceived {
-		responseChans[req] <- response
 	}
 }
 

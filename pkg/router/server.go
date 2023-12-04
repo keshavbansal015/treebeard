@@ -9,6 +9,7 @@ import (
 	pb "github.com/dsg-uwaterloo/oblishard/api/router"
 	"github.com/dsg-uwaterloo/oblishard/pkg/config"
 	"github.com/dsg-uwaterloo/oblishard/pkg/rpc"
+	"github.com/google/uuid"
 	"github.com/rs/zerolog/log"
 	"go.opentelemetry.io/otel"
 	"google.golang.org/grpc"
@@ -32,7 +33,7 @@ func (r *routerServer) Read(ctx context.Context, readRequest *pb.ReadRequest) (*
 	log.Debug().Msgf("Received read request for block %s", readRequest.Block)
 	tracer := otel.Tracer("")
 	ctx, span := tracer.Start(ctx, "router read request")
-	responseChannel := r.epochManager.addRequestToCurrentEpoch(&request{ctx: rpc.GetContextWithRequestID(ctx), operationType: Read, block: readRequest.Block})
+	responseChannel := r.epochManager.addRequestToCurrentEpoch(&request{ctx: ctx, requestId: uuid.New().String(), operationType: Read, block: readRequest.Block})
 	response := <-responseChannel
 	readResponse := response.(readResponse)
 	if readResponse.err != nil {
@@ -47,7 +48,7 @@ func (r *routerServer) Write(ctx context.Context, writeRequest *pb.WriteRequest)
 	log.Debug().Msgf("Received write request for block %s", writeRequest.Block)
 	tracer := otel.Tracer("")
 	ctx, span := tracer.Start(ctx, "router write request")
-	responseChannel := r.epochManager.addRequestToCurrentEpoch(&request{ctx: rpc.GetContextWithRequestID(ctx), operationType: Write, block: writeRequest.Block, value: writeRequest.Value})
+	responseChannel := r.epochManager.addRequestToCurrentEpoch(&request{ctx: ctx, requestId: uuid.New().String(), operationType: Write, block: writeRequest.Block, value: writeRequest.Value})
 	response := <-responseChannel
 	writeResponse := response.(writeResponse)
 	if writeResponse.err != nil {

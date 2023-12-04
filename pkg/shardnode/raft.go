@@ -80,19 +80,23 @@ func (fsm *shardNodeFSM) String() string {
 	return out
 }
 
-func (fsm *shardNodeFSM) handleReplicateRequestAndPathAndStorage(requestID string, r ReplicateRequestAndPathAndStoragePayload) (isFirst bool) {
-	fsm.requestLog[r.RequestedBlock] = append(fsm.requestLog[r.RequestedBlock], requestID)
-	fsm.pathMap[requestID] = r.Path
-	fsm.storageIDMap[requestID] = r.StorageID
-	if len(fsm.requestLog[r.RequestedBlock]) == 1 {
-		isFirst = true
-	} else {
-		isFirst = false
+func (fsm *shardNodeFSM) handleBatchReplicateRequestAndPathAndStorage(r BatchReplicateRequestAndPathAndStoragePayload) (isFirstMap map[string]bool) {
+	isFirstMap = make(map[string]bool)
+	for _, r := range r.Requests {
+		fsm.requestLog[r.RequestedBlock] = append(fsm.requestLog[r.RequestedBlock], r.RequestID)
+		fsm.pathMap[r.RequestID] = r.Path
+		fsm.storageIDMap[r.RequestID] = r.StorageID
+		if len(fsm.requestLog[r.RequestedBlock]) == 1 {
+			isFirstMap[r.RequestID] = true
+		} else {
+			isFirstMap[r.RequestID] = false
+		}
 	}
-	return isFirst
+	return isFirstMap
 }
 
-func (fsm *shardNodeFSM) handleReplicateResponse(requestID string, r ReplicateResponsePayload) string {
+func (fsm *shardNodeFSM) handleReplicateResponse(r ReplicateResponsePayload) string {
+	requestID := r.RequestID
 	log.Debug().Msgf("Aquiring lock for shardNodeFSM in handleReplicateResponse")
 	start := time.Now()
 	fsm.stashMu.Lock()
@@ -129,7 +133,10 @@ func (fsm *shardNodeFSM) handleReplicateResponse(requestID string, r ReplicateRe
 		for i := len(fsm.requestLog[r.RequestedBlock]) - 1; i >= 1; i-- { // We don't need to send the response to the first request
 			log.Debug().Msgf("Sending response to concurrent request number %d in requestLog for block %s", i, r.RequestedBlock)
 			timeout := time.After(5 * time.Second) // TODO: think about this in the batching scenario
-			responseChan, _ := fsm.responseChannel.Load(fsm.requestLog[r.RequestedBlock][i])
+			responseChan, exists := fsm.responseChannel.Load(fsm.requestLog[r.RequestedBlock][i])
+			if !exists {
+				log.Fatal().Msgf("response channel for request %s does not exist", fsm.requestLog[r.RequestedBlock][i])
+			}
 			select {
 			case <-timeout:
 				log.Error().Msgf("timeout in sending response to concurrent request number %d in requestLog for block %s", i, r.RequestedBlock)
@@ -210,15 +217,14 @@ func (fsm *shardNodeFSM) Apply(rLog *raft.Log) interface{} {
 		if err != nil {
 			return fmt.Errorf("could not unmarshall the command; %s", err)
 		}
-		requestID := command.RequestID
-		if command.Type == ReplicateRequestAndPathAndStorageCommand {
+		if command.Type == BatchReplicateRequestAndPathAndStorageCommand {
 			log.Debug().Msgf("got replication command for replicate request")
-			var requestReplicationPayload ReplicateRequestAndPathAndStoragePayload
+			var requestReplicationPayload BatchReplicateRequestAndPathAndStoragePayload
 			err := msgpack.Unmarshal(command.Payload, &requestReplicationPayload)
 			if err != nil {
 				return fmt.Errorf("could not unmarshall the request replication command; %s", err)
 			}
-			return fsm.handleReplicateRequestAndPathAndStorage(requestID, requestReplicationPayload)
+			return fsm.handleBatchReplicateRequestAndPathAndStorage(requestReplicationPayload)
 		} else if command.Type == ReplicateResponseCommand {
 			log.Debug().Msgf("got replication command for replicate response")
 			var responseReplicationPayload ReplicateResponsePayload
@@ -226,7 +232,7 @@ func (fsm *shardNodeFSM) Apply(rLog *raft.Log) interface{} {
 			if err != nil {
 				return fmt.Errorf("could not unmarshall the response replication command; %s", err)
 			}
-			return fsm.handleReplicateResponse(requestID, responseReplicationPayload)
+			return fsm.handleReplicateResponse(responseReplicationPayload)
 		} else if command.Type == ReplicateSentBlocksCommand {
 			log.Debug().Msgf("got replication command for replicate sent blocks")
 			var replicateSentBlocksPayload ReplicateSentBlocksPayload
