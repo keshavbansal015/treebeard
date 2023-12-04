@@ -6,3 +6,4 @@ cmd/shardnode/shardnode
 cmd/oramnode/oramnode
 *.rdb
 *.log
+*.prof
