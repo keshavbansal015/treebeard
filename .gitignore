@@ -7,3 +7,4 @@ cmd/oramnode/oramnode
 *.rdb
 *.log
 *.prof
+*.DS_Store
