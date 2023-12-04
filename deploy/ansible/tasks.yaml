@@ -31,17 +31,16 @@
           - python3-docker
           - socat
 
-    - name: Remove previous oblishard directory
-      ansible.builtin.file:
-        path: /root/oblishard
-        state: absent
-        mode: '0755'
-
     - name: Create oblishard directory
       ansible.builtin.file:
         path: /root/oblishard
         state: directory
         mode: '0755'
+
+    - name: Remove previous log files
+      ansible.builtin.shell:
+        cmd: find . -name "*.log" -delete
+        chdir: /root/oblishard
 
     - name: Include endpoints as vars
       ansible.builtin.include_vars:
