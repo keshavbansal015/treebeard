@@ -3,7 +3,6 @@ package client
 import (
 	"context"
 
-	"github.com/rs/zerolog/log"
 	"golang.org/x/sync/semaphore"
 )
 
@@ -21,11 +20,9 @@ func NewRateLimit(tokensLimit int) *RateLimit {
 // Aquire blocks until a token is available.
 func (r *RateLimit) Acquire() {
 	r.sem.Acquire(context.Background(), 1)
-	log.Debug().Msgf("Aquired token from rate limiter")
 }
 
 // Release releases a token.
 func (r *RateLimit) Release() {
 	r.sem.Release(1)
-	log.Debug().Msgf("Released token from rate limiter")
 }
