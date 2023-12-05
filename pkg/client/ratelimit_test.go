@@ -5,33 +5,33 @@ import (
 	"time"
 )
 
-func TestRateLimitAddsTokensAfterCallingStart(t *testing.T) {
-	rateLimit := NewRateLimit(10)
-	rateLimit.Start()
-	timeout := time.After(1 * time.Second)
-	responseChan := make(chan bool)
-	for i := 0; i < 10; i++ {
-		go func() {
-			rateLimit.Wait()
-			responseChan <- true
-		}()
+func TestAcquireBlocksOtherAcquiresIfReleaseNotCalled(t *testing.T) {
+	rateLimit := NewRateLimit(5)
+	rateLimit.Acquire()
+	rateLimit.Acquire()
+	rateLimit.Acquire()
+	rateLimit.Acquire()
+	rateLimit.Acquire()
+	timeout := time.After(2 * time.Second)
+	ch := make(chan bool)
+	go func() {
+		rateLimit.Acquire()
+		ch <- true
+	}()
+	select {
+	case <-ch:
+		t.Fatal("Acquire did not block")
+	case <-timeout:
 	}
-	for i := 0; i < 10; i++ {
-		select {
-		case <-responseChan:
-		case <-timeout:
-			t.Fatal("Timed out waiting for response")
-		}
-	}
+
 }
 
-func TestAddTokenAllowsBlockedClientsToContinue(t *testing.T) {
+func TestReleaseAllowsBlockedClientsToContinue(t *testing.T) {
 	rateLimit := NewRateLimit(1)
-	rateLimit.Start()
 	timeout := time.After(1 * time.Second)
 	responseChan := make(chan bool)
 	go func() {
-		rateLimit.Wait()
+		rateLimit.Acquire()
 		responseChan <- true
 	}()
 	select {
@@ -39,9 +39,9 @@ func TestAddTokenAllowsBlockedClientsToContinue(t *testing.T) {
 	case <-timeout:
 		t.Fatal("Timed out waiting for response")
 	}
-	rateLimit.AddToken()
+	rateLimit.Release()
 	go func() {
-		rateLimit.Wait()
+		rateLimit.Acquire()
 		responseChan <- true
 	}()
 	select {

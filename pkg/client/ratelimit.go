@@ -1,32 +1,31 @@
 package client
 
+import (
+	"context"
+
+	"github.com/rs/zerolog/log"
+	"golang.org/x/sync/semaphore"
+)
+
 // RateLimit is a simple rate limiter that allows a maximum of tokensLimit requests at a time.
 type RateLimit struct {
-	// The number of requests that can be made in the current period.
-	tokensLimit     int
-	availableTokens chan struct{}
+	sem *semaphore.Weighted
 }
 
 func NewRateLimit(tokensLimit int) *RateLimit {
 	return &RateLimit{
-		tokensLimit:     tokensLimit,
-		availableTokens: make(chan struct{}),
+		sem: semaphore.NewWeighted(int64(tokensLimit)),
 	}
 }
 
-// Clients should call Start() before making requests so that the rate limiter has tokens to give out.
-func (r *RateLimit) Start() {
-	for i := 0; i < r.tokensLimit; i++ {
-		go func() { r.availableTokens <- struct{}{} }()
-	}
+// Aquire blocks until a token is available.
+func (r *RateLimit) Acquire() {
+	r.sem.Acquire(context.Background(), 1)
+	log.Debug().Msgf("Aquired token from rate limiter")
 }
 
-// Clients should call Wait() before making requests to ensure that the rate limiter has tokens to give out.
-func (r *RateLimit) Wait() {
-	<-r.availableTokens
-}
-
-// Clients should call AddToken() after making requests to return a token to the rate limiter.
-func (r *RateLimit) AddToken() {
-	go func() { r.availableTokens <- struct{}{} }()
+// Release releases a token.
+func (r *RateLimit) Release() {
+	r.sem.Release(1)
+	log.Debug().Msgf("Released token from rate limiter")
 }

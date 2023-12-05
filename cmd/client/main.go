@@ -31,12 +31,11 @@ type writeResponse struct {
 
 // TODO: Add client struct that contains the routerRPCClient and the rateLimit
 func asyncRead(ratelimit *client.RateLimit, tracer trace.Tracer, block string, routerRPCClient client.RouterRPCClient, readResponseChannel chan readResponse) {
-	ratelimit.Wait()
-	log.Debug().Msgf("Sending read request for block %s", block)
+	ratelimit.Acquire()
 	ctx, span := tracer.Start(context.Background(), "client read request")
 	value, err := routerRPCClient.Read(ctx, block)
 	span.End()
-	ratelimit.AddToken()
+	ratelimit.Release()
 	if err != nil {
 		readResponseChannel <- readResponse{block: block, value: "", err: fmt.Errorf("failed to call Read block %s on router; %v", block, err)}
 	} else if value == "" {
@@ -47,12 +46,11 @@ func asyncRead(ratelimit *client.RateLimit, tracer trace.Tracer, block string, r
 }
 
 func asyncWrite(ratelimit *client.RateLimit, tracer trace.Tracer, block string, newValue string, routerRPCClient client.RouterRPCClient, writeResponseChannel chan writeResponse) {
-	ratelimit.Wait()
-	log.Debug().Msgf("Sending write request for block %s with value %s", block, newValue)
+	ratelimit.Acquire()
 	ctx, span := tracer.Start(context.Background(), "client write request")
 	value, err := routerRPCClient.Write(ctx, block, newValue)
 	span.End()
-	ratelimit.AddToken()
+	ratelimit.Release()
 	if err != nil {
 		writeResponseChannel <- writeResponse{block: block, success: false, err: fmt.Errorf("failed to call Write block %s on router; %v", block, err)}
 	} else {
@@ -69,6 +67,7 @@ func main() {
 	if err != nil {
 		os.Exit(1)
 	}
+
 	utils.InitLogging(parameters.Log, *logPath)
 
 	routerEndpoints, err := config.ReadRouterEndpoints(path.Join(*configsPath, "router_endpoints.yaml"))
@@ -103,7 +102,6 @@ func main() {
 	readOperations := 0
 	writeOperations := 0
 	rateLimit := client.NewRateLimit(parameters.MaxRequests)
-	rateLimit.Start()
 	startTime := time.Now()
 	for _, request := range requests {
 		routerRPCClient := rpcClients.GetRandomRouter()
@@ -136,4 +134,5 @@ func main() {
 	elapsed := time.Since(startTime)
 	// TODO: seperate read and write throughput
 	fmt.Printf("Throughput: %f", float64(readOperations+writeOperations)/elapsed.Seconds())
+	fmt.Println("Average latency in ms: ", elapsed.Seconds()/float64(readOperations+writeOperations)*1000)
 }
