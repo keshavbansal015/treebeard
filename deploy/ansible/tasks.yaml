@@ -164,13 +164,9 @@
       delegate_to: "{{ item.deploy_host }}"
       with_items: "{{ oramnode_endpoints.endpoints }}"
 
-    - name: Stop oramnode services
-      ansible.builtin.systemd:
-        name: "oblishard-oramnode-{{ item.id }}-{{ item.replicaid }}"
-        state: stopped
-        daemon_reload: true
-      delegate_to: "{{ item.deploy_host }}"
-      with_items: "{{ oramnode_endpoints.endpoints }}"      
+    - name: Stop previous services
+      ansible.builtin.shell:
+        cmd: systemctl stop oblishard-*   
 
     - name: Start oramnode services
       ansible.builtin.systemd:
@@ -189,14 +185,6 @@
       delegate_to: "{{ item.deploy_host }}"
       with_items: "{{ shardnode_endpoints.endpoints }}"
 
-    - name: Stop shardnode services
-      ansible.builtin.systemd:
-        name: "oblishard-shardnode-{{ item.id }}-{{ item.replicaid }}"
-        state: stopped
-        daemon_reload: true
-      delegate_to: "{{ item.deploy_host }}"
-      with_items: "{{ shardnode_endpoints.endpoints }}"
-
     - name: Start shardnode services
       ansible.builtin.systemd:
         name: "oblishard-shardnode-{{ item.id }}-{{ item.replicaid }}"
@@ -211,14 +199,6 @@
       template:
         src: templates/oblishard-router.service.j2
         dest: "/lib/systemd/system/oblishard-router-{{ item.id }}.service"
-      delegate_to: "{{ item.deploy_host }}"
-      with_items: "{{ router_endpoints.endpoints }}"
-
-    - name: Stop router services
-      ansible.builtin.systemd:
-        name: "oblishard-router-{{ item.id }}"
-        state: stopped
-        daemon_reload: true
       delegate_to: "{{ item.deploy_host }}"
       with_items: "{{ router_endpoints.endpoints }}"
 
