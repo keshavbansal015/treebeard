@@ -68,14 +68,15 @@ func (s *shardNodeServer) getWhatToSendBasedOnRequest(ctx context.Context, block
 }
 
 // It creates a channel for receiving the response from the raft FSM for the current requestID.
+// The response channel should be buffered so that we don't block the raft FSM even if the client is not reading from the channel right now.
 func (s *shardNodeServer) createResponseChannelForBatch(readRequests []*pb.ReadRequest, writeRequests []*pb.WriteRequest) map[string]chan string {
 	channelMap := make(map[string]chan string)
 	for _, req := range readRequests {
-		channelMap[req.RequestId] = make(chan string)
+		channelMap[req.RequestId] = make(chan string, 1)
 		s.shardNodeFSM.responseChannel.Store(req.RequestId, channelMap[req.RequestId])
 	}
 	for _, req := range writeRequests {
-		channelMap[req.RequestId] = make(chan string)
+		channelMap[req.RequestId] = make(chan string, 1)
 		s.shardNodeFSM.responseChannel.Store(req.RequestId, channelMap[req.RequestId])
 	}
 	return channelMap

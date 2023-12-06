@@ -97,19 +97,8 @@ func (fsm *shardNodeFSM) handleBatchReplicateRequestAndPathAndStorage(r BatchRep
 
 func (fsm *shardNodeFSM) handleReplicateResponse(r ReplicateResponsePayload) string {
 	requestID := r.RequestID
-	log.Debug().Msgf("Aquiring lock for shardNodeFSM in handleReplicateResponse")
-	start := time.Now()
+
 	fsm.stashMu.Lock()
-	fsm.positionMapMu.Lock()
-	end := time.Now()
-	log.Debug().Msgf("Aquired lock for shardNodeFSM in handleReplicateResponse in %v", end.Sub(start))
-	// log.Debug().Msgf("Aquired lock for shardNodeFSM in handleReplicateResponse")
-	defer func() {
-		log.Debug().Msgf("Releasing lock for shardNodeFSM in handleReplicateResponse")
-		fsm.stashMu.Unlock()
-		fsm.positionMapMu.Unlock()
-		log.Debug().Msgf("Released lock for shardNodeFSM in handleReplicateResponse")
-	}()
 	stashState, exists := fsm.stash[r.RequestedBlock]
 	if exists {
 		if r.OpType == Write {
@@ -128,8 +117,12 @@ func (fsm *shardNodeFSM) handleReplicateResponse(r ReplicateResponsePayload) str
 			fsm.stash[r.RequestedBlock] = stashState
 		}
 	}
+	stashValue := fsm.stash[r.RequestedBlock].value
+	fsm.stashMu.Unlock()
+	fsm.positionMapMu.Lock()
+	fsm.positionMap[r.RequestedBlock] = positionState{path: fsm.pathMap[requestID], storageID: fsm.storageIDMap[requestID]}
+	fsm.positionMapMu.Unlock()
 	if fsm.raftNode.State() == raft.Leader {
-		fsm.positionMap[r.RequestedBlock] = positionState{path: fsm.pathMap[requestID], storageID: fsm.storageIDMap[requestID]}
 		for i := len(fsm.requestLog[r.RequestedBlock]) - 1; i >= 1; i-- { // We don't need to send the response to the first request
 			log.Debug().Msgf("Sending response to concurrent request number %d in requestLog for block %s", i, r.RequestedBlock)
 			timeout := time.After(5 * time.Second) // TODO: think about this in the batching scenario
@@ -141,7 +134,7 @@ func (fsm *shardNodeFSM) handleReplicateResponse(r ReplicateResponsePayload) str
 			case <-timeout:
 				log.Error().Msgf("timeout in sending response to concurrent request number %d in requestLog for block %s", i, r.RequestedBlock)
 				continue
-			case responseChan.(chan string) <- fsm.stash[r.RequestedBlock].value:
+			case responseChan.(chan string) <- stashValue:
 				log.Debug().Msgf("sent response to concurrent request number %d in requestLog for block %s", i, r.RequestedBlock)
 				delete(fsm.pathMap, fsm.requestLog[r.RequestedBlock][i])
 				delete(fsm.storageIDMap, fsm.requestLog[r.RequestedBlock][i])
@@ -153,7 +146,7 @@ func (fsm *shardNodeFSM) handleReplicateResponse(r ReplicateResponsePayload) str
 	delete(fsm.storageIDMap, requestID)
 	fsm.responseChannel.Delete(requestID)
 	delete(fsm.requestLog, r.RequestedBlock)
-	return fsm.stash[r.RequestedBlock].value
+	return stashValue
 }
 
 func (fsm *shardNodeFSM) handleReplicateSentBlocks(r ReplicateSentBlocksPayload) {
