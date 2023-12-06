@@ -40,7 +40,7 @@ type oramNodeServer struct {
 	replicaID           int
 	raftNode            *raft.Raft
 	oramNodeFSM         *oramNodeFSM
-	shardNodeRPCClients map[int]ReplicaRPCClientMap
+	shardNodeRPCClients ShardNodeRPCClients
 	readPathCounter     atomic.Int32
 	storageHandler      storage
 	parameters          config.Parameters
@@ -231,8 +231,7 @@ func (o *oramNodeServer) evict(storageID int) error {
 		return fmt.Errorf("unable to perform ReadBucket on all levels")
 	}
 
-	// TODO: get blocks from multiple random shard nodes
-	randomShardNode := o.shardNodeRPCClients[0]
+	randomShardNode := o.shardNodeRPCClients.getRandomShardNodeClient()
 	receivedBlocks, err := o.readBlocksFromShardNode(paths, storageID, randomShardNode)
 	if err != nil {
 		return err
