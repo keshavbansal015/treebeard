@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"net"
 	"strconv"
-	"sync"
+	"sync/atomic"
 	"time"
 
 	pb "github.com/dsg-uwaterloo/oblishard/api/oramnode"
@@ -41,8 +41,7 @@ type oramNodeServer struct {
 	raftNode            *raft.Raft
 	oramNodeFSM         *oramNodeFSM
 	shardNodeRPCClients map[int]ReplicaRPCClientMap
-	readPathCounter     int
-	readPathCounterMu   sync.Mutex
+	readPathCounter     atomic.Int32
 	storageHandler      storage
 	parameters          config.Parameters
 }
@@ -54,7 +53,7 @@ func newOramNodeServer(oramNodeServerID int, replicaID int, raftNode *raft.Raft,
 		raftNode:            raftNode,
 		oramNodeFSM:         oramNodeFSM,
 		shardNodeRPCClients: shardNodeRPCClients,
-		readPathCounter:     0,
+		readPathCounter:     atomic.Int32{},
 		storageHandler:      storageHandler,
 		parameters:          parameters,
 	}
@@ -256,9 +255,7 @@ func (o *oramNodeServer) evict(storageID int) error {
 		return fmt.Errorf("could not apply log to the FSM; %s", err)
 	}
 
-	o.readPathCounterMu.Lock()
-	o.readPathCounter = 0
-	o.readPathCounterMu.Unlock()
+	o.readPathCounter.Store(0)
 
 	return nil
 }
@@ -370,6 +367,7 @@ func (o *oramNodeServer) ReadPath(ctx context.Context, request *pb.ReadPathReque
 	for i := 0; i < realReadCount; i++ {
 		response := <-readBlockResponseChan
 		if response.err != nil {
+			log.Error().Msgf("Could not read block %s; %s", response.block, response.err)
 			return nil, err
 		}
 		returnValues[response.block] = response.value
@@ -384,9 +382,7 @@ func (o *oramNodeServer) ReadPath(ctx context.Context, request *pb.ReadPathReque
 	}
 	earlyReshuffleSpan.End()
 
-	o.readPathCounterMu.Lock()
-	o.readPathCounter++
-	o.readPathCounterMu.Unlock()
+	o.readPathCounter.Add(1)
 
 	endReadPathCommand, err := newReplicateEndReadPathCommand()
 	if err != nil {
@@ -471,14 +467,8 @@ func StartServer(oramNodeServerID int, ip string, rpcPort int, replicaID int, ra
 	oramNodeServer := newOramNodeServer(oramNodeServerID, replicaID, r, oramNodeFSM, shardNodeRPCClients, storageHandler, parameters)
 	go func() {
 		for {
-			time.Sleep(200 * time.Millisecond)
-			needEviction := false
-			oramNodeServer.readPathCounterMu.Lock()
-			if oramNodeServer.readPathCounter >= oramNodeServer.parameters.EvictionRate {
-				needEviction = true
-			}
-			oramNodeServer.readPathCounterMu.Unlock()
-			if needEviction {
+			time.Sleep(100 * time.Millisecond)
+			if oramNodeServer.readPathCounter.Load() >= int32(oramNodeServer.parameters.EvictionRate) {
 				storageID := oramNodeServer.storageHandler.GetRandomStorageID()
 				oramNodeServer.evict(storageID)
 			}

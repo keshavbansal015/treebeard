@@ -341,9 +341,7 @@ func TestEvictKeepsBeginEvictionInFailureScenario(t *testing.T) {
 func TestEvictResetsReadPathCounter(t *testing.T) {
 	o := startLeaderRaftNodeServer(t)
 	o.evict(0)
-	o.readPathCounterMu.Lock()
-	defer o.readPathCounterMu.Unlock()
-	if o.readPathCounter != 0 {
+	if o.readPathCounter.Load() != 0 {
 		t.Errorf("Evict should reset readPathCounter after successful execution")
 	}
 }
@@ -377,7 +375,7 @@ func TestReadPathIncrementsReadPathCounter(t *testing.T) {
 	o := startLeaderRaftNodeServer(t).withMockStorageHandler(newMockStorageHandler(4, 4))
 	ctx := metadata.NewIncomingContext(context.Background(), metadata.Pairs("requestid", "request1"))
 	o.ReadPath(ctx, &oramnode.ReadPathRequest{StorageId: 2, Requests: []*oramnode.BlockRequest{{Block: "a", Path: 1}}})
-	if o.readPathCounter != 1 {
+	if o.readPathCounter.Load() != 1 {
 		t.Errorf("ReadPath should increment readPathCounter")
 	}
 }
