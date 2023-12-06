@@ -21,7 +21,6 @@ type RouterRPCClient struct {
 type RouterClients map[int]RouterRPCClient
 
 func (r RouterClients) GetRandomRouter() RouterRPCClient {
-	log.Debug().Msgf("Getting a random router from %v", r)
 	routersLen := len(r)
 	randomRouterIndex := rand.Intn(routersLen)
 	randomRouter := r[randomRouterIndex]
