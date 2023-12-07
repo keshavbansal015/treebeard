@@ -3,6 +3,7 @@ package oramnode
 import (
 	"context"
 	"fmt"
+	"math/rand"
 
 	shardnodepb "github.com/dsg-uwaterloo/oblishard/api/shardnode"
 	"github.com/dsg-uwaterloo/oblishard/pkg/config"
@@ -19,6 +20,13 @@ type ShardNodeRPCClient struct {
 }
 
 type ReplicaRPCClientMap map[int]ShardNodeRPCClient
+
+type ShardNodeRPCClients map[int]ReplicaRPCClientMap
+
+func (c ShardNodeRPCClients) getRandomShardNodeClient() ReplicaRPCClientMap {
+	randomIndex := rand.Intn(len(c))
+	return c[randomIndex]
+}
 
 func (r *ReplicaRPCClientMap) sendAcksToShardNode(acks []*shardnodepb.Ack) error {
 
