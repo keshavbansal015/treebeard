@@ -8,3 +8,5 @@ cmd/oramnode/oramnode
 *.log
 *.prof
 *.DS_Store
+db.txt
+trace.txt
