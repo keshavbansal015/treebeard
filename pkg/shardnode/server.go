@@ -405,6 +405,13 @@ func StartServer(shardNodeServerID int, ip string, rpcPort int, replicaID int, r
 	shardnodeServer := newShardNodeServer(shardNodeServerID, replicaID, r, shardNodeFSM, oramNodeRPCClients, storageORAMNodeMap, parameters.TreeHeight, newBatchManager(time.Duration(parameters.BatchTimout)*time.Millisecond))
 	go shardnodeServer.sendBatchesForever()
 
+	go func() {
+		for {
+			time.Sleep(500 * time.Millisecond)
+			shardnodeServer.shardNodeFSM.printStashSize()
+		}
+	}()
+
 	grpcServer := grpc.NewServer(grpc.UnaryInterceptor(rpc.ContextPropagationUnaryServerInterceptor()))
 	pb.RegisterShardNodeServer(grpcServer, shardnodeServer)
 	grpcServer.Serve(lis)

@@ -80,6 +80,12 @@ func (fsm *shardNodeFSM) String() string {
 	return out
 }
 
+func (fsm *shardNodeFSM) printStashSize() {
+	fsm.stashMu.Lock()
+	defer fsm.stashMu.Unlock()
+	fmt.Println("stash size: ", len(fsm.stash))
+}
+
 func (fsm *shardNodeFSM) handleBatchReplicateRequestAndPathAndStorage(r BatchReplicateRequestAndPathAndStoragePayload) (isFirstMap map[string]bool) {
 	isFirstMap = make(map[string]bool)
 	for _, r := range r.Requests {
