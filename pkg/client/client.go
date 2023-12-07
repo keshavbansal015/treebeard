@@ -9,9 +9,113 @@ import (
 	"github.com/dsg-uwaterloo/oblishard/pkg/config"
 	"github.com/dsg-uwaterloo/oblishard/pkg/rpc"
 	"github.com/rs/zerolog/log"
+	"go.opentelemetry.io/otel/trace"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 )
+
+type ReadResponse struct {
+	block string
+	value string
+	err   error
+}
+
+type WriteResponse struct {
+	block   string
+	success bool
+	err     error
+}
+
+type client struct {
+	rateLimit        *RateLimit
+	tracer           trace.Tracer
+	routerRPCClients RouterClients
+	requests         []Request
+}
+
+func NewClient(rateLimit *RateLimit, tracer trace.Tracer, routerRPCClients RouterClients, requests []Request) *client {
+	return &client{rateLimit: rateLimit, tracer: tracer, routerRPCClients: routerRPCClients, requests: requests}
+}
+
+func (c *client) asyncRead(block string, routerRPCClient RouterRPCClient, readResponseChannel chan ReadResponse) {
+	c.rateLimit.Acquire()
+	ctx, span := c.tracer.Start(context.Background(), "client read request")
+	value, err := routerRPCClient.Read(ctx, block)
+	log.Debug().Msgf("Got value %s for block %s", value, block)
+	span.End()
+	c.rateLimit.Release()
+	if err != nil {
+		readResponseChannel <- ReadResponse{block: block, value: "", err: fmt.Errorf("failed to call Read block %s on router; %v", block, err)}
+	} else if value == "" {
+		readResponseChannel <- ReadResponse{block: block, value: "", err: nil}
+	} else {
+		readResponseChannel <- ReadResponse{block: block, value: value, err: nil}
+	}
+}
+
+func (c *client) asyncWrite(block string, newValue string, routerRPCClient RouterRPCClient, writeResponseChannel chan WriteResponse) {
+	c.rateLimit.Acquire()
+	ctx, span := c.tracer.Start(context.Background(), "client write request")
+	value, err := routerRPCClient.Write(ctx, block, newValue)
+	log.Debug().Msgf("Got success %v for block %s", value, block)
+	span.End()
+	c.rateLimit.Release()
+	if err != nil {
+		writeResponseChannel <- WriteResponse{block: block, success: false, err: fmt.Errorf("failed to call Write block %s on router; %v", block, err)}
+	} else {
+		writeResponseChannel <- WriteResponse{block: block, success: value, err: nil}
+	}
+}
+
+// TODO: I can add a counter channel to know about the operations that we sent
+
+// sendRequestsForever cancels remaining operations and returns when the context is cancelled
+func (c *client) SendRequestsForever(ctx context.Context, readResponseChannel chan ReadResponse, writeResponseChannel chan WriteResponse) {
+	for _, request := range c.requests {
+		select {
+		case <-ctx.Done():
+			return
+		default:
+			routerRPCClient := c.routerRPCClients.GetRandomRouter()
+			if request.OperationType == Read {
+				go c.asyncRead(request.Block, routerRPCClient, readResponseChannel)
+			} else if request.OperationType == Write {
+				go c.asyncWrite(request.Block, request.NewValue, routerRPCClient, writeResponseChannel)
+			}
+		}
+	}
+}
+
+// getResponsesForever cancels remaining operations and returns when the context is cancelled
+func (c *client) GetResponsesForever(ctx context.Context, readResponseChannel chan ReadResponse, writeResponseChannel chan WriteResponse) (readOperations int, writeOperations int) {
+	readOperations, writeOperations = 0, 0
+	for {
+		select {
+		case <-ctx.Done():
+			return readOperations, writeOperations
+		default:
+		}
+		select {
+		case readResponse := <-readResponseChannel:
+			if readResponse.err != nil {
+				fmt.Println(readResponse.err.Error())
+				log.Error().Msgf(readResponse.err.Error())
+			} else {
+				log.Debug().Msgf("Sucess in Read of block %s. Got value: %v\n", readResponse.block, readResponse.value)
+			}
+			readOperations++
+		case writeResponse := <-writeResponseChannel:
+			if writeResponse.err != nil {
+				fmt.Println(writeResponse.err.Error())
+				log.Error().Msgf(writeResponse.err.Error())
+			} else {
+				log.Debug().Msgf("Finished writing block %s. Success: %v\n", writeResponse.block, writeResponse.success)
+			}
+			writeOperations++
+		default:
+		}
+	}
+}
 
 type RouterRPCClient struct {
 	ClientAPI routerpb.RouterClient

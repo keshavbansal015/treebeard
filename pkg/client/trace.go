@@ -35,12 +35,12 @@ func ReadTraceFile(traceFilePath string) ([]Request, error) {
 		line := scanner.Text()
 		log.Debug().Msgf("Reading trace line: %s", line)
 		tokens := strings.Split(line, " ")
-		if tokens[0] == "READ" {
+		if tokens[0] == "GET" {
 			if len(tokens) != 2 {
 				return nil, fmt.Errorf("read request should have the operation type and block id")
 			}
 			requests = append(requests, Request{Block: tokens[1], OperationType: Read})
-		} else if tokens[0] == "WRITE" {
+		} else if tokens[0] == "SET" {
 			if len(tokens) != 3 {
 				return nil, fmt.Errorf("read request should have the operation type, block id, and new value")
 			}
