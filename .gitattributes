@@ -1,0 +1,2 @@
+db.txt filter=lfs diff=lfs merge=lfs -text
+trace.txt filter=lfs diff=lfs merge=lfs -text
