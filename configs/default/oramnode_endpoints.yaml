@@ -1,19 +1,55 @@
 endpoints:
   - exposed_ip: localhost
     local_bind_ip: localhost
-    port: 8751
+    port: 2751
     id: 0
     replicaid: 0
-    raftport: 3127
-  - exposed_ip: localhost
-    local_bind_ip: localhost
-    port: 8752
-    id: 0
-    replicaid: 1
-    raftport: 3128
-  - exposed_ip: localhost
-    local_bind_ip: localhost
-    port: 8753
-    id: 0
-    replicaid: 2
-    raftport: 3129
+    raftport: 1127
+  # - exposed_ip: localhost
+  #   local_bind_ip: localhost
+  #   port: 2752
+  #   id: 0
+  #   replicaid: 1
+  #   raftport: 1128
+  # - exposed_ip: localhost
+  #   local_bind_ip: localhost
+  #   port: 2753
+  #   id: 0
+  #   replicaid: 2
+  #   raftport: 1129
+  # - exposed_ip: localhost
+  #   local_bind_ip: localhost
+  #   port: 2754
+  #   id: 1
+  #   replicaid: 0
+  #   raftport: 1130
+  # - exposed_ip: localhost
+  #   local_bind_ip: localhost
+  #   port: 2755
+  #   id: 1
+  #   replicaid: 1
+  #   raftport: 1131
+  # - exposed_ip: localhost
+  #   local_bind_ip: localhost
+  #   port: 2756
+  #   id: 1
+  #   replicaid: 2
+  #   raftport: 1132
+  # - exposed_ip: localhost
+  #   local_bind_ip: localhost
+  #   port: 2757
+  #   id: 2
+  #   replicaid: 0
+  #   raftport: 1133
+  # - exposed_ip: localhost
+  #   local_bind_ip: localhost
+  #   port: 2758
+  #   id: 2
+  #   replicaid: 1
+  #   raftport: 1134
+  # - exposed_ip: localhost
+  #   local_bind_ip: localhost
+  #   port: 2759
+  #   id: 2
+  #   replicaid: 2
+  #   raftport: 1135

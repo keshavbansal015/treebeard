@@ -3,3 +3,14 @@ endpoints:
     local_bind_ip: localhost
     port: 6379
     id: 0
+    oramnode_id: 0
+  # - exposed_ip: localhost
+  #   local_bind_ip: localhost
+  #   port: 6380
+  #   id: 1
+  #   oramnode_id: 1
+  # - exposed_ip: localhost
+  #   local_bind_ip: localhost
+  #   port: 6381
+  #   id: 2
+  #   oramnode_id: 2
