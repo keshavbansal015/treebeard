@@ -33,7 +33,6 @@ func ReadTraceFile(traceFilePath string) ([]Request, error) {
 	scanner := bufio.NewScanner(file)
 	for scanner.Scan() {
 		line := scanner.Text()
-		log.Debug().Msgf("Reading trace line: %s", line)
 		tokens := strings.Split(line, " ")
 		if tokens[0] == "GET" {
 			if len(tokens) != 2 {
