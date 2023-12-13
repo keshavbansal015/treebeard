@@ -87,6 +87,8 @@ func (s *StorageHandler) InitDatabase() error {
 	return nil
 }
 
+// TODO: BatchGetBlockOffset(buckets []int, storageID int, blocks []string) (offsets map[int]int, err error)
+
 // It returns a block offset based on the blocks argument.
 //
 // If a real block is found, it returns isReal=true and the block id.
@@ -112,6 +114,9 @@ func (s *StorageHandler) GetBlockOffset(bucketID int, storageID int, blocks []st
 	return -1, false, "", err
 }
 
+// TODO: BatchGetAccessCount(buckets []int, storageID int) (counts map[int]int, err error)
+// It returns the number of times a bucket was accessed for multiple buckets.
+
 // It returns the number of times a bucket was accessed.
 // This is helpful to know when to do an early reshuffle.
 func (s *StorageHandler) GetAccessCount(bucketID int, storageID int) (count int, err error) {
@@ -129,6 +134,9 @@ func (s *StorageHandler) GetAccessCount(bucketID int, storageID int) (count int,
 	log.Debug().Msgf("Access count for bucket %d and storage %d is %d", bucketID, storageID, accessCount)
 	return accessCount, nil
 }
+
+// TODO: BatchReadBucket(buckets []int, storageID int) (blocks map[int]map[string]string, err error)
+// It reads multiple buckets from a single storage shard.
 
 // ReadBucket reads exactly Z blocks from the bucket.
 // It reads all the valid real blocks and random vaid dummy blocks if the bucket contains less than Z valid real blocks.
@@ -161,6 +169,9 @@ func (s *StorageHandler) ReadBucket(bucketID int, storageID int) (blocks map[str
 	}
 	return blocks, nil
 }
+
+// TODO: WriteBucket(buckets []int, storageID int, readBucketBlocks map[int]map[string]string, shardNodeBlocks map[string]string) (writtenBlocks map[string]string, err error)
+// It writes blocks to multiple buckets in a single storage shard.
 
 // WriteBucket writes readBucketBlocks and shardNodeBlocks to the storage shard.
 // It priorotizes readBucketBlocks to shardNodeBlocks.
@@ -234,6 +245,9 @@ func (s *StorageHandler) WriteBucket(bucketID int, storageID int, readBucketBloc
 	}
 	return writtenBlocks, nil
 }
+
+// TODO: BatchReadBlock(buckets []int,  storageID int, offsets []int) (values map[int]string, err error)
+// It reads multiple blocks from multiple buckets and returns the values.
 
 // ReadBlock reads a single block using the offset.
 func (s *StorageHandler) ReadBlock(bucketID int, storageID int, offset int) (value string, err error) {
