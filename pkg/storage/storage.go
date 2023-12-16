@@ -87,7 +87,7 @@ func (s *StorageHandler) InitDatabase() error {
 	return nil
 }
 
-// TODO: BatchGetBlockOffset(buckets []int, storageID int, blocks []string) (offsets map[int]int, err error)
+// TODO: BatchGetBlockOffset(buckets []int, storageID int, blocks []string) (offsets map[int]int, isReal map[int]int, blockFound ma[int]int, err error)
 
 // It returns a block offset based on the blocks argument.
 //
