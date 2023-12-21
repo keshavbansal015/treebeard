@@ -70,6 +70,25 @@ func (s *StorageHandler) databaseInit(redisClient *redis.Client) (err error) {
 	return nil
 }
 
+func (s *StorageHandler) BatchPushDataAndMetadata(bucketId int, valueData []string, valueMetadata []string, client *redis.Client, pipe redis.Pipeliner) (dataCmd *redis.BoolCmd, metadataCmd *redis.BoolCmd){
+	ctx := context.Background()
+	kvpMapData := make(map[string]interface{})
+	for i := 0; i < len(valueData); i++ {
+		kvpMapData[strconv.Itoa(i)] = valueData[i]
+	}
+
+	kvpMapMetadata := make(map[string]interface{})
+	for i := 0; i < len(valueMetadata); i++ {
+		kvpMapMetadata[strconv.Itoa(i)] = valueMetadata[i]
+	}
+	kvpMapMetadata["nextDummy"] = s.Z
+	kvpMapMetadata["accessCount"] = 0
+
+	dataCmd = pipe.HMSet(ctx, strconv.Itoa(bucketId), kvpMapData)
+	metadataCmd = pipe.HMSet(ctx, strconv.Itoa(-1*bucketId), kvpMapMetadata)
+	return dataCmd, metadataCmd
+}
+
 func (s *StorageHandler) PushDataAndMetadata(bucketId int, valueData []string, valueMetadata []string, client *redis.Client) (err error) {
 	ctx := context.Background()
 	kvpMapData := make(map[string]interface{})
@@ -94,14 +113,10 @@ func (s *StorageHandler) PushDataAndMetadata(bucketId int, valueData []string, v
 	return nil
 }
 
-// return pos + key as one string stored in metadata at bit
-func (s *StorageHandler) GetMetadata(bucketId int, bit string, storageID int) (pos int, key string, err error) {
-	ctx := context.Background()
-	block, err := s.storages[storageID].HGet(ctx, strconv.Itoa(-1*bucketId), bit).Result()
-	if err != nil {
-		return -1, "", err
+func parseMetadataBlock(block string) (pos int, key string, err error) {
+	if block == "__null__" {
+		return -1, "", nil
 	}
-	// parse block into pos + key
 	index := 0
 	for j, char := range block {
 		if char < '0' || char > '9' {
@@ -115,6 +130,99 @@ func (s *StorageHandler) GetMetadata(bucketId int, bit string, storageID int) (p
 	}
 	key = block[index:]
 	return pos, key, nil
+}
+
+func (s *StorageHandler) BatchGetMetaData(bucketIds []int, storageID int) (map[int]map[string]int, error) {
+	ctx := context.Background()
+	pipe := s.storages[storageID].Pipeline()
+	allBlockOffsets := make(map[int]map[string]int)
+	for _, bucketID := range bucketIds {
+		results := make([]*redis.StringCmd, s.Z)
+
+		// Issue HGET commands for the first s.Z items of the current bucketID within the pipeline
+		for i := 0; i < s.Z; i++ {
+			cmd := pipe.HGet(ctx, strconv.Itoa(-1*bucketID), strconv.Itoa(i))
+			results[i] = cmd
+		}
+
+		// Process the results and build the blockMap for the current bucketID
+		blockMap := make(map[string]int)
+		for _, cmd := range results {
+			block, err := cmd.Result()
+			if err != nil && err != redis.Nil {
+				return nil, err
+			}
+
+			if err != redis.Nil {
+				pos, key, err := parseMetadataBlock(block)
+				if err != nil {
+					return nil, err
+				}
+				blockMap[key] = pos
+			}
+		}
+		// Store the blockMap in the results map
+		allBlockOffsets[bucketID] = blockMap
+	}
+
+	// Execute the pipeline for all bucketIDs
+	_, err := pipe.Exec(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	return allBlockOffsets, nil
+}
+
+func (s *StorageHandler) BatchGetAllMetaData(bucketIds []int, storageID int) (map[int][]string, error) {
+	ctx := context.Background()
+	pipe := s.storages[storageID].Pipeline()
+	allBlockOffsets := make(map[int][]string)
+	for _, bucketID := range bucketIds {
+		results := make([]*redis.StringCmd, s.Z + s.S)
+
+		// Issue HGET commands for the first s.Z items of the current bucketID within the pipeline
+		for i := 0; i < s.Z + s.S; i++ {
+			cmd := pipe.HGet(ctx, strconv.Itoa(-1*bucketID), strconv.Itoa(i))
+			results[i] = cmd
+		}
+
+		// Process the results and build the blockMap for the current bucketID
+		blockMap := make([]string, s.Z + s.S)
+		index := 0;
+		for _, cmd := range results {
+			block, err := cmd.Result()
+			if err != nil {
+				if err != redis.Nil {
+					return nil, err
+				}
+				return nil, err
+			}
+			
+			blockMap[index] = block
+			index++
+		}
+		// Store the blockMap in the results map
+		allBlockOffsets[bucketID] = blockMap
+	}
+	// Execute the pipeline for all bucketIDs
+	_, err := pipe.Exec(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	return allBlockOffsets, nil
+}
+
+// return pos + key as one string stored in metadata at bit
+func (s *StorageHandler) GetMetadata(bucketId int, bit string, storageID int) (pos int, key string, err error) {
+	ctx := context.Background()
+	block, err := s.storages[storageID].HGet(ctx, strconv.Itoa(-1*bucketId), bit).Result()
+	if err != nil {
+		return -1, "", err
+	}
+	// parse block into pos + key
+	return parseMetadataBlock(block)
 }
 
 type IntSet map[int]struct{}
