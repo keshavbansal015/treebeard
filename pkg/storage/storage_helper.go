@@ -118,6 +118,7 @@ func parseMetadataBlock(block string) (pos int, key string, err error) {
 		return -1, "", nil
 	}
 	index := 0
+	//log.Debug().Msgf("block: %s", block)
 	for j, char := range block {
 		if char < '0' || char > '9' {
 			index = j
@@ -135,6 +136,7 @@ func parseMetadataBlock(block string) (pos int, key string, err error) {
 func (s *StorageHandler) BatchGetMetaData(bucketIds []int, storageID int) (map[int]map[string]int, error) {
 	ctx := context.Background()
 	pipe := s.storages[storageID].Pipeline()
+	allResults := make(map[int][]*redis.StringCmd)
 	allBlockOffsets := make(map[int]map[string]int)
 	for _, bucketID := range bucketIds {
 		results := make([]*redis.StringCmd, s.Z)
@@ -143,8 +145,21 @@ func (s *StorageHandler) BatchGetMetaData(bucketIds []int, storageID int) (map[i
 		for i := 0; i < s.Z; i++ {
 			cmd := pipe.HGet(ctx, strconv.Itoa(-1*bucketID), strconv.Itoa(i))
 			results[i] = cmd
+			if cmd.Err() != nil {
+				log.Error().Msgf("Error fetching metadata for bucket %d at offset %d: %v", bucketID, i, cmd.Err())
+				return nil, cmd.Err()
+			}
 		}
+		allResults[bucketID] = results
+	}
+	// Execute the pipeline for all bucketIDs
+	_, err := pipe.Exec(ctx)
+	if err != nil {
+		return nil, err
+	}
 
+	for _, bucketID := range bucketIds {
+		results := allResults[bucketID]
 		// Process the results and build the blockMap for the current bucketID
 		blockMap := make(map[string]int)
 		for _, cmd := range results {
@@ -152,23 +167,17 @@ func (s *StorageHandler) BatchGetMetaData(bucketIds []int, storageID int) (map[i
 			if err != nil && err != redis.Nil {
 				return nil, err
 			}
-
 			if err != redis.Nil {
 				pos, key, err := parseMetadataBlock(block)
 				if err != nil {
 					return nil, err
 				}
+				//log.Debug().Msgf("Metadata for %d: pos: %d, key: %s", bucketID,pos, key)
 				blockMap[key] = pos
 			}
 		}
 		// Store the blockMap in the results map
 		allBlockOffsets[bucketID] = blockMap
-	}
-
-	// Execute the pipeline for all bucketIDs
-	_, err := pipe.Exec(ctx)
-	if err != nil {
-		return nil, err
 	}
 
 	return allBlockOffsets, nil

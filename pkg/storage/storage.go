@@ -93,13 +93,18 @@ func (s *StorageHandler) BatchGetBlockOffset(bucketIDs []int, storageID int, blo
 	ctx := context.Background()
 	pipe := s.storages[storageID].Pipeline()
 	allBlockMap, err := s.BatchGetMetaData(bucketIDs, storageID)
+	offsets = make(map[int]int)
+	isReal = make(map[int]int)
+	blockFound = make(map[int]string)
 	if err != nil {
+		log.Debug().Msgf("Error getting meta data")
 		return nil, nil, nil, err
 	}
 	nextDummyResult := make(map[int]*redis.StringCmd)
 	writeNextDummyResult := make(map[int]*redis.IntCmd)
 	for bucketID, blocks := range blockList {
 		blockMap := allBlockMap[bucketID]
+		found := false
 		for _, block := range blocks {
 			pos, exist := blockMap[block]
 			if exist {
@@ -107,8 +112,12 @@ func (s *StorageHandler) BatchGetBlockOffset(bucketIDs []int, storageID int, blo
 				offsets[bucketID] = pos
 				isReal[bucketID] = 1
 				blockFound[bucketID] = block
+				found = true
 				break
 			}
+		}
+		if found {
+			continue
 		}
 		nextDummyResult[bucketID] = pipe.HGet(ctx, strconv.Itoa(-1*bucketID), "nextDummy")
 		writeNextDummyResult[bucketID] = pipe.HIncrBy(ctx, strconv.Itoa(-1*bucketID), "nextDummy", 1)
@@ -185,6 +194,7 @@ func (s *StorageHandler) BatchGetAccessCount(bucketIDs []int, storageID int) (co
 	ctx := context.Background()
 	pipe := s.storages[storageID].Pipeline()
 	resultsMap := make(map[int]*redis.StringCmd)
+	counts = make(map[int]int)
 	// Iterate over each bucketID
 	for _, bucketID := range bucketIDs {
 		// Issue HGET command for the access count of the current bucketID within the pipeline
@@ -316,8 +326,8 @@ func (s *StorageHandler) BatchWriteBucket(bucketIDs []int, storageID int, readBu
 	ctx := context.Background()
 	dataResults := make(map[int]*redis.BoolCmd)
 	metadataResults := make(map[int]*redis.BoolCmd)
-	for index, bucketID := range bucketIDs {
-		readBucketBlocks := readBucketBlocksList[index]
+	for _, bucketID := range bucketIDs {
+		readBucketBlocks := readBucketBlocksList[bucketID]
 		values := make([]string, s.Z+s.S)
 		metadatas := make([]string, s.Z+s.S)
 		realIndex := make([]int, s.Z+s.S)
@@ -484,13 +494,21 @@ func (s *StorageHandler) BatchReadBlock(bucketIDs []int, storageID int, offsets 
 		offset := offsets[i]
 		cmd := pipe.HGet(ctx, strconv.Itoa(bucketID), strconv.Itoa(offset))
 
+		//log.Debug().Msgf("Getting bucket %d at offset %d", bucketID, offset)
+
+		if cmd.Err() != nil {
+			log.Error().Msgf("Error fetching value for bucket %d at offset %d: %v", bucketID, offset, cmd.Err())
+			return nil, cmd.Err()
+		}
 		// Store the map of results for the current bucketID in the resultsMap
 		resultsMap[bucketID] = cmd
 	}
 	_, err = pipe.Exec(ctx)
 	if err != nil {
+		log.Debug().Msgf("error executing batch read block pipe: %v", err)
 		return nil, err
 	}
+	values = make(map[int]string)
 	for bucketID, cmd := range resultsMap {
 		block, err := cmd.Result()
 		if err != nil && err != redis.Nil {

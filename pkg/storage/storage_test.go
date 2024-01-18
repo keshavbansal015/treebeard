@@ -5,6 +5,8 @@ import (
 	"testing"
 
 	"github.com/dsg-uwaterloo/oblishard/pkg/config"
+	"github.com/rs/zerolog/log"
+	"github.com/stretchr/testify/assert"
 )
 
 func TestGetBucketsInPathsReturnsAllBucketIDsInPath(t *testing.T) {
@@ -118,4 +120,101 @@ func TestGetMultipleReverseLexicographicPaths(t *testing.T) {
 			t.Errorf("expected path %d, but got %d", expectedPaths[i], path)
 		}
 	}
+}
+
+func TestBatchWriteBucket(t *testing.T) {
+	log.Debug().Msgf("TestBatchWriteBucket")
+	bucketIds := []int{0, 1, 2, 3, 4, 5}
+	storageId := 0
+	s := NewStorageHandler(3, 1, 9, 1, []config.RedisEndpoint{{ID: 0, IP: "localhost", Port: 6379}})
+	s.InitDatabase()
+	expectedWrittenBlocks := map[string]string{"usr0": "value0", "usr1": "value1", "usr2": "value2", "usr3": "value3", "usr4": "value4", "usr5": "value5"}
+	writtenBlocks, _ := s.BatchWriteBucket(bucketIds, storageId, map[int]map[string]string{0: {"usr0": "value0"}, 1: {"usr1": "value1"}, 2: {"usr2": "value2"}, 3: {"usr3": "value3"}, 4: {"usr4": "value4"}, 5: {"usr5": "value5"}}, map[string]string{})
+	for block := range writtenBlocks {
+		if _, exist := expectedWrittenBlocks[block]; !exist {
+			t.Errorf("%s was written", block)
+		}
+	}
+}
+
+func TestBatchReadBlock(t *testing.T) {
+	log.Debug().Msgf("TestBatchReadBlock")
+	bucketIds := []int{1, 2}
+	storageId := 0
+	s := NewStorageHandler(3, 1, 9, 1, []config.RedisEndpoint{{ID: 0, IP: "localhost", Port: 6379}})
+	s.InitDatabase()
+
+	for i := 0; i < s.Z+s.S; i++ {
+		vals, err := s.BatchReadBlock(bucketIds, storageId, []int{i, i})
+		if err != nil {
+			t.Errorf("error reading block")
+		}
+		for _, bucketId := range bucketIds {
+			if vals == nil {
+				t.Errorf("vals nil")
+			}
+			val := vals[bucketId]
+			expected, err := s.ReadBlock(bucketId, storageId, i)
+			if err != nil {
+				assert.Equal(t, val, expected)
+			}
+		}
+		counts, err := s.BatchGetAccessCount(bucketIds, storageId)
+		for _, bucketId := range bucketIds {
+			if counts[bucketId] != i + 1 {
+				t.Errorf("Incorrect access count: %d for bucket: %d", counts[bucketId], bucketId)
+			}
+		}
+	}
+}
+
+func TestBatchGetMetaData(t *testing.T) {
+	bucketIds := []int{1, 2, 3}
+	storageId := 0
+	s := NewStorageHandler(3, 1, 9, 1, []config.RedisEndpoint{{ID: 0, IP: "localhost", Port: 6379}})
+	s.InitDatabase()
+
+	_, err := s.BatchGetMetaData(bucketIds, storageId)
+	if err != nil {
+		t.Errorf("error getting batch metadata")
+	}
+
+	for _, bucketId := range bucketIds {
+		for i := 0; i < s.Z; i++ {
+			pos_expected, key_expected, err := s.GetMetadata(bucketId, strconv.Itoa(i), storageId)
+			if err != nil {
+				t.Errorf("error getting expected metadata")
+			}
+			log.Debug().Msgf("bucket: %d, at %d", bucketId, i)
+			log.Debug().Msgf("pos: %d, key: %s", pos_expected, key_expected)
+		}
+	}
+}
+
+func TestBatchGetBlockOffset(t *testing.T) {
+	log.Debug().Msgf("TestBatchGetBlockOffset")
+	// Mock data
+	bucketIDs := []int{1, 2, 3, 4, 5}
+	storageID := 0
+	blockList := map[int][]string{
+		1: {"usr1"},
+		2: {"usr3"},
+	}
+
+	// Create a mock instance of StorageHandler
+	s := NewStorageHandler(3, 1, 9, 1, []config.RedisEndpoint{{ID: 0, IP: "localhost", Port: 6379}})
+	s.InitDatabase()
+	s.BatchWriteBucket(bucketIDs, 0, map[int]map[string]string{1: {"usr1": "value1"}, 2: {"usr2": "value2"}, 3: {"usr3": "value3"}, 4: {"usr4": "value4"}, 5: {"usr5": "value5"}}, map[string]string{})
+
+	// Execute the function
+	_, isReal, blockFound, err := s.BatchGetBlockOffset(bucketIDs, storageID, blockList)
+	if err != nil {
+		t.Error("error...")
+	}
+
+	expectedIsReal := map[int]int{1: 1, 2: 0}
+	assert.Equal(t, expectedIsReal, isReal)
+
+	expectedBlockFound := map[int]string{1: "usr1"}
+	assert.Equal(t, expectedBlockFound, blockFound)
 }
