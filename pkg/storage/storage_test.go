@@ -1,12 +1,13 @@
 package storage
 
 import (
+	"context"
 	"strconv"
+	"strings"
 	"testing"
 
 	"github.com/dsg-uwaterloo/oblishard/pkg/config"
 	"github.com/rs/zerolog/log"
-	"github.com/stretchr/testify/assert"
 )
 
 func TestGetBucketsInPathsReturnsAllBucketIDsInPath(t *testing.T) {
@@ -23,74 +24,6 @@ func TestGetBucketsInPathsReturnsAllBucketIDsInPath(t *testing.T) {
 	for _, bucket := range buckets {
 		if _, exists := expectedMap[bucket]; !exists {
 			t.Errorf("expected bucketID %d to exist", bucket)
-		}
-	}
-}
-
-// test if GetBlockOffset return the right output and test ReadBlock to see if the output offset gets us the desired value
-func TestGetBlockOffset(t *testing.T) {
-	bucketId := 1
-	storageId := 0
-	expectedFound := "user1"
-	expectedValue := "value1"
-
-	s := NewStorageHandler(3, 1, 9, 1, []config.RedisEndpoint{{ID: 0, IP: "localhost", Port: 6379}})
-	s.InitDatabase()
-	s.WriteBucket(1, 0, map[string]string{"user1": "value1"}, map[string]string{})
-
-	offset, isReal, blockFound, err := s.GetBlockOffset(bucketId, storageId, []string{"user8", "user10", expectedFound})
-	if err != nil {
-		t.Errorf("expected no erros in GetBlockOffset")
-	}
-	if blockFound != expectedFound {
-		t.Errorf("expecting %s, but found %s", expectedFound, blockFound)
-	}
-	if !isReal {
-		t.Errorf("expected real block in bucket %d", bucketId)
-	}
-	val, err := s.ReadBlock(bucketId, storageId, offset)
-	if val != expectedValue {
-		t.Errorf("expecting %s, but found %s", expectedValue, val)
-	}
-	if err != nil {
-		t.Errorf("expected no erros in ReadBlock %s", err)
-	}
-}
-
-// test ReadBlock and GetAccessCount
-func TestReadBlock(t *testing.T) {
-	bucketId := 4
-	storageId := 0
-	s := NewStorageHandler(3, 1, 9, 1, []config.RedisEndpoint{{ID: 0, IP: "localhost", Port: 6379}})
-	s.InitDatabase()
-	for i := 0; i < s.Z+s.S; i++ {
-		val, err := s.ReadBlock(bucketId, storageId, i)
-		if err != nil {
-			t.Errorf("error reading block")
-		}
-		if val != "value"+strconv.Itoa(bucketId) && val != "b"+strconv.Itoa(bucketId)+"d"+strconv.Itoa(i) {
-			t.Errorf("wrong value!")
-		}
-		accessCount, err := s.GetAccessCount(bucketId, storageId)
-		if err != nil {
-			t.Errorf("error reading access count")
-		}
-		if accessCount != i+1 {
-			t.Errorf("Incorrect access count: %d", accessCount)
-		}
-	}
-}
-
-func TestWriteBucketBlock(t *testing.T) {
-	bucketId := 1
-	storageId := 0
-	s := NewStorageHandler(3, 1, 9, 1, []config.RedisEndpoint{{ID: 0, IP: "localhost", Port: 6379}})
-	s.InitDatabase()
-	expectedWrittenBlocks := map[string]string{"user1": "value1"}
-	writtenBlocks, _ := s.WriteBucket(bucketId, storageId, map[string]string{"user1": "value1"}, map[string]string{"user10": "value10"})
-	for block := range writtenBlocks {
-		if _, exist := expectedWrittenBlocks[block]; !exist {
-			t.Errorf("%s was written", block)
 		}
 	}
 }
@@ -129,92 +62,95 @@ func TestBatchWriteBucket(t *testing.T) {
 	s := NewStorageHandler(3, 1, 9, 1, []config.RedisEndpoint{{ID: 0, IP: "localhost", Port: 6379}})
 	s.InitDatabase()
 	expectedWrittenBlocks := map[string]string{"usr0": "value0", "usr1": "value1", "usr2": "value2", "usr3": "value3", "usr4": "value4", "usr5": "value5"}
-	writtenBlocks, _ := s.BatchWriteBucket(bucketIds, storageId, map[int]map[string]string{0: {"usr0": "value0"}, 1: {"usr1": "value1"}, 2: {"usr2": "value2"}, 3: {"usr3": "value3"}, 4: {"usr4": "value4"}, 5: {"usr5": "value5"}}, map[string]string{})
+	toWriteBlocks := map[int]map[string]string{0: {"usr0": "value0"}, 1: {"usr1": "value1"}, 2: {"usr2": "value2"}, 3: {"usr3": "value3"}, 4: {"usr4": "value4"}, 5: {"usr5": "value5"}}
+	writtenBlocks, _ := s.BatchWriteBucket(storageId, toWriteBlocks, map[string]string{})
 	for block := range writtenBlocks {
 		if _, exist := expectedWrittenBlocks[block]; !exist {
 			t.Errorf("%s was written", block)
+		}
+	}
+	metadatas, err := s.BatchGetAllMetaData(bucketIds, storageId)
+	if err != nil {
+		t.Errorf("error getting metadata")
+	}
+	for _, bucketID := range bucketIds {
+		metadata := metadatas[bucketID]
+		for key, _ := range toWriteBlocks[bucketID] {
+			if _, exist := metadata[key]; !exist {
+				t.Errorf("%s was not written", key)
+			}
 		}
 	}
 }
 
 func TestBatchReadBlock(t *testing.T) {
 	log.Debug().Msgf("TestBatchReadBlock")
-	bucketIds := []int{1, 2}
+	bucketIds := []int{1, 2, 3, 4, 5}
 	storageId := 0
 	s := NewStorageHandler(3, 1, 9, 1, []config.RedisEndpoint{{ID: 0, IP: "localhost", Port: 6379}})
 	s.InitDatabase()
-
-	for i := 0; i < s.Z+s.S; i++ {
-		vals, err := s.BatchReadBlock(bucketIds, storageId, []int{i, i})
-		if err != nil {
-			t.Errorf("error reading block")
-		}
-		for _, bucketId := range bucketIds {
-			if vals == nil {
-				t.Errorf("vals nil")
-			}
-			val := vals[bucketId]
-			expected, err := s.ReadBlock(bucketId, storageId, i)
-			if err != nil {
-				assert.Equal(t, val, expected)
-			}
-		}
-		counts, err := s.BatchGetAccessCount(bucketIds, storageId)
-		for _, bucketId := range bucketIds {
-			if counts[bucketId] != i + 1 {
-				t.Errorf("Incorrect access count: %d for bucket: %d", counts[bucketId], bucketId)
-			}
-		}
-	}
-}
-
-func TestBatchGetMetaData(t *testing.T) {
-	bucketIds := []int{1, 2, 3}
-	storageId := 0
-	s := NewStorageHandler(3, 1, 9, 1, []config.RedisEndpoint{{ID: 0, IP: "localhost", Port: 6379}})
-	s.InitDatabase()
-
-	_, err := s.BatchGetMetaData(bucketIds, storageId)
+	toWriteBlocks := map[int]map[string]string{1: {"usr1": "value1"}, 2: {"usr2": "value2"}, 3: {"usr3": "value3"}, 4: {"usr4": "value4"}, 5: {"usr5": "value5"}}
+	s.BatchWriteBucket(storageId, toWriteBlocks, map[string]string{})
+	metadatas, err := s.BatchGetAllMetaData(bucketIds, storageId)
 	if err != nil {
-		t.Errorf("error getting batch metadata")
+		t.Errorf("error getting metadata")
 	}
-
-	for _, bucketId := range bucketIds {
-		for i := 0; i < s.Z; i++ {
-			pos_expected, key_expected, err := s.GetMetadata(bucketId, strconv.Itoa(i), storageId)
-			if err != nil {
-				t.Errorf("error getting expected metadata")
+	for _, bucketID := range bucketIds {
+		metadata := metadatas[bucketID]
+		for key, pos := range metadata {
+			if strings.HasPrefix(key, "dummy") {
+				continue
 			}
-			log.Debug().Msgf("bucket: %d, at %d", bucketId, i)
-			log.Debug().Msgf("pos: %d, key: %s", pos_expected, key_expected)
+			res := s.storages[0].HGet(context.Background(), strconv.Itoa(bucketID), strconv.Itoa(pos))
+			decrypted, _ := Decrypt(res.Val(), s.key)
+			if decrypted != toWriteBlocks[bucketID][key] {
+				t.Errorf("expected %s, but got %s", toWriteBlocks[bucketID][key], decrypted)
+			}
 		}
 	}
 }
 
 func TestBatchGetBlockOffset(t *testing.T) {
-	log.Debug().Msgf("TestBatchGetBlockOffset")
-	// Mock data
 	bucketIDs := []int{1, 2, 3, 4, 5}
-	storageID := 0
-	blockList := map[int][]string{
-		1: {"usr1"},
-		2: {"usr3"},
-	}
-
-	// Create a mock instance of StorageHandler
-	s := NewStorageHandler(3, 1, 9, 1, []config.RedisEndpoint{{ID: 0, IP: "localhost", Port: 6379}})
+	s := NewStorageHandler(4, 1, 9, 1, []config.RedisEndpoint{{ID: 0, IP: "localhost", Port: 6379}})
 	s.InitDatabase()
-	s.BatchWriteBucket(bucketIDs, 0, map[int]map[string]string{1: {"usr1": "value1"}, 2: {"usr2": "value2"}, 3: {"usr3": "value3"}, 4: {"usr4": "value4"}, 5: {"usr5": "value5"}}, map[string]string{})
-
-	// Execute the function
-	_, isReal, blockFound, err := s.BatchGetBlockOffset(bucketIDs, storageID, blockList)
+	toWriteBlocks := map[int]map[string]string{1: {"usr1": "value1"}, 2: {"usr2": "value2"}, 3: {"usr3": "value3"}, 4: {"usr4": "value4"}, 5: {"usr5": "value5"}}
+	s.BatchWriteBucket(0, toWriteBlocks, map[string]string{})
+	metadatas, err := s.BatchGetAllMetaData(bucketIDs, 0)
 	if err != nil {
-		t.Error("error...")
+		t.Errorf("error getting metadata")
 	}
+	blockoffsetStatuses, err := s.BatchGetBlockOffset(bucketIDs, 0, []string{"usr1", "usr3"})
+	if err != nil {
+		t.Errorf("error getting block offset")
+	}
+	usr1Offset := 0
+	usr3Offset := 0
+	for _, bucketID := range bucketIDs {
+		metadata := metadatas[bucketID]
+		for key, pos := range metadata {
+			if strings.HasPrefix(key, "dummy") {
+				continue
+			}
+			if key == "usr1" {
+				usr1Offset = pos
+			}
+			if key == "usr3" {
+				usr3Offset = pos
+			}
+		}
+	}
+	if blockoffsetStatuses[1].Offset != usr1Offset || blockoffsetStatuses[1].IsReal != true || blockoffsetStatuses[1].BlockFound != "usr1" {
+		t.Errorf("expected offset %d, but got %d", usr1Offset, blockoffsetStatuses[1].Offset)
+	}
+	if blockoffsetStatuses[3].Offset != usr3Offset || blockoffsetStatuses[3].IsReal != true || blockoffsetStatuses[3].BlockFound != "usr3" {
+		t.Errorf("expected offset %d, but got %d", usr3Offset, blockoffsetStatuses[3].Offset)
+	}
+}
 
-	expectedIsReal := map[int]int{1: 1, 2: 0}
-	assert.Equal(t, expectedIsReal, isReal)
-
-	expectedBlockFound := map[int]string{1: "usr1"}
-	assert.Equal(t, expectedBlockFound, blockFound)
+func TestRandom(t *testing.T) {
+	s := NewStorageHandler(4, 1, 9, 1, []config.RedisEndpoint{{ID: 0, IP: "localhost", Port: 6379}})
+	s.InitDatabase()
+	toWriteBlocks := map[int]map[string]string{1: {"usr1": "value1"}, 2: {"usr2": "value2"}, 3: {"usr3": "value3"}, 4: {"usr4": "value4"}, 5: {"usr5": "value5"}}
+	s.BatchWriteBucket(0, toWriteBlocks, map[string]string{})
 }

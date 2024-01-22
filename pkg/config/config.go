@@ -51,19 +51,20 @@ type RedisConfig struct {
 }
 
 type Parameters struct {
-	MaxBlocksToSend int  `yaml:"max-blocks-to-send"`
-	EvictionRate    int  `yaml:"eviction-rate"`
-	EvictPathCount  int  `yaml:"evict-path-count"`
-	BatchTimout     int  `yaml:"batch-timeout"`
-	EpochTime       int  `yaml:"epoch-time"`
-	Trace           bool `yaml:"trace"`
-	Z               int  `yaml:"Z"`
-	S               int  `yaml:"S"`
-	Shift           int  `yaml:"shift"`
-	TreeHeight      int  `yaml:"tree-height"`
-	MaxRequests     int  `yaml:"max-requests"`
-	Log             bool `yaml:"log"`
-	Profile         bool `yaml:"profile"`
+	MaxBlocksToSend   int  `yaml:"max-blocks-to-send"`
+	EvictionRate      int  `yaml:"eviction-rate"`
+	EvictPathCount    int  `yaml:"evict-path-count"`
+	BatchTimout       int  `yaml:"batch-timeout"`
+	EpochTime         int  `yaml:"epoch-time"`
+	Trace             bool `yaml:"trace"`
+	Z                 int  `yaml:"Z"`
+	S                 int  `yaml:"S"`
+	Shift             int  `yaml:"shift"`
+	TreeHeight        int  `yaml:"tree-height"`
+	RedisPipelineSize int  `yaml:"redis-pipeline-size"`
+	MaxRequests       int  `yaml:"max-requests"`
+	Log               bool `yaml:"log"`
+	Profile           bool `yaml:"profile"`
 }
 
 func ReadRouterEndpoints(path string) ([]RouterEndpoint, error) {

@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"sort"
-	"strconv"
 	"testing"
 
 	"github.com/dsg-uwaterloo/oblishard/api/oramnode"
@@ -103,96 +102,7 @@ func getFailedMockShardNodeClients() map[int]ReplicaRPCClientMap {
 	}
 }
 
-type mockStorageHandler struct {
-	levelCount               int
-	maxAccessCount           int
-	latestReadBlock          int
-	writeBucketFunc          func(bucketID int, storageID int, ReadBucketBlocks map[string]string, shardNodeBlocks map[string]string) (writtenBlocks map[string]string, err error)
-	readBlockAccessedOffsets []int
-}
-
-func newMockStorageHandler(levelCount int, maxAccessCount int) *mockStorageHandler {
-	return &mockStorageHandler{
-		levelCount:      levelCount,
-		maxAccessCount:  maxAccessCount,
-		latestReadBlock: 0,
-		writeBucketFunc: func(_ int, _ int, ReadBucketBlocks map[string]string, shardNodeBlocks map[string]string) (writtenBlocks map[string]string, err error) {
-			writtenBlocks = make(map[string]string)
-			for block, value := range ReadBucketBlocks {
-				writtenBlocks[block] = value
-			}
-			for block, value := range shardNodeBlocks {
-				writtenBlocks[block] = value
-			}
-			return writtenBlocks, nil
-		},
-	}
-}
-
-func (m *mockStorageHandler) withCustomWriteFunc(customeWriteFunc func(bucketID int, storageID int, ReadBucketBlocks map[string]string, shardNodeBlocks map[string]string) (writtenBlocks map[string]string, err error)) *mockStorageHandler {
-	m.writeBucketFunc = customeWriteFunc
-	return m
-}
-
-func (m *mockStorageHandler) GetMaxAccessCount() int {
-	return m.maxAccessCount
-}
-
-func (m *mockStorageHandler) LockStorage(storageID int) {
-}
-
-func (m *mockStorageHandler) UnlockStorage(storageID int) {
-}
-
-func (m *mockStorageHandler) GetRandomPathAndStorageID(context.Context) (path int, storageID int) {
-	return 0, 0
-}
-
-func (m *mockStorageHandler) GetBlockOffset(bucketID int, storageID int, blocks []string) (offset int, isReal bool, blockFound string, err error) {
-	return 4, true, "a", nil
-}
-func (m *mockStorageHandler) GetAccessCount(bucketID int, storageID int) (count int, err error) {
-	return 0, nil
-}
-
-// It returns four blocks with block id m.latestReadBlock to m.latestReadBlock+3
-func (m *mockStorageHandler) ReadBucket(bucketID int, storageID int) (blocks map[string]string, err error) {
-	blocks = make(map[string]string)
-	for i := m.latestReadBlock; i < m.latestReadBlock+4; i++ {
-		blocks[strconv.Itoa(i)] = "value"
-	}
-	m.latestReadBlock += 4
-	return blocks, nil
-}
-
-func (m *mockStorageHandler) WriteBucket(bucketID int, storageID int, readBucketBlocks map[string]string, shardNodeBlocks map[string]string) (writtenBlocks map[string]string, err error) {
-	return m.writeBucketFunc(bucketID, storageID, readBucketBlocks, shardNodeBlocks)
-}
-
-func (m *mockStorageHandler) ReadBlock(bucketID int, storageID int, offset int) (value string, err error) {
-	m.readBlockAccessedOffsets = append(m.readBlockAccessedOffsets, offset)
-	return "", nil
-}
-
-func (m *mockStorageHandler) GetBucketsInPaths(paths []int) (bucketIDs []int, err error) {
-	for i := 0; i < m.levelCount; i++ {
-		bucketIDs = append(bucketIDs, i)
-	}
-	return bucketIDs, nil
-}
-
-func (m *mockStorageHandler) GetMultipleReverseLexicographicPaths(evictionCount int, count int) (paths []int) {
-	for i := 0; i < count; i++ {
-		paths = append(paths, 1)
-	}
-	return paths
-}
-
-func (m *mockStorageHandler) GetRandomStorageID() int {
-	return 0
-}
-
-func startLeaderRaftNodeServer(t *testing.T) *oramNodeServer {
+func startLeaderRaftNodeServer(t *testing.T, storageHandler storage) *oramNodeServer {
 	fsm := newOramNodeFSM()
 	raftPort, err := freeport.GetFreePort()
 	if err != nil {
@@ -203,8 +113,8 @@ func startLeaderRaftNodeServer(t *testing.T) *oramNodeServer {
 		t.Errorf("unable to start raft server")
 	}
 	<-r.LeaderCh() // wait to become the leader
-	storageHandler := newMockStorageHandler(2, 4)
-	return newOramNodeServer(0, 0, r, fsm, getMockShardNodeClients(), storageHandler, config.Parameters{MaxBlocksToSend: 5, EvictionRate: 4})
+	o := newOramNodeServer(0, 0, r, fsm, getMockShardNodeClients(), storageHandler, config.Parameters{MaxBlocksToSend: 5, EvictionRate: 4})
+	return o
 }
 
 func (o *oramNodeServer) withFailedShardNodeClients() *oramNodeServer {
@@ -212,29 +122,46 @@ func (o *oramNodeServer) withFailedShardNodeClients() *oramNodeServer {
 	return o
 }
 
-func (o *oramNodeServer) withMockStorageHandler(storageHandler *mockStorageHandler) *oramNodeServer {
-	o.storageHandler = storageHandler
-	return o
-}
-
 func TestReadAllBucketsReturnsAllTreeBlocks(t *testing.T) {
-	o := startLeaderRaftNodeServer(t).withMockStorageHandler(newMockStorageHandler(12, 4))
-	blocks, err := o.readAllBuckets([]int{0, 1, 2}, 1)
+	expectedBlocks := map[int]map[string]string{
+		1: {
+			"1": "val1",
+			"2": "val2",
+			"3": "val3",
+		},
+		2: {
+			"4": "val4",
+			"5": "val5",
+		},
+		3: {
+			"6": "val6",
+			"7": "val7",
+		},
+	}
+	mockStorageHandler := strg.NewMockStorageHandler(3, 4).WithCustomBatchReadBucketFunc(
+		func(bucketIDs []int, storageID int) (blocks map[int]map[string]string, err error) {
+			return expectedBlocks, nil
+		},
+	)
+
+	o := startLeaderRaftNodeServer(t, mockStorageHandler)
+	o.parameters.RedisPipelineSize = 2
+	blocks, err := o.readAllBuckets([]int{1, 2, 3}, 1)
 	if err != nil {
 		t.Errorf("Expected successful execution of readBucketAllLevels")
 	}
 
-	for idx := range []int{0, 1, 2} {
-		for i := 4 * idx; i < 4*idx+4; i++ {
-			if _, exists := blocks[idx]; !exists {
-				t.Errorf("all tree values should be in the blocksFromReadBucket")
+	for bucketID, bucketBlocks := range expectedBlocks {
+		for block, val := range bucketBlocks {
+			if blocks[bucketID][block] != val {
+				t.Errorf("Expected block %s to have value %s", block, val)
 			}
 		}
 	}
 }
 
 func TestReadBlocksFromShardNodeReturnsAllShardNodeBlocks(t *testing.T) {
-	o := startLeaderRaftNodeServer(t)
+	o := startLeaderRaftNodeServer(t, strg.NewMockStorageHandler(3, 4))
 	blocks, err := o.readBlocksFromShardNode([]int{4, 7, 11}, 1, o.shardNodeRPCClients[0])
 	if err != nil {
 		t.Errorf("expected Successful execution of readBlocksFromShardNode")
@@ -248,19 +175,47 @@ func TestReadBlocksFromShardNodeReturnsAllShardNodeBlocks(t *testing.T) {
 }
 
 func TestWriteBackBlocksToAllBucketsPushesReceivedBlocksToTree(t *testing.T) {
-	o := startLeaderRaftNodeServer(t).withMockStorageHandler(newMockStorageHandler(3, 4))
-	receivedBlocksIsWritten, err := o.writeBackBlocksToAllBuckets([]int{0, 1, 2},
+	m := strg.NewMockStorageHandler(3, 4).WithCustomBatchWriteBucketFunc(
+		func(storageID int, readBucketBlocksList map[int]map[string]string, shardNodeBlocks map[string]string) (writtenBlocks map[string]string, err error) {
+			writtenBlocks = make(map[string]string)
+			// We sucessfuly write the blocks that we read from the buckets back to the tree
+			for _, bucketBlocks := range readBucketBlocksList {
+				for block, val := range bucketBlocks {
+					writtenBlocks[block] = val
+				}
+			}
+			// We only write back a single block from the shard node
+			// (It simulates a scenario where we couldn't push all the blocks from the shard node to the tree in a single steps)
+			for block, val := range shardNodeBlocks {
+				writtenBlocks[block] = val
+				break
+			}
+			return writtenBlocks, nil
+		},
+	)
+	o := startLeaderRaftNodeServer(t, m)
+	o.parameters.RedisPipelineSize = 2
+	receivedBlocksIsWritten, err := o.writeBackBlocksToAllBuckets([]int{1, 2, 3, 4, 5, 6},
 		1,
 		map[int]map[string]string{
-			0: {
-				"1": "val1",
-			},
 			1: {
-				"2": "val1",
+				"1": "val1",
+				"2": "val2",
+				"3": "val3",
 			},
 			2: {
-				"3": "val1",
+				"4": "val4",
+				"5": "val5",
 			},
+			3: {
+				"6": "val6",
+				"7": "val7",
+			},
+			4: {},
+			5: {
+				"8": "val8",
+			},
+			6: {},
 		},
 		map[string]string{
 			"a": "valA",
@@ -279,46 +234,73 @@ func TestWriteBackBlocksToAllBucketsPushesReceivedBlocksToTree(t *testing.T) {
 }
 
 func TestWriteBackBlocksToAllBucketsReturnsFalseForNotPushedReceivedBlocks(t *testing.T) {
-	o := startLeaderRaftNodeServer(t).withMockStorageHandler(newMockStorageHandler(3, 4).withCustomWriteFunc(
-		func(_ int, _ int, _ map[string]string, shardNodeBlocks map[string]string) (writtenBlocks map[string]string, err error) {
+	m := strg.NewMockStorageHandler(3, 4).WithCustomBatchWriteBucketFunc(
+		func(storageID int, readBucketBlocksList map[int]map[string]string, shardNodeBlocks map[string]string) (writtenBlocks map[string]string, err error) {
 			writtenBlocks = make(map[string]string)
-			for block, val := range shardNodeBlocks {
-				if block != "a" {
+			// We sucessfuly write the blocks that we read from the buckets back to the tree
+			for _, bucketBlocks := range readBucketBlocksList {
+				for block, val := range bucketBlocks {
 					writtenBlocks[block] = val
 				}
 			}
+			// We only write back a single block from the shard node
+			// (It simulates a scenario where we couldn't push all the blocks from the shard node to the tree in a single steps)
+			for block, val := range shardNodeBlocks {
+				writtenBlocks[block] = val
+				break
+			}
 			return writtenBlocks, nil
 		},
-	))
-	receivedBlocksIsWritten, err := o.writeBackBlocksToAllBuckets([]int{0, 1, 2},
+	)
+	o := startLeaderRaftNodeServer(t, m)
+	o.parameters.RedisPipelineSize = 2
+	receivedBlocksIsWritten, err := o.writeBackBlocksToAllBuckets([]int{1, 2, 3, 4, 5, 6},
 		1,
 		map[int]map[string]string{
-			0: {
-				"1": "val1",
-			},
 			1: {
-				"2": "val1",
+				"1": "val1",
+				"2": "val2",
+				"3": "val3",
 			},
 			2: {
-				"3": "val1",
+				"4": "val4",
+				"5": "val5",
 			},
+			3: {
+				"6": "val6",
+				"7": "val7",
+			},
+			4: {},
+			5: {
+				"8": "val8",
+			},
+			6: {},
 		},
 		map[string]string{
 			"a": "valA",
 			"b": "valB",
 			"c": "valC",
+			"d": "valD",
+			// One will not be written to the tree since we only write back a single block from the shard node every time (3 blocks in total)
 		},
 	)
 	if err != nil {
 		t.Errorf("expected successful execution of writeBackBlocksToAllLevels")
 	}
-	if receivedBlocksIsWritten["a"] == true {
-		t.Errorf("IsWritten should be false for a since it's not written to the tree")
+	notWrittenCount := 0
+	for _, block := range []string{"a", "b", "c", "d"} {
+		if receivedBlocksIsWritten[block] == false {
+			notWrittenCount++
+		}
+	}
+	if notWrittenCount != 1 {
+		t.Errorf("expected IsWritten to be false for 1 block")
 	}
 }
 
 func TestEvictCleansUpBeginEvictionAfterSuccessfulExecution(t *testing.T) {
-	o := startLeaderRaftNodeServer(t)
+	o := startLeaderRaftNodeServer(t, strg.NewMockStorageHandler(3, 4))
+	o.parameters.RedisPipelineSize = 2
 	o.evict(0)
 	o.oramNodeFSM.unfinishedEvictionMu.Lock()
 	defer o.oramNodeFSM.unfinishedEvictionMu.Unlock()
@@ -329,8 +311,10 @@ func TestEvictCleansUpBeginEvictionAfterSuccessfulExecution(t *testing.T) {
 }
 
 func TestEvictKeepsBeginEvictionInFailureScenario(t *testing.T) {
-	o := startLeaderRaftNodeServer(t).withFailedShardNodeClients()
+	o := startLeaderRaftNodeServer(t, strg.NewMockStorageHandler(3, 4)).withFailedShardNodeClients()
+	o.parameters.RedisPipelineSize = 2
 	o.evict(0)
+	fmt.Println("Failed and came back")
 	o.oramNodeFSM.unfinishedEvictionMu.Lock()
 	defer o.oramNodeFSM.unfinishedEvictionMu.Unlock()
 	if o.oramNodeFSM.unfinishedEviction == nil {
@@ -339,7 +323,8 @@ func TestEvictKeepsBeginEvictionInFailureScenario(t *testing.T) {
 }
 
 func TestEvictResetsReadPathCounter(t *testing.T) {
-	o := startLeaderRaftNodeServer(t)
+	o := startLeaderRaftNodeServer(t, strg.NewMockStorageHandler(3, 4))
+	o.parameters.RedisPipelineSize = 2
 	o.evict(0)
 	if o.readPathCounter.Load() != 0 {
 		t.Errorf("Evict should reset readPathCounter after successful execution")
@@ -372,7 +357,21 @@ func TestGetDistinctPathsInBatchReturnsDistinctPathsInRequests(t *testing.T) {
 }
 
 func TestReadPathIncrementsReadPathCounter(t *testing.T) {
-	o := startLeaderRaftNodeServer(t).withMockStorageHandler(newMockStorageHandler(4, 4))
+	m := strg.NewMockStorageHandler(3, 4).WithCusomBatchGetBlockOffsetFunc(
+		func(bucketIDs []int, storageID int, blocks []string) (offsets map[int]strg.BlockOffsetStatus, err error) {
+			offsets = make(map[int]strg.BlockOffsetStatus)
+			for _, bucketID := range bucketIDs {
+				offsets[bucketID] = strg.BlockOffsetStatus{
+					Offset:     0,
+					IsReal:     true,
+					BlockFound: "a",
+				}
+			}
+			return offsets, nil
+		},
+	)
+	o := startLeaderRaftNodeServer(t, m)
+	o.parameters.RedisPipelineSize = 2
 	ctx := metadata.NewIncomingContext(context.Background(), metadata.Pairs("requestid", "request1"))
 	o.ReadPath(ctx, &oramnode.ReadPathRequest{StorageId: 2, Requests: []*oramnode.BlockRequest{{Block: "a", Path: 1}}})
 	if o.readPathCounter.Load() != 1 {
