@@ -25,7 +25,7 @@ func CallAllReplicas(ctx context.Context, clients []interface{}, replicaFuncs []
 			responseChannel <- result{reply: reply, err: err}
 		}(clientFunc, clients[i])
 	}
-	timeout := time.After(20 * time.Second)
+	timeout := time.After(5 * time.Second)
 	var errors []error
 	for {
 		select {
