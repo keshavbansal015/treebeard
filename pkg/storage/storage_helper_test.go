@@ -107,7 +107,7 @@ func TestBatchGetAllMetaDataReturnsAllBucketOffsets(t *testing.T) {
 	}
 }
 
-func TestBatchPushDataAndMetadataResetsAccesCount(t *testing.T) {
+func TestBatchPushDataAndMetadataResetsAccessCount(t *testing.T) {
 	storageHandler := NewStorageHandler(3, 1, 9, 1, []config.RedisEndpoint{{ID: 0, IP: "localhost", Port: 6379}})
 	storageHandler.InitDatabase()
 	pipe := storageHandler.storages[0].Pipeline()
