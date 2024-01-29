@@ -63,6 +63,7 @@ type Parameters struct {
 	TreeHeight        int  `yaml:"tree-height"`
 	RedisPipelineSize int  `yaml:"redis-pipeline-size"`
 	MaxRequests       int  `yaml:"max-requests"`
+	BlockSize         int  `yaml:"block-size"`
 	Log               bool `yaml:"log"`
 	Profile           bool `yaml:"profile"`
 }

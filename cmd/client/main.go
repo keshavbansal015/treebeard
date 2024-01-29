@@ -39,7 +39,7 @@ func main() {
 		log.Fatal().Msgf("Failed to start clients; %v", err)
 	}
 
-	requests, err := client.ReadTraceFile(path.Join(*configsPath, "trace.txt"))
+	requests, err := client.ReadTraceFile(path.Join(*configsPath, "trace.txt"), parameters.BlockSize)
 	if err != nil {
 		log.Fatal().Msgf("Failed to read trace file; %v", err)
 	}

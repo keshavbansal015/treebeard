@@ -20,7 +20,14 @@ type Request struct {
 	NewValue      string
 }
 
-func ReadTraceFile(traceFilePath string) ([]Request, error) {
+func padBlockValue(blockValue string, blockSizeBytes int) string {
+	if len(blockValue) < blockSizeBytes {
+		return strings.Repeat("0", blockSizeBytes-len(blockValue)) + blockValue
+	}
+	return blockValue
+}
+
+func ReadTraceFile(traceFilePath string, blockSizeBytes int) ([]Request, error) {
 	log.Debug().Msgf("Reading trace file")
 	file, err := os.Open(traceFilePath)
 	if err != nil {
@@ -43,7 +50,8 @@ func ReadTraceFile(traceFilePath string) ([]Request, error) {
 			if len(tokens) != 3 {
 				return nil, fmt.Errorf("read request should have the operation type, block id, and new value")
 			}
-			requests = append(requests, Request{Block: tokens[1], OperationType: Write, NewValue: tokens[2]})
+			newValue := padBlockValue(tokens[2], blockSizeBytes)
+			requests = append(requests, Request{Block: tokens[1], OperationType: Write, NewValue: newValue})
 		} else {
 			return nil, fmt.Errorf("only READ and WRITE are supported in the trace file")
 		}
