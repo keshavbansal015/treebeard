@@ -1,23 +1,16 @@
-# oblishard
-A scalable and fault-tolerant Oblivious RAM (ORAM) data store
+# Oblishard [![Github Actions](https://github.com/dsg-uwaterloo/oblishard/actions/workflows/go.yml/badge.svg)](https://github.com/dsg-uwaterloo/oblishard/actions/workflows/go.yml)
+Welcome to **Oblishard**, a cutting-edge and highly scalable Oblivious RAM (ORAM) data store designed to provide strong security guarantees by hiding access patterns from the storage server and randomizing client access.
+## Key Features:
+* **Scalability**: Oblishard is designed with horizontal scalability in mind, enabling scaling the system without leaking security information.
+* **Fault Tolerance**: Leveraging the power of Raft consensus algorithm, Oblishard ensures the resilience of your data store even in the face of node crashes or failures, enhancing the overall reliability of your system.
+* **High Throughput**: Oblishard achieves high-throughput performance, ensuring that your applications can handle large volumes of data seamlessly and efficiently.
+* **Configurable**: Oblishard recognizes the diverse needs of different projects and offers a high level of configurability to adapt seamlessly to your specific requirements.
+* **Easy to Deploy**: We've designed the setup of Oblishard to be straightforward, ensuring that you can integrate our secure and high-performance data store effortlessly into your projects.
+* **Easy to Extend**: Oblishard's modular architecture makes it easy to extend functionality. You can add new storage layers to Oblishard to support different use cases.
 
-The Readme is out of date. Don't use the instructions here! I will fix it soon.
 
-## Table of Contents
-
-1. [Protocol Buffers](#protocol-buffers)
-2. [Running the Project](#running-the-project)
-   1. [Running the Router](#running-the-router)
-   2. [Running the Shardnode](#running-the-shardnode)
-   3. [Running the ORAM Node](#running-the-oram-node)
-   4. [Running the Jaeger Backend](#running-the-jaeger-backend)
-   5. [Running Redis](#running-redis)
-   6. [Sending Requests](#sending-requests)
-3. [Example Execution](#example-execution)
-4. [Configurations](#configurations)
-
----
-## Protocol Buffers
+## Installation
+### Protocol Buffers
 
 The following parts are generated, but if you want to generate them again yourself, you can run the provided script:
 
@@ -25,50 +18,13 @@ The following parts are generated, but if you want to generate them again yourse
 ./scripts/generate_protos.sh
 ```
 
-## Running the Project
-### Running the Router
-To run the router, use the following command:
-```bash
-go run -race . -routerid <routerid> -port <rpc port>
-```
-### Running the Shardnode
-To run a shardnode, use the following command:
-```bash
-go run -race . -shardnodeid <id> -rpcport <rpcport> -replicaid <replicaid> -raftport <raftport>
-```
-You can provide a `-joinaddr` for the followers to join the leader.
-### Running the ORAM Node
-To run an ORAM node, use the following command:
-```bash
-go run -race . -oramnodeid <id> -rpcport <rpcport> -replicaid <replicaid> -raftport <raftport>
-```
-You can provide a `-joinaddr` for the followers to join the leader.
-### Running the Jaeger Backend
-To run the Jaeger backend, use Docker Compose:
-```bash
-docker compose up
-```
-### Running Redis
-Ensure that Redis is up and running on the default port.
-### Sending Requests
-To send requests, run the following command in the `cmd/client` directory:
-```bash
-go run -race .
-```
-It will send the requests that are in the `traces/simple.trace` file.
-## Example Execution
-Run each of the commands in a new terminal:
-```bash
-go run -race . -routerid 0 -port 8745 #cmd/router directory
-go run -race . -shardnodeid 0 -rpcport 8748 -replicaid 0 -raftport 3124 #cmd/shardnode directory
-go run -race . -shardnodeid 0 -rpcport 8749 -replicaid 1 -raftport 3125 -joinaddr=127.0.0.1:8748 #cmd/shardnode directory
-go run -race . -shardnodeid 0 -rpcport 8750 -replicaid 2 -raftport 3126 -joinaddr=127.0.0.1:8748 #cmd/shardnode directory
-go run -race . -oramnodeid 0 -rpcport 8751 -replicaid 0 -raftport 1415 #cmd/oramnode directory
-go run -race . -oramnodeid 0 -rpcport 8752 -replicaid 1 -raftport 1416 -joinaddr=127.0.0.1:8751 #cmd/oramnode directory
-go run -race . -oramnodeid 0 -rpcport 8753 -replicaid 2 -raftport 1417 -joinaddr=127.0.0.1:8751 #cmd/oramnode directory
-docker compose up #jaeger directory
-go run -race . #client directory
-```
-## Configurations
+### Configurations
 The configurations can be found in the configs directory.  
 There are files for endpoint configs, as well as one file for the parameters.
+* `*_endpoints.yaml`: These files include the endpoints of the different components in your system. You can specify the endpoints here and Ansible will use these files to deploy the components to their correct hosts and will configure them accordingly.
+* `parameters.yaml`: This file holds all the configuration parameters. You can change them as you want to fit your needs.
+
+### Running Oblishard
+1. Ensure that you have Ansible installed, and you have ssh access to your deployment hosts.
+2. Update the hosts file to include your deployment hosts.
+3. Run `ansible-playbook -i /path/to/hosts tasks.yaml` in the deploy directory.
