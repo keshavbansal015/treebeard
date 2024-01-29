@@ -63,7 +63,12 @@ func (s *shardNodeServer) getWhatToSendBasedOnRequest(ctx context.Context, block
 	} else {
 		s.shardNodeFSM.positionMapMu.RLock()
 		defer s.shardNodeFSM.positionMapMu.RUnlock()
-		return block, s.shardNodeFSM.positionMap[block].path, s.shardNodeFSM.positionMap[block].storageID
+		if _, exists := s.shardNodeFSM.positionMap[block]; !exists {
+			path, storageID = storage.GetRandomPathAndStorageID(s.storageTreeHeight, len(s.storageORAMNodeMap))
+			return block, path, storageID
+		} else {
+			return block, s.shardNodeFSM.positionMap[block].path, s.shardNodeFSM.positionMap[block].storageID
+		}
 	}
 }
 

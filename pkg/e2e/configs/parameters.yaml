@@ -10,5 +10,6 @@ shift: 1 # 2^shift is the tree branching factor
 tree-height: 3 # height of the tree
 redis-pipeline-size: 150 # number of requests to pipeline to redis
 max-requests: 1000 # maximum number of requests in flight at the client
+block-size: 1024 # size of each block in bytes
 log: true # whether to log
 profile: true # Whether to profile

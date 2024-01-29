@@ -5,6 +5,7 @@ import (
 	"math"
 	"math/rand"
 	"strconv"
+	"time"
 
 	"github.com/redis/go-redis/v9"
 	"github.com/rs/zerolog/log"
@@ -34,6 +35,8 @@ func shuffleArray(arr []int) {
 }
 
 func (s *StorageHandler) databaseInit(redisClient *redis.Client) (err error) {
+	pipe := redisClient.Pipeline()
+	pipeCount := 0
 	for bucketID := 1; bucketID < int(math.Pow(2, float64(s.treeHeight))); bucketID++ {
 		values := make([]string, s.Z+s.S)
 		metadatas := make([]string, s.Z+s.S)
@@ -61,12 +64,16 @@ func (s *StorageHandler) databaseInit(redisClient *redis.Client) (err error) {
 			dummyCount++
 		}
 		// push content of value array and meta data array
-		pipe := redisClient.Pipeline()
 		s.BatchPushDataAndMetadata(bucketID, values, metadatas, pipe)
-		_, err = pipe.Exec(context.Background())
-		if err != nil {
-			log.Error().Msgf("Error pushing values to db: %v", err)
-			return err
+		pipeCount++
+		if pipeCount == 10000 || bucketID == int(math.Pow(2, float64(s.treeHeight)))-1 {
+			_, err = pipe.Exec(context.Background())
+			if err != nil {
+				log.Error().Msgf("Error pushing values to db: %v", err)
+				return err
+			}
+			pipeCount = 0
+			pipe = redisClient.Pipeline()
 		}
 	}
 	return nil
@@ -87,6 +94,7 @@ func (s *StorageHandler) BatchPushDataAndMetadata(bucketId int, valueData []stri
 
 	dataCmd = pipe.HMSet(ctx, strconv.Itoa(bucketId), kvpMapData)
 	metadataCmd = pipe.HMSet(ctx, strconv.Itoa(-1*bucketId), kvpMapMetadata)
+
 	return dataCmd, metadataCmd
 }
 
@@ -139,6 +147,8 @@ func parseMetadataBlocks(bucketMetadata map[int]*redis.MapStringStringCmd) (bloc
 // The invalidated blocks are not returned.
 func (s *StorageHandler) BatchGetAllMetaData(bucketIDs []int, storageID int) (map[int]map[string]int, error) {
 	ctx := context.Background()
+	// TODO: write a function to check for duplicate blocks here
+	startTime := time.Now()
 	pipe := s.storages[storageID].Pipeline()
 	results := make(map[int]*redis.MapStringStringCmd)
 	for _, bucketID := range bucketIDs {
@@ -148,6 +158,8 @@ func (s *StorageHandler) BatchGetAllMetaData(bucketIDs []int, storageID int) (ma
 	if err != nil {
 		return nil, err
 	}
+	endTime := time.Now()
+	log.Debug().Msgf("BatchGetAllMetaData took %v ms for %d buckets", endTime.Sub(startTime).Milliseconds(), len(bucketIDs))
 	allBlockOffsets, err := parseMetadataBlocks(results)
 	if err != nil {
 		return nil, err

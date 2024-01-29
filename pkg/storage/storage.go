@@ -203,6 +203,10 @@ func (s *StorageHandler) BatchReadBucket(bucketIDs []int, storageID int) (blocks
 		}
 	}
 	_, err = pipe.Exec(ctx)
+	if err != nil {
+		return nil, err
+	}
+	blocks = make(map[int]map[string]string)
 	for bucketID, result := range results {
 		blocks[bucketID] = make(map[string]string)
 		for key, cmd := range result {
@@ -321,12 +325,6 @@ func (s *StorageHandler) BatchReadBlock(bucketOffsets map[int]int, storageID int
 		// Issue HGET commands for the value stored in the current bucketID
 		cmd := pipe.HGet(ctx, strconv.Itoa(bucketID), strconv.Itoa(offset))
 
-		//log.Debug().Msgf("Getting bucket %d at offset %d", bucketID, offset)
-
-		if cmd.Err() != nil {
-			log.Error().Msgf("Error fetching value for bucket %d at offset %d: %v", bucketID, offset, cmd.Err())
-			return nil, cmd.Err()
-		}
 		// Store the map of results for the current bucketID in the resultsMap
 		resultsMap[bucketID] = cmd
 	}
@@ -369,17 +367,10 @@ func (s *StorageHandler) BatchReadBlock(bucketOffsets map[int]int, storageID int
 		cmd := pipe.HIncrBy(ctx, strconv.Itoa(-1*bucketID), "accessCount", 1)
 		invalidateMap[bucketID] = cmd
 	}
-	for _, cmd := range invalidateMap {
-		err := cmd.Err()
-		if err != nil {
-			return nil, err
-		}
-	}
-	for _, cmd := range invalidateMap {
-		err := cmd.Err()
-		if err != nil {
-			return nil, err
-		}
+	_, err = pipe.Exec(ctx)
+	if err != nil {
+		log.Debug().Msgf("error executing batch read block pipe: %v", err)
+		return nil, err
 	}
 	return values, nil
 }
