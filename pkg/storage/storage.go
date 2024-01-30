@@ -230,6 +230,11 @@ func (s *StorageHandler) BatchWriteBucket(storageID int, readBucketBlocksList ma
 	ctx := context.Background()
 	dataResults := make(map[int]*redis.BoolCmd)
 	metadataResults := make(map[int]*redis.BoolCmd)
+	writtenBlocks = make(map[string]string)
+
+	log.Debug().Msgf("buckets from readBucketBlocksList: %v", readBucketBlocksList)
+	log.Debug().Msgf("shardNodeBlocks: %v", shardNodeBlocks)
+
 	for bucketID, readBucketBlocks := range readBucketBlocksList {
 		values := make([]string, s.Z+s.S)
 		metadatas := make([]string, s.Z+s.S)
@@ -239,13 +244,12 @@ func (s *StorageHandler) BatchWriteBucket(storageID int, readBucketBlocksList ma
 			realIndex[k] = k
 		}
 		shuffleArray(realIndex)
-		writtenBlocks = make(map[string]string)
 		i := 0
 		for key, value := range readBucketBlocks {
 			if strings.HasPrefix(key, "dummy") {
 				continue
 			}
-			if len(writtenBlocks) < s.Z {
+			if i < s.Z {
 				writtenBlocks[key] = value
 				values[realIndex[i]], err = Encrypt(value, s.key)
 				if err != nil {
@@ -262,7 +266,7 @@ func (s *StorageHandler) BatchWriteBucket(storageID int, readBucketBlocksList ma
 			if strings.HasPrefix(key, "dummy") {
 				continue
 			}
-			if len(writtenBlocks) < s.Z {
+			if i < s.Z {
 				writtenBlocks[key] = value
 				values[realIndex[i]], err = Encrypt(value, s.key)
 				if err != nil {

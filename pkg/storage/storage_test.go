@@ -148,6 +148,26 @@ func TestBatchGetBlockOffset(t *testing.T) {
 	}
 }
 
+func TestBatchReadBucketReturnsBlocksInAllBuckets(t *testing.T) {
+	s := NewStorageHandler(4, 1, 9, 1, []config.RedisEndpoint{{ID: 0, IP: "localhost", Port: 6379}})
+	s.InitDatabase()
+	toWriteBlocks := map[int]map[string]string{1: {"usr1": "value1"}, 2: {"usr2": "value2"}, 3: {"usr3": "value3"}, 4: {"usr4": "value4"}, 5: {"usr5": "value5"}}
+	s.BatchWriteBucket(0, toWriteBlocks, map[string]string{})
+	blocks, err := s.BatchReadBucket([]int{1, 2, 3, 4, 5}, 0)
+	if err != nil {
+		t.Errorf("error reading bucket")
+	}
+	expectedReadBuckets := toWriteBlocks
+	log.Debug().Msgf("blocks: %v", expectedReadBuckets)
+	for bucketID, blockToVal := range expectedReadBuckets {
+		for block, val := range blockToVal {
+			if blocks[bucketID][block] != val {
+				t.Errorf("expected %s, but got %s", val, blocks[bucketID][block])
+			}
+		}
+	}
+}
+
 func TestRandom(t *testing.T) {
 	s := NewStorageHandler(4, 1, 9, 1, []config.RedisEndpoint{{ID: 0, IP: "localhost", Port: 6379}})
 	s.InitDatabase()
