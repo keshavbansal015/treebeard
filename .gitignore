@@ -10,3 +10,4 @@ cmd/oramnode/oramnode
 *.DS_Store
 db.txt
 trace.txt
+*.txt

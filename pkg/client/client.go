@@ -3,11 +3,14 @@ package client
 import (
 	"context"
 	"fmt"
+	"math"
 	"math/rand"
+	"time"
 
 	routerpb "github.com/dsg-uwaterloo/oblishard/api/router"
 	"github.com/dsg-uwaterloo/oblishard/pkg/config"
 	"github.com/dsg-uwaterloo/oblishard/pkg/rpc"
+	"github.com/redis/go-redis/v9"
 	"github.com/rs/zerolog/log"
 	"go.opentelemetry.io/otel/trace"
 	"google.golang.org/grpc"
@@ -35,6 +38,26 @@ type client struct {
 
 func NewClient(rateLimit *RateLimit, tracer trace.Tracer, routerRPCClients RouterClients, requests []Request) *client {
 	return &client{rateLimit: rateLimit, tracer: tracer, routerRPCClients: routerRPCClients, requests: requests}
+}
+
+func (c *client) WaitForStorageToBeReady(redisEndpoints []config.RedisEndpoint, parameters config.Parameters) error {
+	for _, redisEndpoint := range redisEndpoints {
+		redisClient := redis.NewClient(&redis.Options{
+			Addr: fmt.Sprintf("%s:%d", redisEndpoint.IP, redisEndpoint.Port)})
+		for {
+			time.Sleep(100 * time.Millisecond)
+			dbsize, err := redisClient.DBSize(context.Background()).Result()
+			if err != nil {
+				log.Error().Msgf("Failed to get DB size from redis; %v", err)
+				return err
+			}
+
+			if dbsize == (int64((math.Pow(float64(parameters.Shift+1), float64(parameters.TreeHeight))))-1)*2 {
+				break
+			}
+		}
+	}
+	return nil
 }
 
 func (c *client) asyncRead(block string, routerRPCClient RouterRPCClient, readResponseChannel chan ReadResponse) {

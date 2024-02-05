@@ -3,7 +3,6 @@ package main
 import (
 	"context"
 	"flag"
-	"fmt"
 	"os"
 	"path"
 	"time"
@@ -21,6 +20,7 @@ func main() {
 	logPath := flag.String("logpath", "", "path to write logs")
 	configsPath := flag.String("conf", "../../configs/default", "configs directory path")
 	duration := flag.Int("duration", 10, "duration of the experiment in seconds")
+	outputFilePath := flag.String("output", "", "output file path")
 	flag.Parse()
 	parameters, err := config.ReadParameters(path.Join(*configsPath, "parameters.yaml"))
 	if err != nil {
@@ -32,6 +32,11 @@ func main() {
 	routerEndpoints, err := config.ReadRouterEndpoints(path.Join(*configsPath, "router_endpoints.yaml"))
 	if err != nil {
 		log.Fatal().Msgf("Cannot read router endpoints from yaml file; %v", err)
+	}
+
+	redisEndpoints, err := config.ReadRedisEndpoints(path.Join(*configsPath, "redis_endpoints.yaml"))
+	if err != nil {
+		log.Fatal().Msgf("Cannot read redis endpoints from yaml file; %v", err)
 	}
 
 	rpcClients, err := client.StartRouterRPCClients(routerEndpoints)
@@ -57,6 +62,10 @@ func main() {
 	tracer := otel.Tracer("")
 
 	c := client.NewClient(client.NewRateLimit(parameters.MaxRequests), tracer, rpcClients, requests)
+	err = c.WaitForStorageToBeReady(redisEndpoints, parameters)
+	if err != nil {
+		log.Fatal().Msgf("Failed to check if storages are ready; %v", err)
+	}
 
 	readResponseChannel := make(chan client.ReadResponse)
 	writeResponseChannel := make(chan client.WriteResponse)
@@ -67,7 +76,10 @@ func main() {
 	startTime := time.Now()
 	readOperations, writeOperations := c.GetResponsesForever(ctx, readResponseChannel, writeResponseChannel)
 	elapsed := time.Since(startTime)
-	// TODO: seperate read and write throughput
-	fmt.Printf("Throughput: %f", float64(readOperations+writeOperations)/elapsed.Seconds())
-	fmt.Println("Average latency in ms: ", float64(elapsed.Milliseconds())/float64(readOperations+writeOperations))
+	throughput := float64(readOperations+writeOperations) / elapsed.Seconds()
+	averageLatency := float64(elapsed.Milliseconds()) / float64((readOperations + writeOperations))
+	err = client.WriteOutputToFile(*outputFilePath, throughput, averageLatency, parameters)
+	if err != nil {
+		log.Fatal().Msgf("Failed to write output to file; %v", err)
+	}
 }

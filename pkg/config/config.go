@@ -2,6 +2,7 @@ package config
 
 import (
 	"os"
+	"strconv"
 
 	"github.com/rs/zerolog/log"
 	yaml "gopkg.in/yaml.v3"
@@ -66,6 +67,23 @@ type Parameters struct {
 	BlockSize         int  `yaml:"block-size"`
 	Log               bool `yaml:"log"`
 	Profile           bool `yaml:"profile"`
+}
+
+func (o Parameters) String() string {
+	output := ""
+	output += "MaxBlocksToSend: " + strconv.Itoa(o.MaxBlocksToSend) + "\n"
+	output += "EvictionRate: " + strconv.Itoa(o.EvictionRate) + "\n"
+	output += "EvictPathCount: " + strconv.Itoa(o.EvictPathCount) + "\n"
+	output += "BatchTimout: " + strconv.Itoa(o.BatchTimout) + "\n"
+	output += "EpochTime: " + strconv.Itoa(o.EpochTime) + "\n"
+	output += "Z: " + strconv.Itoa(o.Z) + "\n"
+	output += "S: " + strconv.Itoa(o.S) + "\n"
+	output += "Shift: " + strconv.Itoa(o.Shift) + "\n"
+	output += "TreeHeight: " + strconv.Itoa(o.TreeHeight) + "\n"
+	output += "RedisPipelineSize: " + strconv.Itoa(o.RedisPipelineSize) + "\n"
+	output += "MaxRequests: " + strconv.Itoa(o.MaxRequests) + "\n"
+	output += "BlockSize: " + strconv.Itoa(o.BlockSize)
+	return output
 }
 
 func ReadRouterEndpoints(path string) ([]RouterEndpoint, error) {

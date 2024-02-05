@@ -1,3 +1,5 @@
+# This file expects a {{ experiment_path }} variable to be passed as an extra var to the ansible-playbook command
+
 - name: Deploy the system
   hosts: all
   become: yes
@@ -47,12 +49,12 @@
         file: "{{ item.file_path }}"
         name: "{{ item.name }}"
       loop:
-        - {name: router_endpoints, file_path: '../../configs/router_endpoints.yaml'}
-        - {name: shardnode_endpoints, file_path: '../../configs/shardnode_endpoints.yaml'}
-        - {name: oramnode_endpoints, file_path: '../../configs/oramnode_endpoints.yaml'}
-        - {name: redis_endpoints, file_path: '../../configs/redis_endpoints.yaml'}
-        - {name: jaeger_endpoint, file_path: '../../configs/jaeger_endpoint.yaml'}
-        - {name: parameters, file_path: '../../configs/parameters.yaml'}
+        - {name: router_endpoints, file_path: '{{ experiment_path }}/router_endpoints.yaml'}
+        - {name: shardnode_endpoints, file_path: '{{ experiment_path }}/shardnode_endpoints.yaml'}
+        - {name: oramnode_endpoints, file_path: '{{ experiment_path }}/oramnode_endpoints.yaml'}
+        - {name: redis_endpoints, file_path: '{{ experiment_path }}/redis_endpoints.yaml'}
+        - {name: jaeger_endpoint, file_path: '{{ experiment_path }}/jaeger_endpoint.yaml'}
+        - {name: parameters, file_path: '{{ experiment_path }}/parameters.yaml'}
 
     - name: Move Jaeger docker-compose.yaml and Start it
       block:
@@ -84,7 +86,7 @@
 
     - name: Copy Redis config
       ansible.builtin.copy:
-        src: "../../configs/redis.conf"
+        src: "{{ experiment_path }}/redis.conf"
         dest: "/etc/redis/redis.conf"
         mode: '0666'
       delegate_to: "{{ item.deploy_host }}"
@@ -112,10 +114,10 @@
       become: yes
       become_user: aminst
       loop:
-        - "../../cmd/client/"
-        - "../../cmd/router/"
-        - "../../cmd/shardnode/"
-        - "../../cmd/oramnode/"
+        - "../cmd/client/"
+        - "../cmd/router/"
+        - "../cmd/shardnode/"
+        - "../cmd/oramnode/"
 
     - name: Create new directories
       ansible.builtin.file:
@@ -132,7 +134,7 @@
 
     - name: Copy executables
       ansible.builtin.copy:
-        src: "../../cmd/{{ item[0] }}/{{ item[0] }}"
+        src: "../cmd/{{ item[0] }}/{{ item[0] }}"
         dest: "{{ '/root/oblishard/' + item[0] + '/' + item[0] }}"
         mode: '0777'
       delegate_to: "{{ item[1].deploy_host }}"
@@ -145,13 +147,13 @@
 
     - name: Copy client
       ansible.builtin.copy:
-        src: "../../cmd/client/client"
+        src: "../cmd/client/client"
         dest: "/root/oblishard/"
         mode: '0777'
 
     - name: Copy configs
       ansible.builtin.copy:
-        src: "../../configs/{{ item[0] }}"
+        src: "{{ experiment_path }}/{{ item[0] }}"
         dest: "/root/oblishard/{{ item[0] }}"
         mode: '0666'
       delegate_to: "{{ item[1] }}"

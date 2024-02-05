@@ -1,0 +1,14 @@
+# Expects experiment_output_path to be passed as an extra variable
+- name: Run the Experiment
+  hosts: host1
+  become: yes
+  become_user: root
+  tasks:
+  - name: Run the Client
+    ansible.builtin.shell:
+      cmd: "/root/oblishard/client -duration 10 -conf /root/oblishard -output /root/oblishard/output.txt"
+  - name: Get the output
+    ansible.builtin.fetch:
+      src: "/root/oblishard/output.txt"
+      dest: "{{ experiment_output_path }}"
+      flat: yes
