@@ -1,0 +1,5 @@
+exposed_ip: 192.168.252.115
+local_bind_ip: 192.168.252.115
+deploy_host: host1
+api_port: 16686
+grpc_port: 4317

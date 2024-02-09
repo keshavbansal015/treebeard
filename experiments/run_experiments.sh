@@ -49,16 +49,19 @@ do_all_experiments_exist() {
 }
 
 run_experiments() {
-    for dir in $(pwd)/*
+    for experiment_group in $(pwd)/*
     do
-        if do_all_experiments_exist $dir -eq 0 ; then
-            echo "All experiments already exist for $(basename $dir)"
-            continue
-        fi
-        if [ -d $dir ]; then
-            deploy_the_system $dir
-            run_experiment_N_times $dir
-        fi
+        for experiment in $experiment_group/*
+        do
+            if do_all_experiments_exist $experiment -eq 0 ; then
+                echo "All experiments already exist for $(basename $experiment)"
+                continue
+            fi
+            if [ -d $experiment ]; then
+                deploy_the_system $experiment
+                run_experiment_N_times $experiment
+            fi            
+        done
     done
 }
 

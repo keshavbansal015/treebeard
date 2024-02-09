@@ -9,7 +9,7 @@ S: 6 # number of dummy blocks per bucket
 shift: 1 # 2^shift is the tree branching factor
 tree-height: 20 # height of the tree
 redis-pipeline-size: 5000000 # number of requests to pipeline to redis
-max-requests: 5000 # maximum number of requests in flight at the client
+max-requests: 1000 # maximum number of requests in flight at the client
 block-size: 1024 # size of each block in bytes
 log: false # whether to log
 profile: false # Whether to profile
