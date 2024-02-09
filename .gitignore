@@ -11,3 +11,4 @@ cmd/oramnode/oramnode
 db.txt
 trace.txt
 *.txt
+.ipynb_checkpoints/*
