@@ -73,12 +73,8 @@ func main() {
 	defer cancel()
 
 	go c.SendRequestsForever(ctx, readResponseChannel, writeResponseChannel)
-	startTime := time.Now()
-	readOperations, writeOperations := c.GetResponsesForever(ctx, readResponseChannel, writeResponseChannel)
-	elapsed := time.Since(startTime)
-	throughput := float64(readOperations+writeOperations) / elapsed.Seconds()
-	averageLatency := float64(elapsed.Milliseconds()) / float64((readOperations + writeOperations))
-	err = client.WriteOutputToFile(*outputFilePath, throughput, averageLatency)
+	responseCounts := c.GetResponsesForever(ctx, readResponseChannel, writeResponseChannel)
+	err = client.WriteOutputToFile(*outputFilePath, responseCounts)
 	if err != nil {
 		log.Fatal().Msgf("Failed to write output to file; %v", err)
 	}
