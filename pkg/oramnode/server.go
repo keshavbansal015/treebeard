@@ -150,6 +150,9 @@ func (o *oramNodeServer) asyncReadBucket(bucketIDs []int, storageID int, respons
 func (o *oramNodeServer) readAllBuckets(buckets []int, storageID int) (blocksFromReadBucket map[int]map[string]string, err error) {
 	log.Debug().Msgf("Reading all buckets with buckets %v and storageID %d", buckets, storageID)
 	blocksFromReadBucket = make(map[int]map[string]string) // map of bucket to map of block to value
+	for _, bucket := range buckets {
+		blocksFromReadBucket[bucket] = make(map[string]string)
+	}
 	if err != nil {
 		return nil, fmt.Errorf("unable to get bucket ids for early reshuffle path; %v", err)
 	}
@@ -166,9 +169,6 @@ func (o *oramNodeServer) readAllBuckets(buckets []int, storageID int) (blocksFro
 			return nil, fmt.Errorf("unable to read bucket; %s", err)
 		}
 		for bucket, blockValues := range response.bucketValues {
-			if blocksFromReadBucket[bucket] == nil {
-				blocksFromReadBucket[bucket] = make(map[string]string)
-			}
 			for block, value := range blockValues {
 				blocksFromReadBucket[bucket][block] = value
 			}
@@ -192,6 +192,7 @@ func (o *oramNodeServer) readBlocksFromShardNode(paths []int, storageID int, ran
 }
 
 func (o *oramNodeServer) writeBackBlocksToAllBuckets(buckets []int, storageID int, blocksFromReadBucket map[int]map[string]string, receivedBlocks map[string]string) (receivedBlocksIsWritten map[string]bool, err error) {
+	log.Debug().Msgf("blocks from read bucket: %v", blocksFromReadBucket)
 	log.Debug().Msgf("Writing back blocks to all buckets with buckets %v and storageID %d", buckets, storageID)
 	receivedBlocksCopy := make(map[string]string)
 	for block, value := range receivedBlocks {
