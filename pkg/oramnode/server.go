@@ -153,6 +153,9 @@ func (o *oramNodeServer) readAllBuckets(buckets []int, storageID int) (blocksFro
 	if err != nil {
 		return nil, fmt.Errorf("unable to get bucket ids for early reshuffle path; %v", err)
 	}
+	for _, bucket := range buckets {
+		blocksFromReadBucket[bucket] = make(map[string]string)
+	}
 	readBucketResponseChan := make(chan readBucketResponse)
 	batches := distributeBucketIDs(buckets, o.parameters.RedisPipelineSize)
 	for _, bucketIDs := range batches {
@@ -166,9 +169,6 @@ func (o *oramNodeServer) readAllBuckets(buckets []int, storageID int) (blocksFro
 			return nil, fmt.Errorf("unable to read bucket; %s", err)
 		}
 		for bucket, blockValues := range response.bucketValues {
-			if blocksFromReadBucket[bucket] == nil {
-				blocksFromReadBucket[bucket] = make(map[string]string)
-			}
 			for block, value := range blockValues {
 				blocksFromReadBucket[bucket][block] = value
 			}
