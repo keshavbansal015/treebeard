@@ -157,7 +157,7 @@
         dest: "/root/oblishard/{{ item[0] }}"
         mode: '0666'
       delegate_to: "{{ item[1] }}"
-      loop: "{{ ['router_endpoints.yaml', 'shardnode_endpoints.yaml', 'oramnode_endpoints.yaml', 'redis_endpoints.yaml', 'parameters.yaml', 'trace.txt', 'db.txt'] | product(groups['all']) | list }}"
+      loop: "{{ ['router_endpoints.yaml', 'shardnode_endpoints.yaml', 'oramnode_endpoints.yaml', 'redis_endpoints.yaml', 'parameters.yaml', 'trace.txt'] | product(groups['all']) | list }}"
 
     - name: Create oramnode systemd services
       template:

@@ -74,7 +74,15 @@ func (s *StorageHandler) UnlockStorage(storageID int) {
 func (s *StorageHandler) InitDatabase() error {
 	log.Debug().Msgf("Initializing the redis database")
 	for _, client := range s.storages {
-		err := client.FlushAll(context.Background()).Err()
+		// Do not reinitialize the database if it is already initialized
+		dbsize, err := client.DBSize(context.Background()).Result()
+		if err != nil {
+			return err
+		}
+		if dbsize == (int64((math.Pow(float64(s.shift+1), float64(s.treeHeight))))-1)*2 {
+			continue
+		}
+		err = client.FlushAll(context.Background()).Err()
 		if err != nil {
 			return err
 		}
