@@ -100,7 +100,15 @@ func (e *epochManager) sendBatch(ctx context.Context, shardnodeClient ReplicaRPC
 	}
 	reply, err := rpc.CallAllReplicas(ctx, clients, replicaFuncs, requestBatch)
 	if err != nil {
-		batchResponseChan <- batchResponse{err: err}
+		readReplies := make([]*shardnodepb.ReadReply, 0)
+		writeReplies := make([]*shardnodepb.WriteReply, 0)
+		for _, readRequest := range requestBatch.ReadRequests {
+			readReplies = append(readReplies, &shardnodepb.ReadReply{RequestId: readRequest.RequestId, Value: ""})
+		}
+		for _, writeRequest := range requestBatch.WriteRequests {
+			writeReplies = append(writeReplies, &shardnodepb.WriteReply{RequestId: writeRequest.RequestId, Success: false})
+		}
+		batchResponseChan <- batchResponse{err: err, readResponses: readReplies, writeResponses: writeReplies}
 		return
 	}
 	log.Debug().Msgf("Received batch of requests from shardnode; reply: %v", reply)
@@ -150,6 +158,12 @@ func (e *epochManager) sendEpochRequestsAndAnswerThem(epochNumber int, requests 
 		case reply := <-batchResponseChan:
 			if reply.err != nil {
 				log.Error().Msgf("Error while sending batch of requests; %s", reply.err)
+				for _, r := range reply.readResponses {
+					responseChans[r.RequestId] <- readResponse{err: reply.err}
+				}
+				for _, r := range reply.writeResponses {
+					responseChans[r.RequestId] <- writeResponse{err: reply.err}
+				}
 				continue
 			}
 			log.Debug().Msgf("Received batch reply %v", reply)
