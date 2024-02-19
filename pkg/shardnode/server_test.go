@@ -13,7 +13,7 @@ import (
 )
 
 func TestGetPathAndStorageBasedOnRequestWhenInitialRequestReturnsRealBlockAndPathAndStorage(t *testing.T) {
-	s := newShardNodeServer(0, 0, &raft.Raft{}, newShardNodeFSM(), nil, map[int]int{0: 0, 1: 1, 2: 2, 3: 3}, 5, newBatchManager(1))
+	s := newShardNodeServer(0, 0, &raft.Raft{}, newShardNodeFSM(0), nil, map[int]int{0: 0, 1: 1, 2: 2, 3: 3}, 5, newBatchManager(1))
 	s.shardNodeFSM.requestLog["block1"] = []string{"request1", "request2"}
 	s.shardNodeFSM.positionMap["block1"] = positionState{path: 23, storageID: 3}
 
@@ -30,7 +30,7 @@ func TestGetPathAndStorageBasedOnRequestWhenInitialRequestReturnsRealBlockAndPat
 }
 
 func TestCreateResponseChannelForBatchAddsChannelToResponseChannel(t *testing.T) {
-	s := newShardNodeServer(0, 0, &raft.Raft{}, newShardNodeFSM(), nil, map[int]int{0: 0, 1: 1, 2: 2, 3: 3}, 5, newBatchManager(1))
+	s := newShardNodeServer(0, 0, &raft.Raft{}, newShardNodeFSM(0), nil, map[int]int{0: 0, 1: 1, 2: 2, 3: 3}, 5, newBatchManager(1))
 	readRequests := []*shardnodepb.ReadRequest{
 		{Block: "a", RequestId: "req1"},
 		{Block: "b", RequestId: "req2"},
@@ -55,7 +55,7 @@ func TestCreateResponseChannelForBatchAddsChannelToResponseChannel(t *testing.T)
 }
 
 func TestQueryBatchReturnsErrorForNonLeaderRaftPeer(t *testing.T) {
-	s := newShardNodeServer(0, 0, &raft.Raft{}, newShardNodeFSM(), nil, map[int]int{0: 0, 1: 1, 2: 2, 3: 3}, 5, newBatchManager(1))
+	s := newShardNodeServer(0, 0, &raft.Raft{}, newShardNodeFSM(0), nil, map[int]int{0: 0, 1: 1, 2: 2, 3: 3}, 5, newBatchManager(1))
 	_, err := s.queryBatch(context.Background(), nil)
 	if err == nil {
 		t.Errorf("A non-leader raft peer should return error after call to query.")
@@ -113,7 +113,7 @@ func getMockOramNodeClientsWithBatchResponses() map[int]ReplicaRPCClientMap {
 }
 
 func startLeaderRaftNodeServer(t *testing.T, batchSize int, withBatchReponses bool) *shardNodeServer {
-	fsm := newShardNodeFSM()
+	fsm := newShardNodeFSM(0)
 	raftPort, err := freeport.GetFreePort()
 	if err != nil {
 		t.Errorf("unable to get free port")
@@ -122,7 +122,6 @@ func startLeaderRaftNodeServer(t *testing.T, batchSize int, withBatchReponses bo
 	if err != nil {
 		t.Errorf("unable to start raft server; %v", err)
 	}
-	fsm.raftNode = r
 	<-r.LeaderCh() // wait to become the leader
 	oramNodeClients := getMockOramNodeClients()
 	if withBatchReponses {
@@ -368,7 +367,7 @@ func TestQueryBatchUpdatesPositionMap(t *testing.T) {
 }
 
 func TestGetBlocksForSendReturnsAtMostMaxBlocksFromTheStash(t *testing.T) {
-	s := newShardNodeServer(0, 0, &raft.Raft{}, newShardNodeFSM(), make(RPCClientMap), map[int]int{0: 0, 1: 1, 2: 2, 3: 3}, 5, newBatchManager(1))
+	s := newShardNodeServer(0, 0, &raft.Raft{}, newShardNodeFSM(0), make(RPCClientMap), map[int]int{0: 0, 1: 1, 2: 2, 3: 3}, 5, newBatchManager(1))
 	s.shardNodeFSM.stash = map[string]stashState{
 		"block1": {value: "block1", logicalTime: 0, waitingStatus: false},
 		"block2": {value: "block2", logicalTime: 0, waitingStatus: false},
@@ -391,7 +390,7 @@ func TestGetBlocksForSendReturnsAtMostMaxBlocksFromTheStash(t *testing.T) {
 }
 
 func TestGetBlocksForSendReturnsOnlyBlocksForPathAndStorageID(t *testing.T) {
-	s := newShardNodeServer(0, 0, &raft.Raft{}, newShardNodeFSM(), make(RPCClientMap), map[int]int{0: 0, 1: 1, 2: 2, 3: 3}, 5, newBatchManager(1))
+	s := newShardNodeServer(0, 0, &raft.Raft{}, newShardNodeFSM(0), make(RPCClientMap), map[int]int{0: 0, 1: 1, 2: 2, 3: 3}, 5, newBatchManager(1))
 	s.shardNodeFSM.stash = map[string]stashState{
 		"block1": {value: "block1", logicalTime: 0, waitingStatus: false},
 		"block2": {value: "block2", logicalTime: 0, waitingStatus: false},
@@ -410,7 +409,7 @@ func TestGetBlocksForSendReturnsOnlyBlocksForPathAndStorageID(t *testing.T) {
 }
 
 func TestGetBlocksForSendDoesNotReturnsWaitingBlocks(t *testing.T) {
-	s := newShardNodeServer(0, 0, &raft.Raft{}, newShardNodeFSM(), make(RPCClientMap), map[int]int{0: 0, 1: 1, 2: 2, 3: 3}, 5, newBatchManager(1))
+	s := newShardNodeServer(0, 0, &raft.Raft{}, newShardNodeFSM(0), make(RPCClientMap), map[int]int{0: 0, 1: 1, 2: 2, 3: 3}, 5, newBatchManager(1))
 	s.shardNodeFSM.stash = map[string]stashState{
 		"block1": {value: "block1", logicalTime: 0, waitingStatus: true},
 		"block2": {value: "block2", logicalTime: 0, waitingStatus: false},

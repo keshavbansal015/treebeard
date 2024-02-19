@@ -16,10 +16,6 @@ import (
 	"github.com/vmihailenco/msgpack/v5"
 )
 
-type RaftNodeWIthState interface {
-	State() raft.RaftState
-}
-
 type stashState struct {
 	value         string
 	logicalTime   int
@@ -51,10 +47,11 @@ type shardNodeFSM struct {
 	nacks           map[string][]string      // map of requestID to array of blocks
 	positionMap     map[string]positionState // map of block to positionState
 	positionMapMu   sync.RWMutex
-	raftNode        RaftNodeWIthState
+
+	replicaID int
 }
 
-func newShardNodeFSM() *shardNodeFSM {
+func newShardNodeFSM(replicaID int) *shardNodeFSM {
 	return &shardNodeFSM{
 		requestLog:      make(map[string][]string),
 		pathMap:         make(map[string]int),
@@ -64,6 +61,7 @@ func newShardNodeFSM() *shardNodeFSM {
 		acks:            make(map[string][]string),
 		nacks:           make(map[string][]string),
 		positionMap:     make(map[string]positionState),
+		replicaID:       replicaID,
 	}
 }
 
@@ -86,10 +84,15 @@ func (fsm *shardNodeFSM) printStashSize() {
 	fmt.Println("stash size: ", len(fsm.stash))
 }
 
-func (fsm *shardNodeFSM) handleBatchReplicateRequestAndPathAndStorage(r BatchReplicateRequestAndPathAndStoragePayload) (isFirstMap map[string]bool) {
+func (fsm *shardNodeFSM) handleBatchReplicateRequestAndPathAndStorage(p BatchReplicateRequestAndPathAndStoragePayload) (isFirstMap map[string]bool) {
 	isFirstMap = make(map[string]bool)
-	for _, r := range r.Requests {
-		fsm.requestLog[r.RequestedBlock] = append(fsm.requestLog[r.RequestedBlock], r.RequestID)
+	for _, r := range p.Requests {
+		// Only the leader tracks the requestLog
+		// This is to avoid the new leader to get stuck because of the old leader's requestLog
+		// If we don't do this, the new leader will think that it only should send fake requests for the blocks that are in the requestLog
+		if p.LeaderID == fsm.replicaID {
+			fsm.requestLog[r.RequestedBlock] = append(fsm.requestLog[r.RequestedBlock], r.RequestID)
+		}
 		fsm.pathMap[r.RequestID] = r.Path
 		fsm.storageIDMap[r.RequestID] = r.StorageID
 		if len(fsm.requestLog[r.RequestedBlock]) == 1 {
@@ -128,7 +131,7 @@ func (fsm *shardNodeFSM) handleReplicateResponse(r ReplicateResponsePayload) str
 	fsm.positionMapMu.Lock()
 	fsm.positionMap[r.RequestedBlock] = positionState{path: fsm.pathMap[requestID], storageID: fsm.storageIDMap[requestID]}
 	fsm.positionMapMu.Unlock()
-	if fsm.raftNode.State() == raft.Leader {
+	if fsm.replicaID == r.LeaderID {
 		for i := len(fsm.requestLog[r.RequestedBlock]) - 1; i >= 1; i-- { // We don't need to send the response to the first request
 			log.Debug().Msgf("Sending response to concurrent request number %d in requestLog for block %s", i, r.RequestedBlock)
 			timeout := time.After(5 * time.Second) // TODO: think about this in the batching scenario
@@ -273,6 +276,9 @@ func (fsm *shardNodeFSM) Restore(rc io.ReadCloser) error {
 func startRaftServer(isFirst bool, ip string, replicaID int, raftPort int, shardshardNodeFSM *shardNodeFSM) (*raft.Raft, error) {
 
 	raftConfig := raft.DefaultConfig()
+	raftConfig.ElectionTimeout = 50 * time.Millisecond
+	raftConfig.HeartbeatTimeout = 50 * time.Millisecond
+	raftConfig.LeaderLeaseTimeout = 50 * time.Millisecond
 	raftConfig.Logger = hclog.New(&hclog.LoggerOptions{Output: log.Logger})
 	raftConfig.LocalID = raft.ServerID(strconv.Itoa(replicaID))
 
