@@ -137,16 +137,16 @@ func (c *client) GetResponsesForever(ctx context.Context, readResponseChannel ch
 				log.Error().Msgf(readResponse.err.Error())
 			} else {
 				log.Debug().Msgf("Sucess in Read of block %s. Got value: %v\n", readResponse.block, readResponse.value)
+				readOperations++
 			}
-			readOperations++
 		case writeResponse := <-writeResponseChannel:
 			if writeResponse.err != nil {
 				fmt.Println(writeResponse.err.Error())
 				log.Error().Msgf(writeResponse.err.Error())
 			} else {
 				log.Debug().Msgf("Finished writing block %s. Success: %v\n", writeResponse.block, writeResponse.success)
+				writeOperations++
 			}
-			writeOperations++
 		default:
 		}
 	}
