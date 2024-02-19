@@ -32,7 +32,6 @@ func CallAllReplicas(ctx context.Context, clients []interface{}, replicaFuncs []
 		case result := <-responseChannel:
 			log.Debug().Msgf("Received result in CallAllReplicas %v", result)
 			if result.err != nil {
-				log.Error().Msgf("Error in CallAllReplicas %v", result.err)
 				errors = append(errors, result.err)
 				if len(errors) == len(clients) {
 					return nil, fmt.Errorf("could not read blocks from the replicas %v", errors)
