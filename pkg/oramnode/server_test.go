@@ -108,7 +108,7 @@ func startLeaderRaftNodeServer(t *testing.T, storageHandler storage) *oramNodeSe
 	if err != nil {
 		t.Errorf("unable to get free port")
 	}
-	r, err := startRaftServer(true, "localhost", 0, raftPort, fsm)
+	r, err := startRaftServer(true, "localhost", "localhost", 0, raftPort, fsm)
 	if err != nil {
 		t.Errorf("unable to start raft server")
 	}

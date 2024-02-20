@@ -15,10 +15,11 @@ import (
 	"github.com/rs/zerolog/log"
 )
 
-// Usage: ./oramnode -oramnodeid=<oramnodeid> -ip=<ip> -rpcport=<rpcport> -replicaid=<replicaid> -raftport=<raftport> -joinaddr=<ip:port> -conf=<configs path> -logpath=<log path>
+// Usage: ./oramnode -h
 func main() {
 	oramNodeID := flag.Int("oramnodeid", 0, "oramnode id, starting consecutively from zero")
-	ip := flag.String("ip", "127.0.0.1", "ip of this replica")
+	bindIP := flag.String("bindip", "127.0.0.1", "ip of this replica to bind to")
+	advIP := flag.String("advip", "127.0.0.1", "ip of this replica to advertise")
 	replicaID := flag.Int("replicaid", 0, "replica id, starting consecutively from zero")
 	rpcPort := flag.Int("rpcport", 0, "node rpc port")
 	raftPort := flag.Int("raftport", 0, "node raft port")
@@ -67,5 +68,5 @@ func main() {
 		defer cpuProfile.Stop()
 	}
 
-	oramnode.StartServer(*oramNodeID, *ip, *rpcPort, *replicaID, *raftPort, *joinAddr, rpcClients, redisEndpoints, parameters)
+	oramnode.StartServer(*oramNodeID, *bindIP, *advIP, *rpcPort, *replicaID, *raftPort, *joinAddr, rpcClients, redisEndpoints, parameters)
 }

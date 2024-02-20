@@ -448,10 +448,10 @@ func (o *oramNodeServer) JoinRaftVoter(ctx context.Context, joinRaftVoterRequest
 	return &pb.JoinRaftVoterReply{Success: true}, nil
 }
 
-func StartServer(oramNodeServerID int, ip string, rpcPort int, replicaID int, raftPort int, joinAddr string, shardNodeRPCClients map[int]ReplicaRPCClientMap, redisEndpoints []config.RedisEndpoint, parameters config.Parameters) {
+func StartServer(oramNodeServerID int, bindIP string, advIP string, rpcPort int, replicaID int, raftPort int, joinAddr string, shardNodeRPCClients map[int]ReplicaRPCClientMap, redisEndpoints []config.RedisEndpoint, parameters config.Parameters) {
 	isFirst := joinAddr == ""
 	oramNodeFSM := newOramNodeFSM()
-	r, err := startRaftServer(isFirst, ip, replicaID, raftPort, oramNodeFSM)
+	r, err := startRaftServer(isFirst, bindIP, advIP, replicaID, raftPort, oramNodeFSM)
 	if err != nil {
 		log.Fatal().Msgf("The raft node creation did not succeed; %s", err)
 	}
@@ -466,7 +466,7 @@ func StartServer(oramNodeServerID int, ip string, rpcPort int, replicaID int, ra
 			context.Background(),
 			&pb.JoinRaftVoterRequest{
 				NodeId:   int32(replicaID),
-				NodeAddr: fmt.Sprintf("%s:%d", ip, raftPort),
+				NodeAddr: fmt.Sprintf("%s:%d", advIP, raftPort),
 			},
 		)
 		if err != nil || !joinRaftVoterReply.Success {
@@ -474,7 +474,7 @@ func StartServer(oramNodeServerID int, ip string, rpcPort int, replicaID int, ra
 		}
 	}
 
-	lis, err := net.Listen("tcp", fmt.Sprintf("%s:%d", ip, rpcPort))
+	lis, err := net.Listen("tcp", fmt.Sprintf("%s:%d", bindIP, rpcPort))
 	if err != nil {
 		log.Fatal().Msgf("failed to listen: %v", err)
 	}

@@ -15,7 +15,7 @@ import (
 	"go.opentelemetry.io/otel"
 )
 
-// Usage: go run . -duration=<duration in seconds>  -logpath=<log path> -conf=<configs path>
+// Usage: ./client -h
 func main() {
 	logPath := flag.String("logpath", "", "path to write logs")
 	configsPath := flag.String("conf", "../../configs/default", "configs directory path")

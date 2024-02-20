@@ -15,7 +15,7 @@ import (
 	"github.com/rs/zerolog/log"
 )
 
-// Usage: ./router -routerid=<routerid> -ip=<ip> -port=<port> -conf=<configs path> -logpath=<log path>
+// Usage: ./router -h
 func main() {
 
 	routerID := flag.Int("routerid", 0, "router id, starting consecutively from zero")

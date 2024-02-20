@@ -161,7 +161,7 @@ func (fsm *oramNodeFSM) Restore(rc io.ReadCloser) error {
 // TODO: the logic for startRaftServer is the same for both shardNode and OramNode.
 // TOOD: it can be moved to a new raft-utils package to reduce code duplication
 
-func startRaftServer(isFirst bool, ip string, replicaID int, raftPort int, oramNodeFSM *oramNodeFSM) (*raft.Raft, error) {
+func startRaftServer(isFirst bool, bindip string, advip string, replicaID int, raftPort int, oramNodeFSM *oramNodeFSM) (*raft.Raft, error) {
 	raftConfig := raft.DefaultConfig()
 	raftConfig.Logger = hclog.New(&hclog.LoggerOptions{Output: log.Logger})
 	raftConfig.LocalID = raft.ServerID(strconv.Itoa(replicaID))
@@ -170,13 +170,14 @@ func startRaftServer(isFirst bool, ip string, replicaID int, raftPort int, oramN
 
 	snapshots := raft.NewInmemSnapshotStore()
 
-	raftAddr := fmt.Sprintf("%s:%d", ip, raftPort)
-	tcpAddr, err := net.ResolveTCPAddr("tcp", raftAddr)
+	bindAddr := fmt.Sprintf("%s:%d", bindip, raftPort)
+	advAddr := fmt.Sprintf("%s:%d", advip, raftPort)
+	tcpAdvertiseAddr, err := net.ResolveTCPAddr("tcp", advAddr)
 	if err != nil {
 		return nil, fmt.Errorf("could not resolve tcp addr; %s", err)
 	}
 
-	transport, err := raft.NewTCPTransport(raftAddr, tcpAddr, 10, time.Second*10, os.Stderr)
+	transport, err := raft.NewTCPTransport(bindAddr, tcpAdvertiseAddr, 10, time.Second*10, os.Stderr)
 	if err != nil {
 		return nil, fmt.Errorf("could not create tcp transport; %s", err)
 	}

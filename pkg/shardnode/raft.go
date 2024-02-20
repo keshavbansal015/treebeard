@@ -273,12 +273,12 @@ func (fsm *shardNodeFSM) Restore(rc io.ReadCloser) error {
 	return fmt.Errorf("not implemented yet")
 }
 
-func startRaftServer(isFirst bool, ip string, replicaID int, raftPort int, shardshardNodeFSM *shardNodeFSM) (*raft.Raft, error) {
+func startRaftServer(isFirst bool, bindIP string, advertiseIP string, replicaID int, raftPort int, shardshardNodeFSM *shardNodeFSM) (*raft.Raft, error) {
 
 	raftConfig := raft.DefaultConfig()
-	raftConfig.ElectionTimeout = 50 * time.Millisecond
-	raftConfig.HeartbeatTimeout = 50 * time.Millisecond
-	raftConfig.LeaderLeaseTimeout = 50 * time.Millisecond
+	raftConfig.ElectionTimeout = 150 * time.Millisecond
+	raftConfig.HeartbeatTimeout = 150 * time.Millisecond
+	raftConfig.LeaderLeaseTimeout = 150 * time.Millisecond
 	raftConfig.Logger = hclog.New(&hclog.LoggerOptions{Output: log.Logger})
 	raftConfig.LocalID = raft.ServerID(strconv.Itoa(replicaID))
 
@@ -286,13 +286,14 @@ func startRaftServer(isFirst bool, ip string, replicaID int, raftPort int, shard
 
 	snapshots := raft.NewInmemSnapshotStore()
 
-	raftAddr := fmt.Sprintf("%s:%d", ip, raftPort)
-	tcpAddr, err := net.ResolveTCPAddr("tcp", raftAddr)
+	bindAddr := fmt.Sprintf("%s:%d", bindIP, raftPort)
+	advertiseAddr := fmt.Sprintf("%s:%d", advertiseIP, raftPort)
+	tcpAdvertiseAddr, err := net.ResolveTCPAddr("tcp", advertiseAddr)
 	if err != nil {
 		return nil, fmt.Errorf("could not resolve tcp addr; %s", err)
 	}
 
-	transport, err := raft.NewTCPTransport(raftAddr, tcpAddr, 10, time.Second*10, os.Stderr)
+	transport, err := raft.NewTCPTransport(bindAddr, tcpAdvertiseAddr, 10, time.Second*10, os.Stderr)
 	if err != nil {
 		return nil, fmt.Errorf("could not create tcp transport; %s", err)
 	}
