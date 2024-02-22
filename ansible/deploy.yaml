@@ -100,12 +100,6 @@
       delegate_to: "{{ item.deploy_host }}"
       with_items: "{{ redis_endpoints.endpoints }}"
 
-    - name: Flush previous Redis data
-      ansible.builtin.shell:
-        cmd: redis-cli FLUSHALL  
-      delegate_to: "{{ item.deploy_host }}"
-      with_items: "{{ redis_endpoints.endpoints }}"
-
     - name: Build the go executables locally
       ansible.builtin.shell:
         chdir: "{{ item }}"
