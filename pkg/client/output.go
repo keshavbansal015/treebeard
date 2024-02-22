@@ -5,13 +5,15 @@ import (
 	"os"
 )
 
-func WriteOutputToFile(outputFilePath string, throughput float64, latency float64) error {
+func WriteOutputToFile(outputFilePath string, responseCount []ResponseCount) error {
 	file, err := os.Create(outputFilePath)
 	if err != nil {
 		return err
 	}
 	defer file.Close()
-	file.WriteString(fmt.Sprintf("Throughput: %f\n", throughput))
-	file.WriteString(fmt.Sprintf("Average latency in ms: %f\n", latency))
+	for _, count := range responseCount {
+		throughput := float64(count.readOperations + count.writeOperations)
+		file.WriteString(fmt.Sprintf("Throughput: %f\n", throughput))
+	}
 	return nil
 }

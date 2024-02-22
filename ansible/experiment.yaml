@@ -6,7 +6,7 @@
   tasks:
   - name: Run the Client
     ansible.builtin.shell:
-      cmd: "/root/oblishard/client -duration 10 -conf /root/oblishard -output /root/oblishard/output.txt"
+      cmd: "/root/oblishard/client -duration 30 -conf /root/oblishard -output /root/oblishard/output.txt -logpath /root/oblishard/client.txt"
   - name: Get the output
     ansible.builtin.fetch:
       src: "/root/oblishard/output.txt"

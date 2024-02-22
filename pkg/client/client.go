@@ -109,13 +109,25 @@ func (c *client) SendRequestsForever(ctx context.Context, readResponseChannel ch
 	}
 }
 
+type ResponseCount struct {
+	readOperations  int
+	writeOperations int
+}
+
 // getResponsesForever cancels remaining operations and returns when the context is cancelled
-func (c *client) GetResponsesForever(ctx context.Context, readResponseChannel chan ReadResponse, writeResponseChannel chan WriteResponse) (readOperations int, writeOperations int) {
-	readOperations, writeOperations = 0, 0
+// returns the number of read and write operations over fixed intervals in the duration
+func (c *client) GetResponsesForever(ctx context.Context, readResponseChannel chan ReadResponse, writeResponseChannel chan WriteResponse) []ResponseCount {
+	readOperations, writeOperations := 0, 0
+	var responseCounts []ResponseCount
+	timout := time.After(1 * time.Second)
 	for {
 		select {
 		case <-ctx.Done():
-			return readOperations, writeOperations
+			return responseCounts
+		case <-timout:
+			responseCounts = append(responseCounts, ResponseCount{readOperations, writeOperations})
+			readOperations, writeOperations = 0, 0
+			timout = time.After(1 * time.Second)
 		default:
 		}
 		select {
@@ -125,16 +137,16 @@ func (c *client) GetResponsesForever(ctx context.Context, readResponseChannel ch
 				log.Error().Msgf(readResponse.err.Error())
 			} else {
 				log.Debug().Msgf("Sucess in Read of block %s. Got value: %v\n", readResponse.block, readResponse.value)
+				readOperations++
 			}
-			readOperations++
 		case writeResponse := <-writeResponseChannel:
 			if writeResponse.err != nil {
 				fmt.Println(writeResponse.err.Error())
 				log.Error().Msgf(writeResponse.err.Error())
 			} else {
 				log.Debug().Msgf("Finished writing block %s. Success: %v\n", writeResponse.block, writeResponse.success)
+				writeOperations++
 			}
-			writeOperations++
 		default:
 		}
 	}

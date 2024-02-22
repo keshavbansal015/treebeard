@@ -29,12 +29,14 @@ type ReplicateRequestAndPathAndStoragePayload struct {
 
 type BatchReplicateRequestAndPathAndStoragePayload struct {
 	Requests []ReplicateRequestAndPathAndStoragePayload
+	LeaderID int
 }
 
-func newRequestReplicationCommand(requests []ReplicateRequestAndPathAndStoragePayload) ([]byte, error) {
+func newRequestReplicationCommand(requests []ReplicateRequestAndPathAndStoragePayload, leaderID int) ([]byte, error) {
 	batchRequestReplicationPayload, err := msgpack.Marshal(
 		&BatchReplicateRequestAndPathAndStoragePayload{
 			Requests: requests,
+			LeaderID: leaderID,
 		},
 	)
 	if err != nil {
@@ -59,9 +61,10 @@ type ReplicateResponsePayload struct {
 	NewValue       string
 	OpType         OperationType
 	RequestID      string
+	LeaderID       int
 }
 
-func newResponseReplicationCommand(response string, requestID string, block string, newValue string, opType OperationType) ([]byte, error) {
+func newResponseReplicationCommand(response string, requestID string, block string, newValue string, opType OperationType, leaderID int) ([]byte, error) {
 	responseReplicationPayload, err := msgpack.Marshal(
 		&ReplicateResponsePayload{
 			Response:       response,
@@ -69,6 +72,7 @@ func newResponseReplicationCommand(response string, requestID string, block stri
 			NewValue:       newValue,
 			OpType:         opType,
 			RequestID:      requestID,
+			LeaderID:       leaderID,
 		},
 	)
 	if err != nil {

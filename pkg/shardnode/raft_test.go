@@ -4,17 +4,16 @@ import (
 	"sync"
 	"testing"
 	"time"
-
-	"github.com/hashicorp/raft"
 )
 
 func TestHandleBatchReplicateRequestAndPathAndStorageToEmptyFSM(t *testing.T) {
-	shardNodeFSM := newShardNodeFSM()
+	shardNodeFSM := newShardNodeFSM(0)
 	payload := BatchReplicateRequestAndPathAndStoragePayload{
 		Requests: []ReplicateRequestAndPathAndStoragePayload{
 			{RequestedBlock: "block1", Path: 1, StorageID: 2, RequestID: "request1"},
 			{RequestedBlock: "block2", Path: 3, StorageID: 4, RequestID: "request2"},
 		},
+		LeaderID: 0,
 	}
 	isFirstMap := shardNodeFSM.handleBatchReplicateRequestAndPathAndStorage(payload)
 	expectedIsFirstMap := map[string]bool{"request1": true, "request2": true}
@@ -47,7 +46,7 @@ func TestHandleBatchReplicateRequestAndPathAndStorageToEmptyFSM(t *testing.T) {
 }
 
 func TestHandleReplicateRequestAndPathAndStorageToWithValueFSM(t *testing.T) {
-	shardNodeFSM := newShardNodeFSM()
+	shardNodeFSM := newShardNodeFSM(0)
 	shardNodeFSM.requestLog["block"] = []string{"randomrequest"}
 	shardNodeFSM.pathMap["request1"] = 20
 	shardNodeFSM.storageIDMap["request1"] = 30
@@ -56,6 +55,7 @@ func TestHandleReplicateRequestAndPathAndStorageToWithValueFSM(t *testing.T) {
 			{RequestedBlock: "block", Path: 11, StorageID: 12, RequestID: "request1"},
 			{RequestedBlock: "block", Path: 3, StorageID: 4, RequestID: "request2"},
 		},
+		LeaderID: 0,
 	}
 	isFirstMap := shardNodeFSM.handleBatchReplicateRequestAndPathAndStorage(payload)
 	expectedIsFirstMap := map[string]bool{"request1": false, "request2": false}
@@ -87,13 +87,31 @@ func TestHandleReplicateRequestAndPathAndStorageToWithValueFSM(t *testing.T) {
 	}
 }
 
-func createTestReplicateResponsePayload(block string, requestID string, response string, value string, op OperationType) ReplicateResponsePayload {
+func TestHandleReplicateRequestAndPathDoesntAddToRequestLogIfNotTheLeader(t *testing.T) {
+	shardNodeFSM := newShardNodeFSM(0)
+	shardNodeFSM.pathMap["request1"] = 20
+	shardNodeFSM.storageIDMap["request1"] = 30
+	payload := BatchReplicateRequestAndPathAndStoragePayload{
+		Requests: []ReplicateRequestAndPathAndStoragePayload{
+			{RequestedBlock: "block", Path: 11, StorageID: 12, RequestID: "request1"},
+			{RequestedBlock: "block", Path: 3, StorageID: 4, RequestID: "request2"},
+		},
+		LeaderID: 1,
+	}
+	shardNodeFSM.handleBatchReplicateRequestAndPathAndStorage(payload)
+	if len(shardNodeFSM.requestLog["block"]) != 0 {
+		t.Errorf("Expected requestLog to be empty, but it's equal to %v", shardNodeFSM.requestLog)
+	}
+}
+
+func createTestReplicateResponsePayload(block string, requestID string, response string, value string, op OperationType, leaderID int) ReplicateResponsePayload {
 	return ReplicateResponsePayload{
 		RequestedBlock: block,
 		RequestID:      requestID,
 		Response:       response,
 		NewValue:       value,
 		OpType:         op,
+		LeaderID:       leaderID,
 	}
 }
 
@@ -138,45 +156,29 @@ func checkWaitingChannelsHelper(t *testing.T, waitChannels sync.Map, expectedRes
 	}
 }
 
-type mockRaftNodeLeader struct {
-}
-
-func (m *mockRaftNodeLeader) State() raft.RaftState {
-	return raft.Leader
-}
-
-type mockRaftNodeFollower struct {
-}
-
-func (m *mockRaftNodeFollower) State() raft.RaftState {
-	return raft.Follower
-}
-
 // In this case all the go routines should get the value that resides in stash.
 // The stash value has priority over the response value.
 func TestHandleReplicateResponseWhenValueInStashReturnsCorrectReadValueToAllWaitingRequests(t *testing.T) {
-	shardNodeFSM := newShardNodeFSM()
-	shardNodeFSM.raftNode = &mockRaftNodeLeader{}
+	shardNodeFSM := newShardNodeFSM(0)
 	shardNodeFSM.requestLog["block"] = []string{"request1", "request2", "request3"}
 	shardNodeFSM.responseChannel.Store("request2", make(chan string))
 	shardNodeFSM.responseChannel.Store("request3", make(chan string))
 	shardNodeFSM.stash["block"] = stashState{value: "test_value"}
 
-	payload := createTestReplicateResponsePayload("block", "request1", "response", "value", Read)
+	payload := createTestReplicateResponsePayload("block", "request1", "response", "value", Read, 0)
 	go shardNodeFSM.handleReplicateResponse(payload)
 
 	checkWaitingChannelsHelper(t, shardNodeFSM.responseChannel, "test_value")
 }
 
 func TestHandleReplicateResponseWhenValueInStashReturnsCorrectWriteValueToAllWaitingRequests(t *testing.T) {
-	shardNodeFSM := newShardNodeFSM()
-	shardNodeFSM.raftNode = &mockRaftNodeLeader{}
+	shardNodeFSM := newShardNodeFSM(0)
 	shardNodeFSM.requestLog["block"] = []string{"request1", "request2", "request3"}
 	shardNodeFSM.responseChannel.Store("request2", make(chan string))
 	shardNodeFSM.responseChannel.Store("request3", make(chan string))
 	shardNodeFSM.stash["block"] = stashState{value: "test_value"}
 
-	payload := createTestReplicateResponsePayload("block", "request1", "response", "value_write", Write)
+	payload := createTestReplicateResponsePayload("block", "request1", "response", "value_write", Write, 0)
 	go shardNodeFSM.handleReplicateResponse(payload)
 
 	checkWaitingChannelsHelper(t, shardNodeFSM.responseChannel, "value_write")
@@ -187,13 +189,12 @@ func TestHandleReplicateResponseWhenValueInStashReturnsCorrectWriteValueToAllWai
 }
 
 func TestHandleReplicateResponseWhenValueNotInStashReturnsResponseToAllWaitingRequests(t *testing.T) {
-	shardNodeFSM := newShardNodeFSM()
-	shardNodeFSM.raftNode = &mockRaftNodeLeader{}
+	shardNodeFSM := newShardNodeFSM(0)
 	shardNodeFSM.requestLog["block"] = []string{"request1", "request2", "request3"}
 	shardNodeFSM.responseChannel.Store("request2", make(chan string))
 	shardNodeFSM.responseChannel.Store("request3", make(chan string))
 
-	payload := createTestReplicateResponsePayload("block", "request1", "response_from_oramnode", "", Read)
+	payload := createTestReplicateResponsePayload("block", "request1", "response_from_oramnode", "", Read, 0)
 	go shardNodeFSM.handleReplicateResponse(payload)
 
 	checkWaitingChannelsHelper(t, shardNodeFSM.responseChannel, "response_from_oramnode")
@@ -204,13 +205,12 @@ func TestHandleReplicateResponseWhenValueNotInStashReturnsResponseToAllWaitingRe
 }
 
 func TestHandleReplicateResponseWhenValueNotInStashReturnsWriteResponseToAllWaitingRequests(t *testing.T) {
-	shardNodeFSM := newShardNodeFSM()
-	shardNodeFSM.raftNode = &mockRaftNodeLeader{}
+	shardNodeFSM := newShardNodeFSM(0)
 	shardNodeFSM.requestLog["block"] = []string{"request1", "request2", "request3"}
 	shardNodeFSM.responseChannel.Store("request2", make(chan string))
 	shardNodeFSM.responseChannel.Store("request3", make(chan string))
 
-	payload := createTestReplicateResponsePayload("block", "request1", "response", "write_val", Write)
+	payload := createTestReplicateResponsePayload("block", "request1", "response", "write_val", Write, 0)
 	go shardNodeFSM.handleReplicateResponse(payload)
 
 	checkWaitingChannelsHelper(t, shardNodeFSM.responseChannel, "write_val")
@@ -221,14 +221,13 @@ func TestHandleReplicateResponseWhenValueNotInStashReturnsWriteResponseToAllWait
 }
 
 func TestHandleReplicateResponseWhenNotLeaderDoesNotWriteOnChannels(t *testing.T) {
-	shardNodeFSM := newShardNodeFSM()
-	shardNodeFSM.raftNode = &mockRaftNodeFollower{}
+	shardNodeFSM := newShardNodeFSM(0)
 	shardNodeFSM.requestLog["block"] = []string{"request1", "request2"}
 	shardNodeFSM.responseChannel.Store("request1", make(chan string))
 	shardNodeFSM.responseChannel.Store("request2", make(chan string))
 	shardNodeFSM.stash["block"] = stashState{value: "test_value"}
 
-	payload := createTestReplicateResponsePayload("block", "request1", "response", "", Read)
+	payload := createTestReplicateResponsePayload("block", "request1", "response", "", Read, 1)
 	go shardNodeFSM.handleReplicateResponse(payload)
 
 	for {
