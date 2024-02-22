@@ -14,7 +14,7 @@ ExecStart=/root/oblishard/shardnode/shardnode \
     -raftport {{ item.raftport }} \
     {% if item.replicaid!=0 %}
     # this assumes there are 3 replicas (Dangerous assmumption)
-    {{'-joinaddr=' + shardnode_endpoints.endpoints[item.id * 3].exposed_ip + ':' + shardnode_endpoints.endpoints[item.id].port | string }} \
+    {{'-joinaddr=' + shardnode_endpoints.endpoints[item.id * 3].exposed_ip + ':' + shardnode_endpoints.endpoints[item.id * 3].port | string }} \
     {% endif %}
     -conf /root/oblishard/ \
     -logpath {{ '/root/oblishard/shardnode/'  + item.id | string + '/' + item.replicaid | string + '/all.log' }}
