@@ -276,9 +276,10 @@ func (fsm *shardNodeFSM) Restore(rc io.ReadCloser) error {
 func startRaftServer(isFirst bool, bindIP string, advertiseIP string, replicaID int, raftPort int, shardshardNodeFSM *shardNodeFSM) (*raft.Raft, error) {
 
 	raftConfig := raft.DefaultConfig()
-	raftConfig.ElectionTimeout = 150 * time.Millisecond
-	raftConfig.HeartbeatTimeout = 150 * time.Millisecond
-	raftConfig.LeaderLeaseTimeout = 150 * time.Millisecond
+	// TODO: set these carefuly for the crash experiments
+	// raftConfig.ElectionTimeout = 150 * time.Millisecond
+	// raftConfig.HeartbeatTimeout = 150 * time.Millisecond
+	// raftConfig.LeaderLeaseTimeout = 150 * time.Millisecond
 	raftConfig.Logger = hclog.New(&hclog.LoggerOptions{Output: log.Logger})
 	raftConfig.LocalID = raft.ServerID(strconv.Itoa(replicaID))
 

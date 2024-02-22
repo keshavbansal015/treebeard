@@ -13,7 +13,8 @@ ExecStart=/root/oblishard/oramnode/oramnode \
     -replicaid {{ item.replicaid }} \
     -raftport {{ item.raftport }} \
     {% if item.replicaid!=0 %}
-    {{'-joinaddr=' + oramnode_endpoints.endpoints[item.id].exposed_ip + ':' + oramnode_endpoints.endpoints[item.id].port | string }} \
+    # this assumes there are 3 replicas (Dangerous assmumption)
+    {{'-joinaddr=' + oramnode_endpoints.endpoints[item.id * 3].exposed_ip + ':' + oramnode_endpoints.endpoints[item.id].port | string }} \
     {% endif %}
     -conf /root/oblishard/ \
     -logpath {{ '/root/oblishard/oramnode/'  + item.id | string + '/' + item.replicaid | string + '/all.log' }}
