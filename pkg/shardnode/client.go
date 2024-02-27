@@ -3,6 +3,7 @@ package shardnode
 import (
 	"context"
 	"fmt"
+	"math"
 
 	oramnodepb "github.com/dsg-uwaterloo/oblishard/api/oramnode"
 	"github.com/dsg-uwaterloo/oblishard/pkg/config"
@@ -65,6 +66,7 @@ func StartOramNodeRPCClients(endpoints []config.OramNodeEndpoint) (map[int]Repli
 		conn, err := grpc.Dial(serverAddr,
 			grpc.WithTransportCredentials(insecure.NewCredentials()),
 			grpc.WithUnaryInterceptor(rpc.ContextPropagationUnaryClientInterceptor()),
+			grpc.WithDefaultCallOptions(grpc.MaxCallRecvMsgSize(math.MaxInt64), grpc.MaxCallSendMsgSize(math.MaxInt64)),
 		)
 		if err != nil {
 			return nil, err
