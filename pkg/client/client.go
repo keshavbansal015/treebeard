@@ -195,6 +195,7 @@ func StartRouterRPCClients(endpoints []config.RouterEndpoint) (RouterClients, er
 		conn, err := grpc.Dial(serverAddr,
 			grpc.WithTransportCredentials(insecure.NewCredentials()),
 			grpc.WithUnaryInterceptor(rpc.ContextPropagationUnaryClientInterceptor()),
+			grpc.WithDefaultCallOptions(grpc.MaxCallRecvMsgSize(math.MaxInt64), grpc.MaxCallSendMsgSize(math.MaxInt64)),
 		)
 		if err != nil {
 			return nil, err

@@ -3,6 +3,7 @@ package oramnode
 import (
 	"context"
 	"fmt"
+	"math"
 	"math/rand"
 
 	shardnodepb "github.com/dsg-uwaterloo/oblishard/api/shardnode"
@@ -100,7 +101,7 @@ func StartShardNodeRPCClients(endpoints []config.ShardNodeEndpoint) (map[int]Rep
 	for _, endpoint := range endpoints {
 		serverAddr := fmt.Sprintf("%s:%d", endpoint.IP, endpoint.Port)
 		log.Debug().Msgf("Starting ShardNode RPC client for endpoint: %s", serverAddr)
-		conn, err := grpc.Dial(serverAddr, grpc.WithTransportCredentials(insecure.NewCredentials()))
+		conn, err := grpc.Dial(serverAddr, grpc.WithTransportCredentials(insecure.NewCredentials()), grpc.WithDefaultCallOptions(grpc.MaxCallRecvMsgSize(math.MaxInt64), grpc.MaxCallSendMsgSize(math.MaxInt64)))
 		if err != nil {
 			return nil, err
 		}

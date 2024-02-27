@@ -2,6 +2,7 @@ package router
 
 import (
 	"fmt"
+	"math"
 
 	shardnodepb "github.com/dsg-uwaterloo/oblishard/api/shardnode"
 	"github.com/dsg-uwaterloo/oblishard/pkg/config"
@@ -27,6 +28,7 @@ func StartShardNodeRPCClients(endpoints []config.ShardNodeEndpoint) (map[int]Rep
 		conn, err := grpc.Dial(serverAddr,
 			grpc.WithTransportCredentials(insecure.NewCredentials()),
 			grpc.WithUnaryInterceptor(rpc.ContextPropagationUnaryClientInterceptor()),
+			grpc.WithDefaultCallOptions(grpc.MaxCallRecvMsgSize(math.MaxInt64), grpc.MaxCallSendMsgSize(math.MaxInt64)),
 		)
 		if err != nil {
 			return nil, err
