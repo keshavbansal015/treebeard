@@ -134,11 +134,8 @@ func (s *StorageHandler) BatchGetBlockOffset(bucketIDs []int, storageID int, blo
 					BlockFound: "dummy1",
 				}
 			} else {
-				blockoffsetStatuses[bucketID] = BlockOffsetStatus{
-					Offset:     0,
-					IsReal:     false,
-					BlockFound: "dummy1",
-				}
+				log.Error().Msgf("Did not find valid dummy block in bucket %d", bucketID)
+				return nil, err
 			}
 		}
 	}
