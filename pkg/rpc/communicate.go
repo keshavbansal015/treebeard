@@ -25,7 +25,7 @@ func CallAllReplicas(ctx context.Context, clients []interface{}, replicaFuncs []
 			responseChannel <- result{reply: reply, err: err}
 		}(clientFunc, clients[i])
 	}
-	timeout := time.After(5 * time.Second)
+	timeout := time.After(50 * time.Second)
 	var errors []error
 	for {
 		select {
@@ -41,7 +41,7 @@ func CallAllReplicas(ctx context.Context, clients []interface{}, replicaFuncs []
 			log.Debug().Msgf("Returning result in CallAllReplicas %v", result.reply)
 			return result.reply, nil
 		case <-timeout:
-			return nil, fmt.Errorf("could not read blocks from the replicas")
+			return nil, fmt.Errorf("timeout while waiting for all replicas to respond")
 		}
 	}
 }
