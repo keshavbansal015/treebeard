@@ -84,19 +84,29 @@
       delegate_to: "{{ item.deploy_host }}"
       with_items: "{{ redis_endpoints.endpoints }}"
 
-    - name: Copy Redis config
-      ansible.builtin.copy:
-        src: "{{ experiment_path }}/redis.conf"
-        dest: "/etc/redis/redis.conf"
-        mode: '0666'
+    - name: Copy Redis Config
+      template:
+        src: templates/redis.conf.j2
+        dest: /etc/redis/redis-{{ item.id }}.conf
       delegate_to: "{{ item.deploy_host }}"
       with_items: "{{ redis_endpoints.endpoints }}"
 
+    - name: Create Redis systemd services
+      template:
+        src: templates/redis.service.j2
+        dest: "/lib/systemd/system/redis-{{ item.id }}.service"
+      delegate_to: "{{ item.deploy_host }}"
+      with_items: "{{ redis_endpoints.endpoints }}"
+
+    # - name: Stop previous Redis services
+    #   ansible.builtin.shell:
+    #     cmd: systemctl stop redis*   
+
     - name: Start Redis
       ansible.builtin.systemd:
-        name: redis-server
-        state: restarted
-        daemon_reload: true
+        name: "redis-{{ item.id }}"
+        state: started # will cause reinitialization of the DB
+        # daemon_reload: true
       delegate_to: "{{ item.deploy_host }}"
       with_items: "{{ redis_endpoints.endpoints }}"
 
