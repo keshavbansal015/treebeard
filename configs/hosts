@@ -1,3 +1,2 @@
-host1 ansible_host=tem15 ansible_user=asetayes
-host2 ansible_host=tem17 ansible_user=asetayes
-host3 ansible_host=tem19 ansible_user=asetayes
+host1 ansible_host=20.115.80.167 ansible_user=azureuser
+host2 ansible_host=20.64.96.78 ansible_user=asetayes

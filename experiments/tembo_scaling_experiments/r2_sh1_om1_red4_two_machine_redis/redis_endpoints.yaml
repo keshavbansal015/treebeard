@@ -1,0 +1,25 @@
+endpoints:
+  - exposed_ip: 192.168.252.113
+    local_bind_ip: 192.168.252.113
+    deploy_host: host2
+    port: 6379
+    id: 0
+    oramnode_id: 0
+  - exposed_ip: 192.168.252.113
+    local_bind_ip: 192.168.252.113
+    deploy_host: host2
+    port: 6380
+    id: 1
+    oramnode_id: 0
+  - exposed_ip: 192.168.252.114
+    local_bind_ip: 192.168.252.114
+    deploy_host: host3
+    port: 6381
+    id: 2
+    oramnode_id: 0
+  - exposed_ip: 192.168.252.114
+    local_bind_ip: 192.168.252.114
+    deploy_host: host3
+    port: 6382
+    id: 3
+    oramnode_id: 0

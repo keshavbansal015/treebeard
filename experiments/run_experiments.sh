@@ -1,13 +1,13 @@
 # N: number of times to run each experiment
 # define variable N below
-N=3
+N=1
 
 # Arguments: 
 # $1: experiment directory
 deploy_the_system() {
     local experiment_dir=$1
     echo "Deploying the system for experiment $(basename $experiment_dir)"
-    ansible-playbook -i $experiment_dir/hosts ../ansible/deploy.yaml -e "experiment_path=$experiment_dir"
+    ansible-playbook -i $experiment_dir/hosts ../ansible/deploy.yaml -e "experiment_path=$experiment_dir" -vv
     if [ $? -eq 0 ]; then
         echo "System deployed successfully"
     else
@@ -23,7 +23,7 @@ run_experiment_N_times() {
     for i in $(seq 1 $N)
     do
         echo "Running experiment $i for $(basename $experiment_dir_path)"
-        ansible-playbook -i $experiment_dir_path/hosts ../ansible/experiment.yaml -e "experiment_output_path=$experiment_dir_path/experiment_$i.txt"
+        ansible-playbook -i $experiment_dir_path/hosts ../ansible/experiment.yaml -e "experiment_output_path=$experiment_dir_path/experiment_$i.txt" -vv
         if [ $? -eq 0 ]; then
             echo "Experiment $i ran successfully"
         else

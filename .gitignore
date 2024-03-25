@@ -12,3 +12,4 @@ db.txt
 trace.txt
 *.txt
 .ipynb_checkpoints/*
+hosts

@@ -1,6 +1,6 @@
 # Expects experiment_output_path to be passed as an extra variable
 - name: Run the Experiment
-  hosts: host1
+  hosts: host0
   become: yes
   become_user: root
   tasks:

@@ -98,15 +98,15 @@
       delegate_to: "{{ item.deploy_host }}"
       with_items: "{{ redis_endpoints.endpoints }}"
 
-    # - name: Stop previous Redis services
-    #   ansible.builtin.shell:
-    #     cmd: systemctl stop redis*   
+    - name: Stop previous Redis services
+      ansible.builtin.shell:
+        cmd: systemctl stop redis*   
 
     - name: Start Redis
       ansible.builtin.systemd:
         name: "redis-{{ item.id }}"
-        state: started # will cause reinitialization of the DB
-        # daemon_reload: true
+        state: restarted # will cause reinitialization of the DB
+        daemon_reload: true
       delegate_to: "{{ item.deploy_host }}"
       with_items: "{{ redis_endpoints.endpoints }}"
 

@@ -1,0 +1,85 @@
+endpoints:
+  - exposed_ip: 192.168.252.120
+    local_bind_ip: 192.168.252.120
+    deploy_host: host1
+    port: 1851
+    id: 0
+    replicaid: 0
+    raftport: 1227
+  - exposed_ip: 192.168.252.120
+    local_bind_ip: 192.168.252.120
+    deploy_host: host1
+    port: 1852
+    id: 0
+    replicaid: 1
+    raftport: 1228
+  - exposed_ip: 192.168.252.120
+    local_bind_ip: 192.168.252.120
+    deploy_host: host1
+    port: 1853
+    id: 0
+    replicaid: 2
+    raftport: 1229
+  - exposed_ip: 192.168.252.113
+    local_bind_ip: 192.168.252.113
+    deploy_host: host2
+    port: 1854
+    id: 1
+    replicaid: 0
+    raftport: 1230
+  - exposed_ip: 192.168.252.113
+    local_bind_ip: 192.168.252.113
+    deploy_host: host2
+    port: 1855
+    id: 1
+    replicaid: 1
+    raftport: 1231
+  - exposed_ip: 192.168.252.113
+    local_bind_ip: 192.168.252.113
+    deploy_host: host2
+    port: 1856
+    id: 1
+    replicaid: 2
+    raftport: 1232
+  - exposed_ip: 192.168.252.114
+    local_bind_ip: 192.168.252.114
+    deploy_host: host3
+    port: 1857
+    id: 2
+    replicaid: 0
+    raftport: 1233
+  - exposed_ip: 192.168.252.114
+    local_bind_ip: 192.168.252.114
+    deploy_host: host3
+    port: 1858
+    id: 2
+    replicaid: 1
+    raftport: 1234
+  - exposed_ip: 192.168.252.114
+    local_bind_ip: 192.168.252.114
+    deploy_host: host3
+    port: 1859
+    id: 2
+    replicaid: 2
+    raftport: 1235
+  - exposed_ip: 192.168.252.115
+    local_bind_ip: 192.168.252.115
+    deploy_host: host4
+    port: 1860
+    id: 3
+    replicaid: 0
+    raftport: 1236
+  - exposed_ip: 192.168.252.115
+    local_bind_ip: 192.168.252.115
+    deploy_host: host4
+    port: 1861
+    id: 3
+    replicaid: 1
+    raftport: 1237
+  - exposed_ip: 192.168.252.115
+    local_bind_ip: 192.168.252.115
+    deploy_host: host4
+    port: 1862
+    id: 3
+    replicaid: 2
+    raftport: 1238
