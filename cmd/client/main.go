@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"flag"
+	"fmt"
 	"os"
 	"path"
 	"time"
@@ -66,6 +67,7 @@ func main() {
 	if err != nil {
 		log.Fatal().Msgf("Failed to check if storages are ready; %v", err)
 	}
+	fmt.Println("Starting experiment")
 
 	readResponseChannel := make(chan client.ReadResponse)
 	writeResponseChannel := make(chan client.WriteResponse)

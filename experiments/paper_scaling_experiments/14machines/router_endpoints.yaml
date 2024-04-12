@@ -1,0 +1,81 @@
+endpoints:
+  - exposed_ip: 10.0.0.8
+    local_bind_ip: 10.0.0.8
+    deploy_host: host1
+    port: 8845
+    id: 0
+  - exposed_ip: 10.0.0.8
+    local_bind_ip: 10.0.0.8
+    deploy_host: host1
+    port: 8846
+    id: 1
+  - exposed_ip: 10.0.0.9
+    local_bind_ip: 10.0.0.9
+    deploy_host: host2
+    port: 8845
+    id: 2
+  - exposed_ip: 10.0.0.9
+    local_bind_ip: 10.0.0.9
+    deploy_host: host2
+    port: 8846
+    id: 3    
+  - exposed_ip: 10.0.0.10
+    local_bind_ip: 10.0.0.10
+    deploy_host: host3
+    port: 8745
+    id: 4
+  - exposed_ip: 10.0.0.10
+    local_bind_ip: 10.0.0.10
+    deploy_host: host3
+    port: 8746
+    id: 5   
+  - exposed_ip: 10.0.0.11
+    local_bind_ip: 10.0.0.11
+    deploy_host: host4
+    port: 8745
+    id: 6
+  - exposed_ip: 10.0.0.11
+    local_bind_ip: 10.0.0.11
+    deploy_host: host4
+    port: 8746
+    id: 7
+  - exposed_ip: 10.0.0.13
+    local_bind_ip: 10.0.0.13
+    deploy_host: host13
+    port: 8845
+    id: 8
+  - exposed_ip: 10.0.0.13
+    local_bind_ip: 10.0.0.13
+    deploy_host: host13
+    port: 8846
+    id: 9
+  - exposed_ip: 10.0.0.14
+    local_bind_ip: 10.0.0.14
+    deploy_host: host14
+    port: 8845
+    id: 10
+  - exposed_ip: 10.0.0.14
+    local_bind_ip: 10.0.0.14
+    deploy_host: host14
+    port: 8846
+    id: 11
+  - exposed_ip: 10.0.0.15
+    local_bind_ip: 10.0.0.15
+    deploy_host: host15
+    port: 8845
+    id: 12
+  - exposed_ip: 10.0.0.15
+    local_bind_ip: 10.0.0.15
+    deploy_host: host15
+    port: 8846
+    id: 13
+  - exposed_ip: 10.0.0.16
+    local_bind_ip: 10.0.0.16
+    deploy_host: host16
+    port: 8845
+    id: 14
+  - exposed_ip: 10.0.0.16
+    local_bind_ip: 10.0.0.16
+    deploy_host: host16
+    port: 8846
+    id: 15

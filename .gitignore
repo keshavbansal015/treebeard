@@ -13,3 +13,5 @@ trace.txt
 *.txt
 .ipynb_checkpoints/*
 hosts
+*.xlsx
+*.png

@@ -1,6 +1,6 @@
 endpoints:
-  - exposed_ip: 192.168.252.115
-    local_bind_ip: 192.168.252.115
+  - exposed_ip: 127.0.0.1
+    local_bind_ip: 127.0.0.1
     deploy_host: host1
     port: 6379
     id: 0

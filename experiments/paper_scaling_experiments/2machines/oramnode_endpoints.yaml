@@ -1,0 +1,113 @@
+endpoints:
+  - exposed_ip: 10.0.0.8
+    local_bind_ip: 10.0.0.8
+    deploy_host: host1
+    port: 1851
+    id: 0
+    replicaid: 0
+    raftport: 1227
+  - exposed_ip: 10.0.0.8
+    local_bind_ip: 10.0.0.8
+    deploy_host: host1
+    port: 1861
+    id: 1
+    replicaid: 0
+    raftport: 1237
+  - exposed_ip: 10.0.0.8
+    local_bind_ip: 10.0.0.8
+    deploy_host: host1
+    port: 1871
+    id: 2
+    replicaid: 0
+    raftport: 1247
+  - exposed_ip: 10.0.0.8
+    local_bind_ip: 10.0.0.8
+    deploy_host: host1
+    port: 1881
+    id: 3
+    replicaid: 0
+    raftport: 1257
+  # - exposed_ip: 10.0.0.9
+  #   local_bind_ip: 10.0.0.9
+  #   deploy_host: host2
+  #   port: 1854
+  #   id: 4
+  #   replicaid: 0
+  #   raftport: 1230
+  # - exposed_ip: 10.0.0.9
+  #   local_bind_ip: 10.0.0.9
+  #   deploy_host: host2
+  #   port: 1864
+  #   id: 5
+  #   replicaid: 0
+  #   raftport: 1240
+  # - exposed_ip: 10.0.0.9
+  #   local_bind_ip: 10.0.0.9
+  #   deploy_host: host2
+  #   port: 1874
+  #   id: 6
+  #   replicaid: 0
+  #   raftport: 1250
+  # - exposed_ip: 10.0.0.9
+  #   local_bind_ip: 10.0.0.9
+  #   deploy_host: host2
+  #   port: 1884
+  #   id: 7
+  #   replicaid: 0
+  #   raftport: 1260
+  # - exposed_ip: 10.0.0.10
+  #   local_bind_ip: 10.0.0.10
+  #   deploy_host: host3
+  #   port: 1857
+  #   id: 8
+  #   replicaid: 0
+  #   raftport: 1233
+  # - exposed_ip: 10.0.0.10
+  #   local_bind_ip: 10.0.0.10
+  #   deploy_host: host3
+  #   port: 1867
+  #   id: 9
+  #   replicaid: 0
+  #   raftport: 1243
+  # - exposed_ip: 10.0.0.10
+  #   local_bind_ip: 10.0.0.10
+  #   deploy_host: host3
+  #   port: 1877
+  #   id: 10
+  #   replicaid: 0
+  #   raftport: 1253
+  # - exposed_ip: 10.0.0.10
+  #   local_bind_ip: 10.0.0.10
+  #   deploy_host: host3
+  #   port: 1887
+  #   id: 11
+  #   replicaid: 0
+  #   raftport: 1263
+  # - exposed_ip: 10.0.0.11
+  #   local_bind_ip: 10.0.0.11
+  #   deploy_host: host4
+  #   port: 1860
+  #   id: 3
+  #   replicaid: 0
+  #   raftport: 1236
+  # - exposed_ip: 10.0.0.11
+  #   local_bind_ip: 10.0.0.11
+  #   deploy_host: host4
+  #   port: 1870
+  #   id: 7
+  #   replicaid: 0
+  #   raftport: 1246
+  # - exposed_ip: 10.0.0.11
+  #   local_bind_ip: 10.0.0.11
+  #   deploy_host: host4
+  #   port: 1880
+  #   id: 11
+  #   replicaid: 0
+  #   raftport: 1256
+  # - exposed_ip: 10.0.0.11
+  #   local_bind_ip: 10.0.0.11
+  #   deploy_host: host4
+  #   port: 1890
+  #   id: 15
+  #   replicaid: 0
+  #   raftport: 1266

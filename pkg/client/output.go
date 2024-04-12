@@ -13,7 +13,7 @@ func WriteOutputToFile(outputFilePath string, responseCount []ResponseStatus) er
 	defer file.Close()
 	sum := 0.0
 	experimentAverageLatency := 0.0
-	// averageLatency := 0.0
+
 	for _, count := range responseCount {
 		throughput := float64(count.readOperations + count.writeOperations)
 		averageLatency := 0.0
