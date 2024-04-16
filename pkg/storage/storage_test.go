@@ -63,7 +63,7 @@ func TestBatchWriteBucket(t *testing.T) {
 	s.InitDatabase()
 	expectedWrittenBlocks := map[string]string{"usr0": "value0", "usr1": "value1", "usr2": "value2", "usr3": "value3", "usr4": "value4", "usr5": "value5"}
 	toWriteBlocks := map[int]map[string]string{0: {"usr0": "value0"}, 1: {"usr1": "value1"}, 2: {"usr2": "value2"}, 3: {"usr3": "value3"}, 4: {"usr4": "value4"}, 5: {"usr5": "value5"}}
-	writtenBlocks, _ := s.BatchWriteBucket(storageId, toWriteBlocks, map[string]string{})
+	writtenBlocks, _ := s.BatchWriteBucket(storageId, toWriteBlocks, map[string]BlockInfo{})
 	for block := range writtenBlocks {
 		if _, exist := expectedWrittenBlocks[block]; !exist {
 			t.Errorf("%s was written", block)
@@ -90,7 +90,7 @@ func TestBatchReadBlock(t *testing.T) {
 	s := NewStorageHandler(3, 1, 9, 1, []config.RedisEndpoint{{ID: 0, IP: "localhost", Port: 6379}})
 	s.InitDatabase()
 	toWriteBlocks := map[int]map[string]string{1: {"usr1": "value1"}, 2: {"usr2": "value2"}, 3: {"usr3": "value3"}, 4: {"usr4": "value4"}, 5: {"usr5": "value5"}}
-	s.BatchWriteBucket(storageId, toWriteBlocks, map[string]string{})
+	s.BatchWriteBucket(storageId, toWriteBlocks, map[string]BlockInfo{})
 	metadatas, err := s.BatchGetAllMetaData(bucketIds, storageId)
 	if err != nil {
 		t.Errorf("error getting metadata")
@@ -115,7 +115,7 @@ func TestBatchGetBlockOffset(t *testing.T) {
 	s := NewStorageHandler(4, 1, 9, 1, []config.RedisEndpoint{{ID: 0, IP: "localhost", Port: 6379}})
 	s.InitDatabase()
 	toWriteBlocks := map[int]map[string]string{1: {"usr1": "value1"}, 2: {"usr2": "value2"}, 3: {"usr3": "value3"}, 4: {"usr4": "value4"}, 5: {"usr5": "value5"}}
-	s.BatchWriteBucket(0, toWriteBlocks, map[string]string{})
+	s.BatchWriteBucket(0, toWriteBlocks, map[string]BlockInfo{})
 	metadatas, err := s.BatchGetAllMetaData(bucketIDs, 0)
 	if err != nil {
 		t.Errorf("error getting metadata")
@@ -152,7 +152,7 @@ func TestBatchReadBucketReturnsBlocksInAllBuckets(t *testing.T) {
 	s := NewStorageHandler(4, 1, 9, 1, []config.RedisEndpoint{{ID: 0, IP: "localhost", Port: 6379}})
 	s.InitDatabase()
 	toWriteBlocks := map[int]map[string]string{1: {"usr1": "value1"}, 2: {"usr2": "value2"}, 3: {"usr3": "value3"}, 4: {"usr4": "value4"}, 5: {"usr5": "value5"}}
-	s.BatchWriteBucket(0, toWriteBlocks, map[string]string{})
+	s.BatchWriteBucket(0, toWriteBlocks, map[string]BlockInfo{})
 	blocks, err := s.BatchReadBucket([]int{1, 2, 3, 4, 5}, 0)
 	if err != nil {
 		t.Errorf("error reading bucket")
@@ -172,5 +172,5 @@ func TestRandom(t *testing.T) {
 	s := NewStorageHandler(4, 1, 9, 1, []config.RedisEndpoint{{ID: 0, IP: "localhost", Port: 6379}})
 	s.InitDatabase()
 	toWriteBlocks := map[int]map[string]string{1: {"usr1": "value1"}, 2: {"usr2": "value2"}, 3: {"usr3": "value3"}, 4: {"usr4": "value4"}, 5: {"usr5": "value5"}}
-	s.BatchWriteBucket(0, toWriteBlocks, map[string]string{})
+	s.BatchWriteBucket(0, toWriteBlocks, map[string]BlockInfo{})
 }

@@ -176,7 +176,7 @@ func TestReadBlocksFromShardNodeReturnsAllShardNodeBlocks(t *testing.T) {
 
 func TestWriteBackBlocksToAllBucketsPushesReceivedBlocksToTree(t *testing.T) {
 	m := strg.NewMockStorageHandler(3, 4).WithCustomBatchWriteBucketFunc(
-		func(storageID int, readBucketBlocksList map[int]map[string]string, shardNodeBlocks map[string]string) (writtenBlocks map[string]string, err error) {
+		func(storageID int, readBucketBlocksList map[int]map[string]string, shardNodeBlocks map[string]strg.BlockInfo) (writtenBlocks map[string]string, err error) {
 			writtenBlocks = make(map[string]string)
 			// We sucessfuly write the blocks that we read from the buckets back to the tree
 			for _, bucketBlocks := range readBucketBlocksList {
@@ -187,7 +187,7 @@ func TestWriteBackBlocksToAllBucketsPushesReceivedBlocksToTree(t *testing.T) {
 			// We only write back a single block from the shard node
 			// (It simulates a scenario where we couldn't push all the blocks from the shard node to the tree in a single steps)
 			for block, val := range shardNodeBlocks {
-				writtenBlocks[block] = val
+				writtenBlocks[block] = val.Value
 				break
 			}
 			return writtenBlocks, nil
@@ -217,10 +217,10 @@ func TestWriteBackBlocksToAllBucketsPushesReceivedBlocksToTree(t *testing.T) {
 			},
 			6: {},
 		},
-		map[string]string{
-			"a": "valA",
-			"b": "valB",
-			"c": "valC",
+		map[string]strg.BlockInfo{
+			"a": {Value: "valA", Path: 0},
+			"b": {Value: "valB", Path: 0},
+			"c": {Value: "valC", Path: 0},
 		},
 	)
 	if err != nil {
@@ -235,7 +235,7 @@ func TestWriteBackBlocksToAllBucketsPushesReceivedBlocksToTree(t *testing.T) {
 
 func TestWriteBackBlocksToAllBucketsReturnsFalseForNotPushedReceivedBlocks(t *testing.T) {
 	m := strg.NewMockStorageHandler(3, 4).WithCustomBatchWriteBucketFunc(
-		func(storageID int, readBucketBlocksList map[int]map[string]string, shardNodeBlocks map[string]string) (writtenBlocks map[string]string, err error) {
+		func(storageID int, readBucketBlocksList map[int]map[string]string, shardNodeBlocks map[string]strg.BlockInfo) (writtenBlocks map[string]string, err error) {
 			writtenBlocks = make(map[string]string)
 			// We sucessfuly write the blocks that we read from the buckets back to the tree
 			for _, bucketBlocks := range readBucketBlocksList {
@@ -246,7 +246,7 @@ func TestWriteBackBlocksToAllBucketsReturnsFalseForNotPushedReceivedBlocks(t *te
 			// We only write back a single block from the shard node
 			// (It simulates a scenario where we couldn't push all the blocks from the shard node to the tree in a single steps)
 			for block, val := range shardNodeBlocks {
-				writtenBlocks[block] = val
+				writtenBlocks[block] = val.Value
 				break
 			}
 			return writtenBlocks, nil
@@ -276,11 +276,11 @@ func TestWriteBackBlocksToAllBucketsReturnsFalseForNotPushedReceivedBlocks(t *te
 			},
 			6: {},
 		},
-		map[string]string{
-			"a": "valA",
-			"b": "valB",
-			"c": "valC",
-			"d": "valD",
+		map[string]strg.BlockInfo{
+			"a": {Value: "valA", Path: 0},
+			"b": {Value: "valB", Path: 0},
+			"c": {Value: "valC", Path: 0},
+			"d": {Value: "valD", Path: 0},
 			// One will not be written to the tree since we only write back a single block from the shard node every time (3 blocks in total)
 		},
 	)

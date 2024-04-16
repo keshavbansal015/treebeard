@@ -27,7 +27,7 @@ type storage interface {
 	BatchGetBlockOffset(bucketIDs []int, storageID int, blocks []string) (offsets map[int]strg.BlockOffsetStatus, err error)
 	BatchGetAccessCount(bucketIDs []int, storageID int) (counts map[int]int, err error)
 	BatchReadBucket(bucketIDs []int, storageID int) (blocks map[int]map[string]string, err error)
-	BatchWriteBucket(storageID int, readBucketBlocksList map[int]map[string]string, shardNodeBlocks map[string]string) (writtenBlocks map[string]string, err error)
+	BatchWriteBucket(storageID int, readBucketBlocksList map[int]map[string]string, shardNodeBlocks map[string]strg.BlockInfo) (writtenBlocks map[string]string, err error)
 	BatchReadBlock(offsets map[int]int, storageID int) (values map[int]string, err error)
 	GetBucketsInPaths(paths []int) (bucketIDs []int, err error)
 	GetRandomStorageID() int
@@ -180,27 +180,23 @@ func (o *oramNodeServer) readAllBuckets(buckets []int, storageID int) (blocksFro
 	return blocksFromReadBucket, nil
 }
 
-func (o *oramNodeServer) readBlocksFromShardNode(paths []int, storageID int, randomShardNode ReplicaRPCClientMap) (receivedBlocks map[string]string, err error) {
+func (o *oramNodeServer) readBlocksFromShardNode(paths []int, storageID int, randomShardNode ReplicaRPCClientMap) (receivedBlocks map[string]strg.BlockInfo, err error) {
 	log.Debug().Msgf("Reading blocks from shard node with paths %v and storageID %d", paths, storageID)
-	receivedBlocks = make(map[string]string) // map of received block to value
+	receivedBlocks = make(map[string]strg.BlockInfo) // map of received block to value and path
 
-	shardNodeBlocks, err := randomShardNode.getBlocksFromShardNode(paths, storageID, o.parameters.MaxBlocksToSend)
+	shardNodeBlocks, err := randomShardNode.getBlocksFromShardNode(storageID, o.parameters.MaxBlocksToSend)
 	if err != nil {
 		return nil, fmt.Errorf("unable to get blocks from shard node; %s", err)
 	}
 	for _, block := range shardNodeBlocks {
-		receivedBlocks[block.Block] = block.Value
+		receivedBlocks[block.Block] = strg.BlockInfo{Value: block.Value, Path: int(block.Path)}
 	}
 	return receivedBlocks, nil
 }
 
-func (o *oramNodeServer) writeBackBlocksToAllBuckets(buckets []int, storageID int, blocksFromReadBucket map[int]map[string]string, receivedBlocks map[string]string) (receivedBlocksIsWritten map[string]bool, err error) {
+func (o *oramNodeServer) writeBackBlocksToAllBuckets(buckets []int, storageID int, blocksFromReadBucket map[int]map[string]string, receivedBlocks map[string]strg.BlockInfo) (receivedBlocksIsWritten map[string]bool, err error) {
 	log.Debug().Msgf("blocks from read bucket: %v", blocksFromReadBucket)
 	log.Debug().Msgf("Writing back blocks to all buckets with buckets %v and storageID %d", buckets, storageID)
-	receivedBlocksCopy := make(map[string]string)
-	for block, value := range receivedBlocks {
-		receivedBlocksCopy[block] = value
-	}
 	receivedBlocksIsWritten = make(map[string]bool)
 	for block := range receivedBlocks {
 		receivedBlocksIsWritten[block] = false
@@ -222,13 +218,13 @@ func (o *oramNodeServer) writeBackBlocksToAllBuckets(buckets []int, storageID in
 	}
 
 	for _, blocksFromReadBucket := range batchedBlocksFromReadBucket {
-		writtenBlocks, err := o.storageHandler.BatchWriteBucket(storageID, blocksFromReadBucket, receivedBlocksCopy)
+		writtenBlocks, err := o.storageHandler.BatchWriteBucket(storageID, blocksFromReadBucket, receivedBlocks)
 		if err != nil {
 			return nil, fmt.Errorf("unable to atomic write bucket; %s", err)
 		}
 		for block := range writtenBlocks {
-			if _, exists := receivedBlocksCopy[block]; exists {
-				delete(receivedBlocksCopy, block)
+			if _, exists := receivedBlocks[block]; exists {
+				delete(receivedBlocks, block)
 				receivedBlocksIsWritten[block] = true
 			}
 		}
@@ -262,6 +258,7 @@ func (o *oramNodeServer) evict(storageID int) error {
 
 	randomShardNode := o.shardNodeRPCClients.getRandomShardNodeClient()
 	receivedBlocks, err := o.readBlocksFromShardNode(paths, storageID, randomShardNode)
+	log.Debug().Msgf("Received blocks from shardnode %v", receivedBlocks)
 	if err != nil {
 		return err
 	}

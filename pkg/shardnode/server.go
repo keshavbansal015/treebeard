@@ -13,7 +13,6 @@ import (
 	"github.com/dsg-uwaterloo/oblishard/pkg/config"
 	"github.com/dsg-uwaterloo/oblishard/pkg/rpc"
 	"github.com/dsg-uwaterloo/oblishard/pkg/storage"
-	"github.com/dsg-uwaterloo/oblishard/pkg/utils"
 	"github.com/hashicorp/raft"
 	"github.com/rs/zerolog/log"
 	"go.opentelemetry.io/otel"
@@ -277,7 +276,7 @@ func (s *shardNodeServer) BatchQuery(ctx context.Context, request *pb.RequestBat
 
 // It gets maxBlocks from the stash to send to the requesting oram node.
 // The blocks should be for the same path and storageID.
-func (s *shardNodeServer) getBlocksForSend(maxBlocks int, paths []int, storageID int) (blocksToReturn []*pb.Block, blocks []string) {
+func (s *shardNodeServer) getBlocksForSend(maxBlocks int, storageID int) (blocksToReturn []*pb.Block, blocks []string) {
 	log.Debug().Msgf("Aquiring lock for shard node FSM in getBlocksForSend")
 	s.shardNodeFSM.stashMu.Lock()
 	s.shardNodeFSM.positionMapMu.RLock()
@@ -291,30 +290,22 @@ func (s *shardNodeServer) getBlocksForSend(maxBlocks int, paths []int, storageID
 
 	counter := 0
 	for block, stashState := range s.shardNodeFSM.stash {
-		if (!s.shardNodeFSM.positionMap[block].isPathInPaths(paths)) || (s.shardNodeFSM.positionMap[block].storageID != storageID) {
-			continue
-		}
-
-		// Don't send a stash block that is in the waiting status to another SendBlocks request
-		if stashState.waitingStatus {
-			continue
-		}
 		if counter == int(maxBlocks) {
 			break
 		}
-		blocksToReturn = append(blocksToReturn, &pb.Block{Block: block, Value: stashState.value})
+		blocksToReturn = append(blocksToReturn, &pb.Block{Block: block, Value: stashState.value, Path: int32(s.shardNodeFSM.positionMap[block].path)})
 		blocks = append(blocks, block)
 		counter++
 
 	}
-	log.Debug().Msgf("Sending blocks %v for paths %v and storageID %d", blocks, paths, storageID)
+	log.Debug().Msgf("Sending blocks %v for storageID %d", blocks, storageID)
 	return blocksToReturn, blocks
 }
 
 // It sends blocks to the oram node for eviction.
 func (s *shardNodeServer) SendBlocks(ctx context.Context, request *pb.SendBlocksRequest) (*pb.SendBlocksReply, error) {
 
-	blocksToReturn, blocks := s.getBlocksForSend(int(request.MaxBlocks), utils.ConvertInt32SliceToIntSlice(request.Paths), int(request.StorageId))
+	blocksToReturn, blocks := s.getBlocksForSend(int(request.MaxBlocks), int(request.StorageId))
 
 	sentBlocksReplicationCommand, err := newSentBlocksReplicationCommand(blocks)
 	if err != nil {
@@ -411,7 +402,7 @@ func StartServer(shardNodeServerID int, bindIp string, advertiseIp string, rpcPo
 
 	go func() {
 		for {
-			time.Sleep(500 * time.Millisecond)
+			time.Sleep(1 * time.Second)
 			shardnodeServer.shardNodeFSM.printStashSize()
 		}
 	}()

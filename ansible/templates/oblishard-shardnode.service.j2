@@ -5,6 +5,8 @@ After=syslog.target network.target
 
 [Service]
 Type=simple
+StandardOutput=file:/root/oblishard/shardnode/{{ 'shardnode-' + item.id | string + '-' + item.replicaid | string + '.stdout.log' }}
+StandardError=file:/root/oblishard/shardnode/{{ 'shardnode-' + item.id | string + '-' + item.replicaid | string + '.stderr.log' }}
 ExecStart=/root/oblishard/shardnode/shardnode \
     -shardnodeid {{ item.id }} \
     -bindip {{ item.local_bind_ip }} \

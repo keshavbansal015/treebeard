@@ -163,6 +163,11 @@ func (fsm *oramNodeFSM) Restore(rc io.ReadCloser) error {
 
 func startRaftServer(isFirst bool, bindip string, advip string, replicaID int, raftPort int, oramNodeFSM *oramNodeFSM) (*raft.Raft, error) {
 	raftConfig := raft.DefaultConfig()
+	// These should be here for the crash experiment
+	// raftConfig.ElectionTimeout = 150 * time.Millisecond
+	// raftConfig.HeartbeatTimeout = 150 * time.Millisecond
+	// raftConfig.LeaderLeaseTimeout = 150 * time.Millisecond
+
 	raftConfig.Logger = hclog.New(&hclog.LoggerOptions{Output: log.Logger})
 	raftConfig.LocalID = raft.ServerID(strconv.Itoa(replicaID))
 

@@ -6,7 +6,7 @@ type MockStorageHandler struct {
 	customBatchGetBlockOffset func(bucketIDs []int, storageID int, blocks []string) (offsets map[int]BlockOffsetStatus, err error)
 	customBatchGetAccessCount func(bucketIDs []int, storageID int) (counts map[int]int, err error)
 	customBatchReadBucket     func(bucketIDs []int, storageID int) (blocks map[int]map[string]string, err error)
-	customBatchWriteBucket    func(storageID int, readBucketBlocksList map[int]map[string]string, shardNodeBlocks map[string]string) (writtenBlocks map[string]string, err error)
+	customBatchWriteBucket    func(storageID int, readBucketBlocksList map[int]map[string]string, shardNodeBlocks map[string]BlockInfo) (writtenBlocks map[string]string, err error)
 	customBatchReadBlock      func(offsets map[int]int, storageID int) (values map[int]string, err error)
 }
 
@@ -23,7 +23,7 @@ func NewMockStorageHandler(levelCount int, maxAccessCount int) *MockStorageHandl
 		customBatchReadBucket: func(bucketIDs []int, storageID int) (blocks map[int]map[string]string, err error) {
 			return nil, nil
 		},
-		customBatchWriteBucket: func(storageID int, readBucketBlocksList map[int]map[string]string, shardNodeBlocks map[string]string) (writtenBlocks map[string]string, err error) {
+		customBatchWriteBucket: func(storageID int, readBucketBlocksList map[int]map[string]string, shardNodeBlocks map[string]BlockInfo) (writtenBlocks map[string]string, err error) {
 			return nil, nil
 		},
 		customBatchReadBlock: func(offsets map[int]int, storageID int) (values map[int]string, err error) {
@@ -69,11 +69,11 @@ func (m *MockStorageHandler) WithCustomBatchReadBucketFunc(f func(bucketIDs []in
 	return m
 }
 
-func (m *MockStorageHandler) BatchWriteBucket(storageID int, readBucketBlocksList map[int]map[string]string, shardNodeBlocks map[string]string) (writtenBlocks map[string]string, err error) {
+func (m *MockStorageHandler) BatchWriteBucket(storageID int, readBucketBlocksList map[int]map[string]string, shardNodeBlocks map[string]BlockInfo) (writtenBlocks map[string]string, err error) {
 	return m.customBatchWriteBucket(storageID, readBucketBlocksList, shardNodeBlocks)
 }
 
-func (m *MockStorageHandler) WithCustomBatchWriteBucketFunc(f func(storageID int, readBucketBlocksList map[int]map[string]string, shardNodeBlocks map[string]string) (writtenBlocks map[string]string, err error)) *MockStorageHandler {
+func (m *MockStorageHandler) WithCustomBatchWriteBucketFunc(f func(storageID int, readBucketBlocksList map[int]map[string]string, shardNodeBlocks map[string]BlockInfo) (writtenBlocks map[string]string, err error)) *MockStorageHandler {
 	m.customBatchWriteBucket = f
 	return m
 }

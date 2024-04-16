@@ -53,13 +53,13 @@ message JoinRaftVoterReply {
 
 message SendBlocksRequest {
     int32 maxBlocks = 1;
-    repeated int32 paths = 2;
     int32 storage_id = 3;
 }
 
 message Block {
     string block = 1;
     string value = 2;
+    int32 path = 3;
 }
 
 message SendBlocksReply {

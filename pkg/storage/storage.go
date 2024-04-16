@@ -29,6 +29,11 @@ type StorageHandler struct {
 	key        []byte
 }
 
+type BlockInfo struct {
+	Value string
+	Path  int
+}
+
 func NewStorageHandler(treeHeight int, Z int, S int, shift int, redisEndpoints []config.RedisEndpoint) *StorageHandler { // map of storage id to storage info
 	log.Debug().Msgf("Creating a new storage handler")
 	storages := make(map[int]*redis.Client)
@@ -232,8 +237,20 @@ func (s *StorageHandler) BatchReadBucket(bucketIDs []int, storageID int) (blocks
 	return blocks, nil
 }
 
+// creates a map of bucketIDs to blocks that can go in that bucket
+func (s *StorageHandler) getBucketToValidBlocksMap(shardNodeBlocks map[string]BlockInfo) map[int][]string {
+	bucketToValidBlocksMap := make(map[int][]string)
+	for key, blockInfo := range shardNodeBlocks {
+		leafID := int(math.Pow(2, float64(s.treeHeight-1)) + float64(blockInfo.Path) - 1)
+		for bucketId := leafID; bucketId > 0; bucketId = bucketId >> s.shift {
+			bucketToValidBlocksMap[bucketId] = append(bucketToValidBlocksMap[bucketId], key)
+		}
+	}
+	return bucketToValidBlocksMap
+}
+
 // It writes blocks to multiple buckets in a single storage shard.
-func (s *StorageHandler) BatchWriteBucket(storageID int, readBucketBlocksList map[int]map[string]string, shardNodeBlocks map[string]string) (writtenBlocks map[string]string, err error) {
+func (s *StorageHandler) BatchWriteBucket(storageID int, readBucketBlocksList map[int]map[string]string, shardNodeBlocks map[string]BlockInfo) (writtenBlocks map[string]string, err error) {
 	pipe := s.storages[storageID].Pipeline()
 	ctx := context.Background()
 	dataResults := make(map[int]*redis.BoolCmd)
@@ -242,6 +259,8 @@ func (s *StorageHandler) BatchWriteBucket(storageID int, readBucketBlocksList ma
 
 	log.Debug().Msgf("buckets from readBucketBlocksList: %v", readBucketBlocksList)
 	log.Debug().Msgf("shardNodeBlocks: %v", shardNodeBlocks)
+
+	bucketToValidBlocksMap := s.getBucketToValidBlocksMap(shardNodeBlocks)
 
 	for bucketID, readBucketBlocks := range readBucketBlocksList {
 		values := make([]string, s.Z+s.S)
@@ -270,13 +289,13 @@ func (s *StorageHandler) BatchWriteBucket(storageID int, readBucketBlocksList ma
 				break
 			}
 		}
-		for key, value := range shardNodeBlocks {
+		for _, key := range bucketToValidBlocksMap[bucketID] {
 			if strings.HasPrefix(key, "dummy") {
 				continue
 			}
 			if i < s.Z {
-				writtenBlocks[key] = value
-				values[realIndex[i]], err = Encrypt(value, s.key)
+				writtenBlocks[key] = shardNodeBlocks[key].Value
+				values[realIndex[i]], err = Encrypt(shardNodeBlocks[key].Value, s.key)
 				if err != nil {
 					return nil, err
 				}
