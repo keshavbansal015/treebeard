@@ -16,14 +16,25 @@ The following parts are generated, but if you want to generate them again yourse
 ```bash
 ./scripts/generate_protos.sh
 ```
+### Dependencies
+You will need Go 1.20 to run the project.
 
-### Configurations
-The configurations can be found in the configs directory.  
-There are files for endpoint configs, as well as one file for the parameters.
-* `*_endpoints.yaml`: These files include the endpoints of the different components in your system. You can specify the endpoints here and Ansible will use these files to deploy the components to their correct hosts and will configure them accordingly.
-* `parameters.yaml`: This file holds all the configuration parameters. You can change them as you want to fit your needs.
+## Running the Experiments
+Each of the directories in the `experiments` directory contains several experiments. For example, dist_experiments has four subdirectories (uniform, zipf0.2, zipf0.6, zipf0.8, zipf0.99). The `run_scripts.sh` file in the `experiments` directory runs all of the experiments.  
+**To run all the experiments:**
+```bash
+./experiments/run_experiments.sh
+```
+This script uses `ansible/deploy.yaml` and `ansible/experiment.yaml` to deploy the experiment and run the experiment. It then gathers the results on the local folder.
+Each experiment should have a trace.txt file, which is the generated YCSB trace file. These are not provided since they are very large. You can generate them using the [YCSB]([url](https://github.com/brianfrankcooper/YCSB)) client.
 
-### Running Oblishard
-1. Ensure that you have Ansible installed, and you have ssh access to your deployment hosts.
-2. Update the hosts file to include your deployment hosts.
-3. Run `ansible-playbook -i /path/to/hosts tasks.yaml` in the deploy directory.
+### Experiment Details
+Every experiment has its own configuration files. The following are the current configurations:
+* jaeger_endpoints.yaml: configures the jaeger backend for collecting the distributed tracing telemetries.
+* oramnode_endpoints.yaml: endpoints for the ORAM services.
+* shardnode_endpoints.yaml: endpoints for the Shard node services.
+* router_endpoints.yaml: endpoints for the router services.
+* redis_endpoints.yaml: endpoints for the redis services.
+* **parameters.yaml**: configurable parameters for each experiment. The comments explain what each configurable variable does.
+
+Feel free to change the files to add a new experiment.
