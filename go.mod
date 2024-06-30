@@ -1,4 +1,4 @@
-module github.com/dsg-uwaterloo/oblishard
+module github.com/dsg-uwaterloo/treebeard
 
 go 1.20
 

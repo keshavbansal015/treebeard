@@ -5,11 +5,11 @@ import (
 	"testing"
 	"time"
 
-	"github.com/dsg-uwaterloo/oblishard/pkg/client"
-	"github.com/dsg-uwaterloo/oblishard/pkg/config"
-	"github.com/dsg-uwaterloo/oblishard/pkg/oramnode"
-	"github.com/dsg-uwaterloo/oblishard/pkg/router"
-	"github.com/dsg-uwaterloo/oblishard/pkg/shardnode"
+	"github.com/dsg-uwaterloo/treebeard/pkg/client"
+	"github.com/dsg-uwaterloo/treebeard/pkg/config"
+	"github.com/dsg-uwaterloo/treebeard/pkg/oramnode"
+	"github.com/dsg-uwaterloo/treebeard/pkg/router"
+	"github.com/dsg-uwaterloo/treebeard/pkg/shardnode"
 	"github.com/rs/zerolog/log"
 )
 

@@ -1,12 +1,12 @@
-# Oblishard [![Github Actions](https://github.com/dsg-uwaterloo/oblishard/actions/workflows/go.yml/badge.svg)](https://github.com/dsg-uwaterloo/oblishard/actions/workflows/go.yml)
-Welcome to **Oblishard**, a fault-tolerant and highly scalable Oblivious RAM (ORAM) data store designed to provide strong security guarantees by hiding access patterns from the storage server and randomizing client access.
+# Treebeard [![Github Actions](https://github.com/dsg-uwaterloo/treebeard/actions/workflows/go.yml/badge.svg)](https://github.com/dsg-uwaterloo/treebeard/actions/workflows/go.yml)
+Welcome to **Treebeard**, a fault-tolerant and highly scalable Oblivious RAM (ORAM) data store designed to provide strong security guarantees by hiding access patterns from the storage server and randomizing client access.
 ## Key Features:
-* **Scalability**: Oblishard is designed with horizontal scalability in mind, enabling scaling the system without leaking security information.
-* **Fault Tolerance**: Using the Raft consensus algorithm, Oblishard ensures the resilience of your data store even in the face of node crashes or failures, enhancing the overall reliability of your system.
-* **High Throughput**: Oblishard achieves high-throughput performance, ensuring that your applications can handle large volumes of data seamlessly and efficiently.
-* **Configurable**: Oblishard recognizes the diverse needs of different projects and offers a high level of configurability to adapt to your specific requirements.
-* **Easy to Deploy**: We've designed the setup of Oblishard to be straightforward, ensuring that you can integrate our secure and high-performance data store effortlessly into your projects.
-* **Easy to Extend**: Oblishard's modular architecture makes it easy to extend functionality. You can add new storage layers to Oblishard to support different use cases.
+* **Scalability**: Treebeard is designed with horizontal scalability in mind, enabling scaling the system without leaking security information.
+* **Fault Tolerance**: Using the Raft consensus algorithm, Treebeard ensures the resilience of your data store even in the face of node crashes or failures, enhancing the overall reliability of your system.
+* **High Throughput**: Treebeard achieves high-throughput performance, ensuring that your applications can handle large volumes of data seamlessly and efficiently.
+* **Configurable**: Treebeard recognizes the diverse needs of different projects and offers a high level of configurability to adapt to your specific requirements.
+* **Easy to Deploy**: We've designed the setup of Treebeard to be straightforward, ensuring that you can integrate our secure and high-performance data store effortlessly into your projects.
+* **Easy to Extend**: Treebeard's modular architecture makes it easy to extend functionality. You can add new storage layers to Treebeard to support different use cases.
 
 ## Installation
 ### Protocol Buffers

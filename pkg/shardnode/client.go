@@ -5,9 +5,9 @@ import (
 	"fmt"
 	"math"
 
-	oramnodepb "github.com/dsg-uwaterloo/oblishard/api/oramnode"
-	"github.com/dsg-uwaterloo/oblishard/pkg/config"
-	"github.com/dsg-uwaterloo/oblishard/pkg/rpc"
+	oramnodepb "github.com/dsg-uwaterloo/treebeard/api/oramnode"
+	"github.com/dsg-uwaterloo/treebeard/pkg/config"
+	"github.com/dsg-uwaterloo/treebeard/pkg/rpc"
 	"github.com/rs/zerolog/log"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"

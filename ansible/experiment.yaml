@@ -6,9 +6,9 @@
   tasks:
   - name: Run the Client
     ansible.builtin.shell:
-      cmd: "/root/oblishard/client -duration 20 -conf /root/oblishard -output /root/oblishard/output.txt -logpath /root/oblishard/client.log"
+      cmd: "/root/treebeard/client -duration 20 -conf /root/treebeard -output /root/treebeard/output.txt -logpath /root/treebeard/client.log"
   - name: Get the output
     ansible.builtin.fetch:
-      src: "/root/oblishard/output.txt"
+      src: "/root/treebeard/output.txt"
       dest: "{{ experiment_output_path }}"
       flat: yes

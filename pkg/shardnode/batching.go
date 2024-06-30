@@ -4,8 +4,8 @@ import (
 	"context"
 	"time"
 
-	"github.com/dsg-uwaterloo/oblishard/api/oramnode"
-	"github.com/dsg-uwaterloo/oblishard/pkg/utils"
+	"github.com/dsg-uwaterloo/treebeard/api/oramnode"
+	"github.com/dsg-uwaterloo/treebeard/pkg/utils"
 	"github.com/rs/zerolog/log"
 )
 

@@ -10,8 +10,8 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/dsg-uwaterloo/oblishard/pkg/config"
-	"github.com/dsg-uwaterloo/oblishard/pkg/utils"
+	"github.com/dsg-uwaterloo/treebeard/pkg/config"
+	"github.com/dsg-uwaterloo/treebeard/pkg/utils"
 	"github.com/redis/go-redis/v9"
 	"github.com/rs/zerolog/log"
 )

@@ -33,16 +33,16 @@
           - python3-docker
           - socat
 
-    - name: Create oblishard directory
+    - name: Create treebeard directory
       ansible.builtin.file:
-        path: /root/oblishard
+        path: /root/treebeard
         state: directory
         mode: '0755'
 
     - name: Remove previous log files
       ansible.builtin.shell:
         cmd: find . -name "*.log" -delete
-        chdir: /root/oblishard
+        chdir: /root/treebeard
 
     - name: Include endpoints as vars
       ansible.builtin.include_vars:
@@ -61,11 +61,11 @@
         - name: Move Jaeger file
           template:
             src: ./templates/docker-compose.yaml.j2
-            dest: /root/oblishard/jaeger.yaml
+            dest: /root/treebeard/jaeger.yaml
         - name: Run Jaeger
           shell:
             cmd: "docker compose -f jaeger.yaml up -d"
-            chdir: /root/oblishard
+            chdir: /root/treebeard
         - name: Create Socat reverse proxy service
           template:
             src: templates/socat.service.j2
@@ -125,7 +125,7 @@
 
     - name: Create new directories
       ansible.builtin.file:
-        path: "{{ '/root/oblishard/' + item[0] + '/'  + item[1].id | string + '/' + item[1].replicaid | default('') | string }}"
+        path: "{{ '/root/treebeard/' + item[0] + '/'  + item[1].id | string + '/' + item[1].replicaid | default('') | string }}"
         state: directory
         mode: '0755'
       delegate_to: "{{ item[1].deploy_host }}"
@@ -139,7 +139,7 @@
     - name: Copy executables
       ansible.builtin.copy:
         src: "../cmd/{{ item[0] }}/{{ item[0] }}"
-        dest: "{{ '/root/oblishard/' + item[0] + '/' + item[0] }}"
+        dest: "{{ '/root/treebeard/' + item[0] + '/' + item[0] }}"
         mode: '0777'
       delegate_to: "{{ item[1].deploy_host }}"
       loop: >-
@@ -152,31 +152,31 @@
     - name: Copy client
       ansible.builtin.copy:
         src: "../cmd/client/client"
-        dest: "/root/oblishard/"
+        dest: "/root/treebeard/"
         mode: '0777'
 
     - name: Copy configs
       ansible.builtin.copy:
         src: "{{ experiment_path }}/{{ item[0] }}"
-        dest: "/root/oblishard/{{ item[0] }}"
+        dest: "/root/treebeard/{{ item[0] }}"
         mode: '0666'
       delegate_to: "{{ item[1] }}"
       loop: "{{ ['router_endpoints.yaml', 'shardnode_endpoints.yaml', 'oramnode_endpoints.yaml', 'redis_endpoints.yaml', 'parameters.yaml', 'trace.txt'] | product(groups['all']) | list }}"
 
     - name: Create oramnode systemd services
       template:
-        src: templates/oblishard-oramnode.service.j2
-        dest: "/lib/systemd/system/oblishard-oramnode-{{ item.id }}-{{ item.replicaid }}.service"
+        src: templates/treebeard-oramnode.service.j2
+        dest: "/lib/systemd/system/treebeard-oramnode-{{ item.id }}-{{ item.replicaid }}.service"
       delegate_to: "{{ item.deploy_host }}"
       with_items: "{{ oramnode_endpoints.endpoints }}"
 
     - name: Stop previous services
       ansible.builtin.shell:
-        cmd: systemctl stop oblishard-*   
+        cmd: systemctl stop treebeard-*   
 
     - name: Start oramnode services
       ansible.builtin.systemd:
-        name: "oblishard-oramnode-{{ item.id }}-{{ item.replicaid }}"
+        name: "treebeard-oramnode-{{ item.id }}-{{ item.replicaid }}"
         state: restarted
         daemon_reload: true
       delegate_to: "{{ item.deploy_host }}"
@@ -186,14 +186,14 @@
 
     - name: Create shardnode systemd services
       template:
-        src: templates/oblishard-shardnode.service.j2
-        dest: "/lib/systemd/system/oblishard-shardnode-{{ item.id }}-{{ item.replicaid }}.service"
+        src: templates/treebeard-shardnode.service.j2
+        dest: "/lib/systemd/system/treebeard-shardnode-{{ item.id }}-{{ item.replicaid }}.service"
       delegate_to: "{{ item.deploy_host }}"
       with_items: "{{ shardnode_endpoints.endpoints }}"
 
     - name: Start shardnode services
       ansible.builtin.systemd:
-        name: "oblishard-shardnode-{{ item.id }}-{{ item.replicaid }}"
+        name: "treebeard-shardnode-{{ item.id }}-{{ item.replicaid }}"
         state: restarted
         daemon_reload: true
       delegate_to: "{{ item.deploy_host }}"
@@ -203,14 +203,14 @@
 
     - name: Create router systemd services
       template:
-        src: templates/oblishard-router.service.j2
-        dest: "/lib/systemd/system/oblishard-router-{{ item.id }}.service"
+        src: templates/treebeard-router.service.j2
+        dest: "/lib/systemd/system/treebeard-router-{{ item.id }}.service"
       delegate_to: "{{ item.deploy_host }}"
       with_items: "{{ router_endpoints.endpoints }}"
 
     - name: Start router services
       ansible.builtin.systemd:
-        name: "oblishard-router-{{ item.id }}"
+        name: "treebeard-router-{{ item.id }}"
         state: restarted
         daemon_reload: true
       delegate_to: "{{ item.deploy_host }}"

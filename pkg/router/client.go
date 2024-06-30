@@ -4,9 +4,9 @@ import (
 	"fmt"
 	"math"
 
-	shardnodepb "github.com/dsg-uwaterloo/oblishard/api/shardnode"
-	"github.com/dsg-uwaterloo/oblishard/pkg/config"
-	"github.com/dsg-uwaterloo/oblishard/pkg/rpc"
+	shardnodepb "github.com/dsg-uwaterloo/treebeard/api/shardnode"
+	"github.com/dsg-uwaterloo/treebeard/pkg/config"
+	"github.com/dsg-uwaterloo/treebeard/pkg/rpc"
 	"github.com/rs/zerolog/log"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"

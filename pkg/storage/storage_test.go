@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/dsg-uwaterloo/oblishard/pkg/config"
+	"github.com/dsg-uwaterloo/treebeard/pkg/config"
 	"github.com/rs/zerolog/log"
 )
 

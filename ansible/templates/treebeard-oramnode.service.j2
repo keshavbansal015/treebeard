@@ -1,11 +1,11 @@
 [Unit]
-Description=Oblishard Oramnode
+Description=Treebeard Oramnode
 Requires=network.target
 After=syslog.target network.target
 
 [Service]
 Type=simple
-ExecStart=/root/oblishard/oramnode/oramnode \
+ExecStart=/root/treebeard/oramnode/oramnode \
     -oramnodeid {{ item.id }} \
     -bindip {{ item.local_bind_ip }} \
     -advip {{ item.exposed_ip }} \
@@ -16,8 +16,8 @@ ExecStart=/root/oblishard/oramnode/oramnode \
     # this assumes there are 3 replicas (Dangerous assmumption)
     {{'-joinaddr=' + oramnode_endpoints.endpoints[item.id * 3].exposed_ip + ':' + oramnode_endpoints.endpoints[item.id * 3].port | string }} \
     {% endif %}
-    -conf /root/oblishard/ \
-    -logpath {{ '/root/oblishard/oramnode/'  + item.id | string + '/' + item.replicaid | string + '/all.log' }}
+    -conf /root/treebeard/ \
+    -logpath {{ '/root/treebeard/oramnode/'  + item.id | string + '/' + item.replicaid | string + '/all.log' }}
 Restart=on-failure
 
 [Install]

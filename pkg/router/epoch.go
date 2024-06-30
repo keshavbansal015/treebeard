@@ -6,9 +6,9 @@ import (
 	"sync"
 	"time"
 
-	shardnodepb "github.com/dsg-uwaterloo/oblishard/api/shardnode"
-	"github.com/dsg-uwaterloo/oblishard/pkg/rpc"
-	utils "github.com/dsg-uwaterloo/oblishard/pkg/utils"
+	shardnodepb "github.com/dsg-uwaterloo/treebeard/api/shardnode"
+	"github.com/dsg-uwaterloo/treebeard/pkg/rpc"
+	utils "github.com/dsg-uwaterloo/treebeard/pkg/utils"
 	"github.com/rs/zerolog/log"
 	"google.golang.org/grpc"
 )
@@ -87,7 +87,7 @@ type batchResponse struct {
 }
 
 func (e *epochManager) sendBatch(ctx context.Context, shardnodeClient ReplicaRPCClientMap, requestBatch *shardnodepb.RequestBatch, batchResponseChan chan batchResponse) {
-	log.Debug().Msgf("Sending batch of requests %v to shardnode", requestBatch)
+	log.Debug().Msgf("Sending batch of %d requests %v to shardnode", len(requestBatch.ReadRequests)+len(requestBatch.WriteRequests), requestBatch)
 	var replicaFuncs []rpc.CallFunc
 	var clients []any
 	for _, client := range shardnodeClient {

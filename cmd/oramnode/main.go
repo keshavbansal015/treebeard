@@ -7,11 +7,11 @@ import (
 	"os"
 	"path"
 
-	"github.com/dsg-uwaterloo/oblishard/pkg/config"
-	oramnode "github.com/dsg-uwaterloo/oblishard/pkg/oramnode"
-	"github.com/dsg-uwaterloo/oblishard/pkg/profile"
-	"github.com/dsg-uwaterloo/oblishard/pkg/tracing"
-	"github.com/dsg-uwaterloo/oblishard/pkg/utils"
+	"github.com/dsg-uwaterloo/treebeard/pkg/config"
+	oramnode "github.com/dsg-uwaterloo/treebeard/pkg/oramnode"
+	"github.com/dsg-uwaterloo/treebeard/pkg/profile"
+	"github.com/dsg-uwaterloo/treebeard/pkg/tracing"
+	"github.com/dsg-uwaterloo/treebeard/pkg/utils"
 	"github.com/rs/zerolog/log"
 )
 

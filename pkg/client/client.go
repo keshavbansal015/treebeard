@@ -7,9 +7,9 @@ import (
 	"math/rand"
 	"time"
 
-	routerpb "github.com/dsg-uwaterloo/oblishard/api/router"
-	"github.com/dsg-uwaterloo/oblishard/pkg/config"
-	"github.com/dsg-uwaterloo/oblishard/pkg/rpc"
+	routerpb "github.com/dsg-uwaterloo/treebeard/api/router"
+	"github.com/dsg-uwaterloo/treebeard/pkg/config"
+	"github.com/dsg-uwaterloo/treebeard/pkg/rpc"
 	"github.com/redis/go-redis/v9"
 	"github.com/rs/zerolog/log"
 	"go.opentelemetry.io/otel/trace"

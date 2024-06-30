@@ -6,9 +6,9 @@ import (
 	"net"
 	"time"
 
-	pb "github.com/dsg-uwaterloo/oblishard/api/router"
-	"github.com/dsg-uwaterloo/oblishard/pkg/config"
-	"github.com/dsg-uwaterloo/oblishard/pkg/rpc"
+	pb "github.com/dsg-uwaterloo/treebeard/api/router"
+	"github.com/dsg-uwaterloo/treebeard/pkg/config"
+	"github.com/dsg-uwaterloo/treebeard/pkg/rpc"
 	"github.com/google/uuid"
 	"github.com/rs/zerolog/log"
 	"go.opentelemetry.io/otel"
