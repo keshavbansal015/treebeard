@@ -38,3 +38,24 @@ Every experiment has its own configuration files. The following are the current 
 * **parameters.yaml**: configurable parameters for each experiment. The comments explain what each configurable variable does.
 
 Feel free to change the files to add a new experiment.
+
+### Example Experiment
+To run the example experiment, follow these steps:
+
+1. Navigate to the example experiment directory:
+   ```bash
+   cd experiments/example/functional
+   ```
+
+2. Update the configuration files with your server details:
+   - Edit `hosts` file: Replace `ip.ip.ip.ip` with your server's IP address
+   - Edit `shardnode_endpoints.yaml`: Update both `exposed_ip` and `local_bind_ip` with your server's IP address and local bind ip address
+
+3. Return to the experiments directory:
+
+4. Run the example experiment:
+   ```bash
+   ./run_experiments.sh example
+   ```
+
+This will automatically deploy the system to your server and run the experiment, collecting the results in the `experiments/example/functional/` directory.

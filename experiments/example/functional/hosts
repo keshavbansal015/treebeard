@@ -1,0 +1,1 @@
+host0 ansible_host=ip.ip.ip.ip ansible_user=user

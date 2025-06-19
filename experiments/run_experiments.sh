@@ -48,9 +48,19 @@ do_all_experiments_exist() {
     return 0
 }
 
+# Arguments:
+# $1: optional experiment group name (if not provided, runs all groups)
 run_experiments() {
-    for experiment_group in $(pwd)/*
-    do
+    local experiment_group_arg=$1
+    
+    if [ -n "$experiment_group_arg" ]; then
+        # Run only the specified experiment group
+        local experiment_group=$(pwd)/$experiment_group_arg
+        if [ ! -d "$experiment_group" ]; then
+            echo "Experiment group '$experiment_group_arg' not found"
+            return 1
+        fi
+        
         for experiment in $experiment_group/*
         do
             if do_all_experiments_exist $experiment -eq 0 ; then
@@ -62,7 +72,24 @@ run_experiments() {
                 run_experiment_N_times $experiment
             fi            
         done
-    done
+    else
+        # Run all experiment groups (original behavior)
+        for experiment_group in $(pwd)/*
+        do
+            for experiment in $experiment_group/*
+            do
+                if do_all_experiments_exist $experiment -eq 0 ; then
+                    echo "All experiments already exist for $(basename $experiment)"
+                    continue
+                fi
+                if [ -d $experiment ]; then
+                    deploy_the_system $experiment
+                    run_experiment_N_times $experiment
+                fi            
+            done
+        done
+    fi
 }
 
-run_experiments
+# Pass the first command line argument to run_experiments
+run_experiments "$1"

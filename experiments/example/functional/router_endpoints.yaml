@@ -1,0 +1,6 @@
+endpoints:
+  - exposed_ip: ip.ip.ip.ip # edit here
+    local_bind_ip: ip.ip.ip.ip # edit here
+    deploy_host: host0
+    port: 8845
+    id: 0
