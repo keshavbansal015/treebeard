@@ -6,10 +6,10 @@ import (
 	"net"
 	"time"
 
-	pb "github.com/dsg-uwaterloo/treebeard/api/router"
-	"github.com/dsg-uwaterloo/treebeard/pkg/config"
-	"github.com/dsg-uwaterloo/treebeard/pkg/rpc"
 	"github.com/google/uuid"
+	pb "github.com/keshavbansal015/treebeard/api/router"
+	"github.com/keshavbansal015/treebeard/pkg/config"
+	"github.com/keshavbansal015/treebeard/pkg/rpc"
 	"github.com/rs/zerolog/log"
 	"go.opentelemetry.io/otel"
 	"google.golang.org/grpc"

@@ -3,7 +3,7 @@ package utils_test
 import (
 	"testing"
 
-	utils "github.com/dsg-uwaterloo/treebeard/pkg/utils"
+	utils "github.com/keshavbansal015/treebeard/pkg/utils"
 )
 
 type hashTest struct {

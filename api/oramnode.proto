@@ -1,6 +1,6 @@
 syntax = "proto3";
 
-option go_package = "github.com/dsg-uwaterloo/treebeard/api/oramnode";
+option go_package = "github.com/keshavbansal015/treebeard/api/oramnode";
 
 package oramnode;
 

@@ -8,10 +8,10 @@ import (
 	"path"
 	"time"
 
-	"github.com/dsg-uwaterloo/treebeard/pkg/client"
-	"github.com/dsg-uwaterloo/treebeard/pkg/config"
-	"github.com/dsg-uwaterloo/treebeard/pkg/tracing"
-	"github.com/dsg-uwaterloo/treebeard/pkg/utils"
+	"github.com/keshavbansal015/treebeard/pkg/client"
+	"github.com/keshavbansal015/treebeard/pkg/config"
+	"github.com/keshavbansal015/treebeard/pkg/tracing"
+	"github.com/keshavbansal015/treebeard/pkg/utils"
 	"github.com/rs/zerolog/log"
 	"go.opentelemetry.io/otel"
 )

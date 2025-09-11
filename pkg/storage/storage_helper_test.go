@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"testing"
 
-	"github.com/dsg-uwaterloo/treebeard/pkg/config"
+	"github.com/keshavbansal015/treebeard/pkg/config"
 	"github.com/redis/go-redis/v9"
 )
 
