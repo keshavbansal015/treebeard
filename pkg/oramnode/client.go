@@ -16,7 +16,7 @@ import (
 
 type ShardNodeRPCClient struct {
 	ClientAPI shardnodepb.ShardNodeClient
-	Conn      *grpc.ClientConn
+	Conn      *grpc.ClientConn
 }
 
 type ReplicaRPCClientMap map[int]ShardNodeRPCClient

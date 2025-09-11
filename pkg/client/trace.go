@@ -15,9 +15,9 @@ const (
 )
 
 type Request struct {
-	Block         string
+	Block         string
 	OperationType int
-	NewValue      string
+	NewValue      string
 }
 
 func padBlockValue(blockValue string, blockSizeBytes int) string {

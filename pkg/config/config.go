@@ -9,29 +9,29 @@ import (
 )
 
 type RouterEndpoint struct {
-	IP   string `yaml:"exposed_ip"`
+	IP   string `yaml:"exposed_ip"`
 	Port int
-	ID   int
+	ID   int
 }
 
 type ShardNodeEndpoint struct {
-	IP        string `yaml:"exposed_ip"`
-	Port      int
-	ID        int
+	IP        string `yaml:"exposed_ip"`
+	Port      int
+	ID        int
 	ReplicaID int
 }
 
 type OramNodeEndpoint struct {
-	IP        string `yaml:"exposed_ip"`
-	Port      int
-	ID        int
+	IP        string `yaml:"exposed_ip"`
+	Port      int
+	ID        int
 	ReplicaID int
 }
 
 type RedisEndpoint struct {
-	IP         string `yaml:"exposed_ip"`
-	Port       int
-	ID         int
+	IP         string `yaml:"exposed_ip"`
+	Port       int
+	ID         int
 	ORAMNodeID int `yaml:"oramnode_id"`
 }
 
@@ -52,21 +52,21 @@ type RedisConfig struct {
 }
 
 type Parameters struct {
-	MaxBlocksToSend   int     `yaml:"max-blocks-to-send"`
-	EvictionRate      int     `yaml:"eviction-rate"`
-	EvictPathCount    int     `yaml:"evict-path-count"`
-	BatchTimout       float64 `yaml:"batch-timeout"`
-	EpochTime         float64 `yaml:"epoch-time"`
-	Trace             bool    `yaml:"trace"`
-	Z                 int     `yaml:"Z"`
-	S                 int     `yaml:"S"`
-	Shift             int     `yaml:"shift"`
-	TreeHeight        int     `yaml:"tree-height"`
-	RedisPipelineSize int     `yaml:"redis-pipeline-size"`
-	MaxRequests       int     `yaml:"max-requests"`
-	BlockSize         int     `yaml:"block-size"`
-	Log               bool    `yaml:"log"`
-	Profile           bool    `yaml:"profile"`
+	MaxBlocksToSend   int     `yaml:"max-blocks-to-send"`
+	EvictionRate      int     `yaml:"eviction-rate"`
+	EvictPathCount    int     `yaml:"evict-path-count"`
+	BatchTimout       float64 `yaml:"batch-timeout"`
+	EpochTime         float64 `yaml:"epoch-time"`
+	Trace             bool    `yaml:"trace"`
+	Z                 int     `yaml:"Z"`
+	S                 int     `yaml:"S"`
+	Shift             int     `yaml:"shift"`
+	TreeHeight        int     `yaml:"tree-height"`
+	RedisPipelineSize int     `yaml:"redis-pipeline-size"`
+	MaxRequests       int     `yaml:"max-requests"`
+	BlockSize         int     `yaml:"block-size"`
+	Log               bool    `yaml:"log"`
+	Profile           bool    `yaml:"profile"`
 }
 
 func (o Parameters) String() string {

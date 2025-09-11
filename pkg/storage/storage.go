@@ -437,7 +437,7 @@ func (s *StorageHandler) BatchReadBlock(bucketOffsets map[int]int, storageID int
 	log.Debug().Msgf("Pipelining invalidation and access count updates for %d buckets", len(bucketOffsets))
 	invalidateMap := make(map[int]*redis.IntCmd)
 	bucketIDs := make([]int, len(bucketOffsets))
-	i := 0
+	// i := 0
 	for bucketID := range bucketOffsets {
 		bucketIDs = append(bucketIDs, bucketID)
 	}
@@ -512,7 +512,7 @@ func GetRandomPathAndStorageID(treeHeight int, storageCount int) (path int, stor
 func (s *StorageHandler) GetRandomStorageID() int {
 	log.Debug().Msg("Getting a random storage ID.")
 	index := rand.Intn(len(s.storages))
-	i := 0
+	// i := 0
 	for storageID := range s.storages {
 		if index == 0 {
 			log.Debug().Msgf("Selected random storage ID %d", storageID)
