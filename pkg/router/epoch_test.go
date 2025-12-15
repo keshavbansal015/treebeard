@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	shardnodepb "github.com/dsg-uwaterloo/treebeard/api/shardnode"
+	shardnodepb "github.com/keshavbansal015/treebeard/api/shardnode"
 	"google.golang.org/grpc"
 )
 
