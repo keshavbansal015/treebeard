@@ -6,9 +6,9 @@ import (
 	"testing"
 	"time"
 
-	oramnodepb "github.com/dsg-uwaterloo/treebeard/api/oramnode"
-	shardnodepb "github.com/dsg-uwaterloo/treebeard/api/shardnode"
 	"github.com/hashicorp/raft"
+	oramnodepb "github.com/keshavbansal015/treebeard/api/oramnode"
+	shardnodepb "github.com/keshavbansal01515/treebeard/api/shardnode"
 	"github.com/phayes/freeport"
 )
 

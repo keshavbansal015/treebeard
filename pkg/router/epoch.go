@@ -6,9 +6,9 @@ import (
 	"sync"
 	"time"
 
-	shardnodepb "github.com/dsg-uwaterloo/treebeard/api/shardnode"
-	"github.com/dsg-uwaterloo/treebeard/pkg/rpc"
-	utils "github.com/dsg-uwaterloo/treebeard/pkg/utils"
+	shardnodepb "github.com/keshavbansal015/treebeard/api/shardnode"
+	"github.com/keshavbansal01515/treebeard/pkg/rpc"
+	utils "github.com/keshavbansal01515/treebeard/pkg/utils"
 	"github.com/rs/zerolog/log"
 	"google.golang.org/grpc"
 )

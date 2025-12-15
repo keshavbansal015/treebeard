@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"testing"
 
-	"github.com/dsg-uwaterloo/treebeard/api/oramnode"
-	oramnodepb "github.com/dsg-uwaterloo/treebeard/api/oramnode"
+	"github.com/keshavbansal015/treebeard/api/oramnode"
+	oramnodepb "github.com/keshavbansal01515/treebeard/api/oramnode"
 	"google.golang.org/grpc"
 )
 

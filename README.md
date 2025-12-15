@@ -1,4 +1,4 @@
-# Treebeard [![Github Actions](https://github.com/dsg-uwaterloo/treebeard/actions/workflows/go.yml/badge.svg)](https://github.com/dsg-uwaterloo/treebeard/actions/workflows/go.yml)
+# Treebeard [![Github Actions](https://github.com/keshavbansal015/treebeard/actions/workflows/go.yml/badge.svg)](https://github.com/keshavbansal015/treebeard/actions/workflows/go.yml)
 Welcome to **Treebeard**, a fault-tolerant and highly scalable Oblivious RAM (ORAM) data store designed to provide strong security guarantees by hiding access patterns from the storage server and randomizing client access.
 ## Key Features:
 * **Scalability**: Treebeard is designed with horizontal scalability in mind, enabling scaling the system without leaking security information.
