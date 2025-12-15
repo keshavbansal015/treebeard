@@ -3,7 +3,7 @@ module github.com/keshavbansal015/treebeard
 go 1.20
 
 require (
-	github.com/keshavbansal015/treebeard v0.0.0-20250619235412-6cd46d5a8fe4
+	github.com/keshavbansal015/treebeard
 	github.com/hashicorp/go-hclog v1.5.0
 	github.com/redis/go-redis/v9 v9.0.5
 	go.opentelemetry.io/otel/sdk v1.18.0

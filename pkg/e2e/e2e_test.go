@@ -6,10 +6,10 @@ import (
 	"time"
 
 	"github.com/keshavbansal015/treebeard/pkg/client"
-	"github.com/keshavbansal01515/treebeard/pkg/config"
-	"github.com/keshavbansal01515/treebeard/pkg/oramnode"
-	"github.com/keshavbansal01515/treebeard/pkg/router"
-	"github.com/keshavbansal01515/treebeard/pkg/shardnode"
+	"github.com/keshavbansal015/treebeard/pkg/config"
+	"github.com/keshavbansal015/treebeard/pkg/oramnode"
+	"github.com/keshavbansal015/treebeard/pkg/router"
+	"github.com/keshavbansal015/treebeard/pkg/shardnode"
 	"github.com/rs/zerolog/log"
 )
 

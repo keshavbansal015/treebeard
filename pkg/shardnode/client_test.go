@@ -6,7 +6,7 @@ import (
 	"testing"
 
 	"github.com/keshavbansal015/treebeard/api/oramnode"
-	oramnodepb "github.com/keshavbansal01515/treebeard/api/oramnode"
+	oramnodepb "github.com/keshavbansal015/treebeard/api/oramnode"
 	"google.golang.org/grpc"
 )
 

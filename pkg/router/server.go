@@ -8,8 +8,8 @@ import (
 
 	"github.com/google/uuid"
 	pb "github.com/keshavbansal015/treebeard/api/router"
-	"github.com/keshavbansal01515/treebeard/pkg/config"
-	"github.com/keshavbansal01515/treebeard/pkg/rpc"
+	"github.com/keshavbansal015/treebeard/pkg/config"
+	"github.com/keshavbansal015/treebeard/pkg/rpc"
 	"github.com/rs/zerolog/log"
 	"go.opentelemetry.io/otel"
 	"google.golang.org/grpc"

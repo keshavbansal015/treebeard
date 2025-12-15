@@ -11,7 +11,7 @@ import (
 	"sync"
 
 	"github.com/keshavbansal015/treebeard/pkg/config"
-	"github.com/keshavbansal01515/treebeard/pkg/utils"
+	"github.com/keshavbansal015/treebeard/pkg/utils"
 	"github.com/redis/go-redis/v9"
 	"github.com/rs/zerolog/log"
 )

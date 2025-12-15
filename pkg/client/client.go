@@ -8,8 +8,8 @@ import (
 	"time"
 
 	routerpb "github.com/keshavbansal015/treebeard/api/router"
-	"github.com/keshavbansal01515/treebeard/pkg/config"
-	"github.com/keshavbansal01515/treebeard/pkg/rpc"
+	"github.com/keshavbansal015/treebeard/pkg/config"
+	"github.com/keshavbansal015/treebeard/pkg/rpc"
 	"github.com/redis/go-redis/v9"
 	"github.com/rs/zerolog/log"
 	"go.opentelemetry.io/otel/trace"

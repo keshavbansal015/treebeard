@@ -8,10 +8,10 @@ import (
 	"path"
 
 	"github.com/keshavbansal015/treebeard/pkg/config"
-	"github.com/keshavbansal01515/treebeard/pkg/profile"
-	router "github.com/keshavbansal01515/treebeard/pkg/router"
-	"github.com/keshavbansal01515/treebeard/pkg/tracing"
-	"github.com/keshavbansal01515/treebeard/pkg/utils"
+	"github.com/keshavbansal015/treebeard/pkg/profile"
+	router "github.com/keshavbansal015/treebeard/pkg/router"
+	"github.com/keshavbansal015/treebeard/pkg/tracing"
+	"github.com/keshavbansal015/treebeard/pkg/utils"
 	"github.com/rs/zerolog/log"
 )
 

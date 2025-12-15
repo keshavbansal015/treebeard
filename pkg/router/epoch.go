@@ -7,8 +7,8 @@ import (
 	"time"
 
 	shardnodepb "github.com/keshavbansal015/treebeard/api/shardnode"
-	"github.com/keshavbansal01515/treebeard/pkg/rpc"
-	utils "github.com/keshavbansal01515/treebeard/pkg/utils"
+	"github.com/keshavbansal015/treebeard/pkg/rpc"
+	utils "github.com/keshavbansal015/treebeard/pkg/utils"
 	"github.com/rs/zerolog/log"
 	"google.golang.org/grpc"
 )

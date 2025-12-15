@@ -8,7 +8,7 @@ import (
 
 	"github.com/hashicorp/raft"
 	oramnodepb "github.com/keshavbansal015/treebeard/api/oramnode"
-	shardnodepb "github.com/keshavbansal01515/treebeard/api/shardnode"
+	shardnodepb "github.com/keshavbansal015/treebeard/api/shardnode"
 	"github.com/phayes/freeport"
 )
 

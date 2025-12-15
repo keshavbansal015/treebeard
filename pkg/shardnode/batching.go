@@ -5,7 +5,7 @@ import (
 	"time"
 
 	"github.com/keshavbansal015/treebeard/api/oramnode"
-	"github.com/keshavbansal01515/treebeard/pkg/utils"
+	"github.com/keshavbansal015/treebeard/pkg/utils"
 	"github.com/rs/zerolog/log"
 )
 

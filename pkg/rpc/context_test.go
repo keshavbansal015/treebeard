@@ -4,7 +4,7 @@ import (
 	"context"
 	"testing"
 
-	"github.com/dsg-uwaterloo/treebeard/pkg/rpc"
+	"github.com/keshavbansal015/treebeard/pkg/rpc"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/metadata"
 )

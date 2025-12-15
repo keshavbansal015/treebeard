@@ -8,9 +8,9 @@ import (
 
 	"github.com/hashicorp/raft"
 	"github.com/keshavbansal015/treebeard/api/oramnode"
-	shardnodepb "github.com/keshavbansal01515/treebeard/api/shardnode"
-	"github.com/keshavbansal01515/treebeard/pkg/config"
-	strg "github.com/keshavbansal01515/treebeard/pkg/storage"
+	shardnodepb "github.com/keshavbansal015/treebeard/api/shardnode"
+	"github.com/keshavbansal015/treebeard/pkg/config"
+	strg "github.com/keshavbansal015/treebeard/pkg/storage"
 	"github.com/phayes/freeport"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/metadata"
