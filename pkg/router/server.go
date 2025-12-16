@@ -4,6 +4,8 @@ import (
 	"context"
 	"fmt"
 	"net"
+	"os"
+	"sync"
 	"time"
 
 	"github.com/google/uuid"
@@ -13,6 +15,14 @@ import (
 	"github.com/rs/zerolog/log"
 	"go.opentelemetry.io/otel"
 	"google.golang.org/grpc"
+)
+
+var (
+	WriteFilePath   = "./router_analysis.txt"
+	requestSentTime []time.Time
+
+	mu                  = sync.Mutex{}
+	requestReceivedTime []time.Time
 )
 
 type routerServer struct {
@@ -33,6 +43,18 @@ func (r *routerServer) Read(ctx context.Context, readRequest *pb.ReadRequest) (*
 	log.Debug().Msgf("Received read request for block %s", readRequest.Block)
 	tracer := otel.Tracer("")
 	ctx, span := tracer.Start(ctx, "router read request")
+	mu.Lock()
+	f, err := os.OpenFile(WriteFilePath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+	if err != nil {
+		log.Error().Msgf("Could not open file to write router analysis; %v", err)
+	}
+
+	_, err = f.WriteString(fmt.Sprintf("%v\n", time.Now()))
+	if err != nil {
+		log.Error().Msgf("Could not write to file router analysis; %v", err)
+	}
+	f.Close()
+	mu.Unlock()
 	responseChannel := r.epochManager.addRequestToCurrentEpoch(&request{ctx: ctx, requestId: uuid.New().String(), operationType: Read, block: readRequest.Block})
 	response := <-responseChannel
 	readResponse := response.(readResponse)
@@ -48,6 +70,18 @@ func (r *routerServer) Write(ctx context.Context, writeRequest *pb.WriteRequest)
 	log.Debug().Msgf("Received write request for block %s", writeRequest.Block)
 	tracer := otel.Tracer("")
 	ctx, span := tracer.Start(ctx, "router write request")
+	mu.Lock()
+	f, err := os.OpenFile(WriteFilePath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+	if err != nil {
+		log.Error().Msgf("Could not open file to write router analysis; %v", err)
+	}
+
+	_, err = f.WriteString(fmt.Sprintf("%v\n", time.Now()))
+	if err != nil {
+		log.Error().Msgf("Could not write to file router analysis; %v", err)
+	}
+	f.Close()
+	mu.Unlock()
 	responseChannel := r.epochManager.addRequestToCurrentEpoch(&request{ctx: ctx, requestId: uuid.New().String(), operationType: Write, block: writeRequest.Block, value: writeRequest.Value})
 	response := <-responseChannel
 	writeResponse := response.(writeResponse)

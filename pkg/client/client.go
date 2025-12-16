@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"math"
 	"math/rand"
+	"os"
 	"time"
 
 	routerpb "github.com/keshavbansal015/treebeard/api/router"
@@ -15,6 +16,12 @@ import (
 	"go.opentelemetry.io/otel/trace"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
+)
+
+var (
+	WriteFilePath       = "./client_analysis.txt"
+	requestSentTime     []time.Time
+	requestReceivedTime []time.Time
 )
 
 type ReadResponse struct {
@@ -112,6 +119,7 @@ func (c *client) SendRequestsForever(ctx context.Context, readResponseChannel ch
 				go c.asyncWrite(request.Block, request.NewValue, routerRPCClient, writeResponseChannel)
 			}
 		}
+		requestSentTime = append(requestSentTime, time.Now())
 	}
 }
 
@@ -127,10 +135,12 @@ func (c *client) GetResponsesForever(ctx context.Context, readResponseChannel ch
 	readOperations, writeOperations := 0, 0
 	var latencies []time.Duration
 	var responseCounts []ResponseStatus
+
 	timout := time.After(1 * time.Second)
 	for {
 		select {
 		case <-ctx.Done():
+			writeToFile(WriteFilePath)
 			return responseCounts
 		case <-timout:
 			responseCounts = append(responseCounts, ResponseStatus{readOperations, writeOperations, latencies})
@@ -143,7 +153,7 @@ func (c *client) GetResponsesForever(ctx context.Context, readResponseChannel ch
 		case readResponse := <-readResponseChannel:
 			if readResponse.err != nil {
 				fmt.Println(readResponse.err.Error())
-				log.Error().Msgf(readResponse.err.Error())
+				log.Error().Msgf("%s", readResponse.err.Error())
 			} else {
 				log.Debug().Msgf("Sucess in Read of block %s. Got value: %v\n", readResponse.block, readResponse.value)
 				readOperations++
@@ -152,7 +162,7 @@ func (c *client) GetResponsesForever(ctx context.Context, readResponseChannel ch
 		case writeResponse := <-writeResponseChannel:
 			if writeResponse.err != nil {
 				fmt.Println(writeResponse.err.Error())
-				log.Error().Msgf(writeResponse.err.Error())
+				log.Error().Msgf("%s", writeResponse.err.Error())
 			} else {
 				log.Debug().Msgf("Finished writing block %s. Success: %v\n", writeResponse.block, writeResponse.success)
 				writeOperations++
@@ -160,6 +170,7 @@ func (c *client) GetResponsesForever(ctx context.Context, readResponseChannel ch
 			}
 		default:
 		}
+		requestReceivedTime = append(requestReceivedTime, time.Now())
 	}
 }
 
@@ -203,7 +214,7 @@ func StartRouterRPCClients(endpoints []config.RouterEndpoint) (RouterClients, er
 	for _, endpoint := range endpoints {
 		serverAddr := fmt.Sprintf("%s:%d", endpoint.IP, endpoint.Port)
 		log.Debug().Msgf("Starting router client on %s", serverAddr)
-		conn, err := grpc.Dial(serverAddr,
+		conn, err := grpc.NewClient(serverAddr,
 			grpc.WithTransportCredentials(insecure.NewCredentials()),
 			grpc.WithUnaryInterceptor(rpc.ContextPropagationUnaryClientInterceptor()),
 			grpc.WithDefaultCallOptions(grpc.MaxCallRecvMsgSize(math.MaxInt64), grpc.MaxCallSendMsgSize(math.MaxInt64)),
@@ -215,4 +226,54 @@ func StartRouterRPCClients(endpoints []config.RouterEndpoint) (RouterClients, er
 		clients[endpoint.ID] = RouterRPCClient{ClientAPI: clientAPI, Conn: conn}
 	}
 	return clients, nil
+}
+
+func writeToFile(filePath string) error {
+	f, err := os.OpenFile(filePath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+
+	timeBetweenRequests := make([]time.Duration, 0)
+	for i := range len(requestSentTime) - 1 {
+		timeBetweenRequests = append(timeBetweenRequests, requestSentTime[i].Sub(requestSentTime[i-1]))
+		_, err = f.WriteString(fmt.Sprintf("%v\n", requestSentTime[i]))
+		if err != nil {
+			return err
+		}
+	}
+
+	avgTimeBetweenRequests := time.Duration(0)
+	for _, duration := range timeBetweenRequests {
+		avgTimeBetweenRequests += duration
+	}
+	avgTimeBetweenRequests = avgTimeBetweenRequests / time.Duration(len(timeBetweenRequests))
+
+	_, err = f.WriteString(fmt.Sprintf("Average time between requests: %s\n", avgTimeBetweenRequests.String()))
+	if err != nil {
+		return err
+	}
+
+	timeBetweenResponses := make([]time.Duration, 0)
+	for i := range len(requestReceivedTime) - 1 {
+		timeBetweenResponses = append(timeBetweenResponses, requestReceivedTime[i].Sub(requestSentTime[i-1]))
+		_, err = f.WriteString(fmt.Sprintf("%v\n", requestReceivedTime[i]))
+		if err != nil {
+			return err
+		}
+	}
+
+	avgTimeToReceiveResponses := time.Duration(0)
+	for _, duration := range timeBetweenResponses {
+		avgTimeToReceiveResponses += duration
+	}
+
+	avgTimeToReceiveResponses = avgTimeToReceiveResponses / time.Duration(len(timeBetweenResponses))
+
+	_, err = f.WriteString(fmt.Sprintf("Average time to between responses: %s\n", avgTimeToReceiveResponses.String()))
+	if err != nil {
+		return err
+	}
+	return nil
 }
