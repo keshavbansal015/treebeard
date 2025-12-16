@@ -1,7 +1,0 @@
-endpoints:
-  - exposed_ip: 20.63.24.45
-    local_bind_ip: 10.0.0.5
-    deploy_host: host4
-    port: 6379
-    id: 0
-    oramnode_id: 0

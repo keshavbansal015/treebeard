@@ -69,6 +69,9 @@ run_experiments() {
             fi
             if [ -d $experiment ]; then
                 deploy_the_system $experiment
+                ./create_services.sh
+                # Give some time for services to start
+                sleep 5s
                 run_experiment_N_times $experiment
             fi            
         done
