@@ -11,38 +11,38 @@
     #     cache_valid_time: 3600 # update if not updated in the last 3600 seconds
     #     upgrade: yes # apt upgrade
 
-    - name: Add Docker GPG apt Key
-      apt_key:
-        url: https://download.docker.com/linux/ubuntu/gpg
-        state: present
+    # - name: Add Docker GPG apt Key
+    #   apt_key:
+    #     url: https://download.docker.com/linux/ubuntu/gpg
+    #     state: present
 
-    - name: Add Docker Repository
-      apt_repository:
-        repo: deb https://download.docker.com/linux/ubuntu bionic stable
-        state: present
+    # - name: Add Docker Repository
+    #   apt_repository:
+    #     repo: deb https://download.docker.com/linux/ubuntu bionic stable
+    #     state: present
     
-    - name: Install Packages
-      apt:
-        update_cache: yes
-        pkg:
-          - docker-ce
-          - docker-ce-cli
-          - containerd.io
-          - docker-buildx-plugin
-          - docker-compose-plugin
-          - python3-docker
-          - socat
+    # - name: Install Packages
+    #   apt:
+    #     update_cache: yes
+    #     pkg:
+    #       - docker-ce
+    #       - docker-ce-cli
+    #       - containerd.io
+    #       - docker-buildx-plugin
+    #       - docker-compose-plugin
+    #       - python3-docker
+    #       - socat
 
     - name: Create treebeard directory
       ansible.builtin.file:
-        path: /root/treebeard
+        path: /home/jmeng/treebeard
         state: directory
         mode: '0755'
 
     - name: Remove previous log files
       ansible.builtin.shell:
         cmd: find . -name "*.log" -delete
-        chdir: /root/treebeard
+        chdir: /home/jmeng/treebeard
 
     - name: Include endpoints as vars
       ansible.builtin.include_vars:
@@ -56,59 +56,59 @@
         - {name: jaeger_endpoint, file_path: '{{ experiment_path }}/jaeger_endpoint.yaml'}
         - {name: parameters, file_path: '{{ experiment_path }}/parameters.yaml'}
 
-    - name: Move Jaeger docker-compose.yaml and Start it
-      block:
-        - name: Move Jaeger file
-          template:
-            src: ./templates/docker-compose.yaml.j2
-            dest: /root/treebeard/jaeger.yaml
-        - name: Run Jaeger
-          shell:
-            cmd: "docker compose -f jaeger.yaml up -d"
-            chdir: /root/treebeard
-        - name: Create Socat reverse proxy service
-          template:
-            src: templates/socat.service.j2
-            dest: /lib/systemd/system/jaeger-socat.service
-        - name: Start Socat service
-          ansible.builtin.systemd:
-            name: "jaeger-socat"
-            state: restarted
-            daemon_reload: true
-      when: parameters.trace == true
+    # - name: Move Jaeger docker-compose.yaml and Start it
+    #   block:
+    #     - name: Move Jaeger file
+    #       template:
+    #         src: ./templates/docker-compose.yaml.j2
+    #         dest: /root/treebeard/jaeger.yaml
+    #     - name: Run Jaeger
+    #       shell:
+    #         cmd: "docker compose -f jaeger.yaml up -d"
+    #         chdir: /root/treebeard
+    #     - name: Create Socat reverse proxy service
+    #       template:
+    #         src: templates/socat.service.j2
+    #         dest: /lib/systemd/system/jaeger-socat.service
+    #     - name: Start Socat service
+    #       ansible.builtin.systemd:
+    #         name: "jaeger-socat"
+    #         state: restarted
+    #         daemon_reload: true
+    #   when: parameters.trace == true
 
-    - name: Install Redis
-      ansible.builtin.apt:
-        name:
-          - redis
-      delegate_to: "{{ item.deploy_host }}"
-      with_items: "{{ redis_endpoints.endpoints }}"
+    # - name: Install Redis
+    #   ansible.builtin.apt:
+    #     name:
+    #       - redis
+    #   delegate_to: "{{ item.deploy_host }}"
+    #   with_items: "{{ redis_endpoints.endpoints }}"
 
     - name: Copy Redis Config
       template:
         src: templates/redis.conf.j2
-        dest: /etc/redis/redis-{{ item.id }}.conf
+        dest: /home/jmeng/redis-{{ item.id }}.conf
       delegate_to: "{{ item.deploy_host }}"
       with_items: "{{ redis_endpoints.endpoints }}"
 
     - name: Create Redis systemd services
       template:
         src: templates/redis.service.j2
-        dest: "/lib/systemd/system/redis-{{ item.id }}.service"
+        dest: "/home/jmeng/redis-{{ item.id }}.service"
       delegate_to: "{{ item.deploy_host }}"
       with_items: "{{ redis_endpoints.endpoints }}"
 
-    - name: Stop previous Redis services
-      ansible.builtin.shell:
-        cmd: systemctl stop redis*   
+    # - name: Stop previous Redis services
+    #   ansible.builtin.shell:
+    #     cmd: systemctl stop redis*   
 
-    - name: Start Redis
-      ansible.builtin.systemd:
-        name: "redis-{{ item.id }}"
-        state: restarted # will cause reinitialization of the DB
-        daemon_reload: true
-      delegate_to: "{{ item.deploy_host }}"
-      with_items: "{{ redis_endpoints.endpoints }}"
+    # - name: Start Redis
+    #   ansible.builtin.systemd:
+    #     name: "redis-{{ item.id }}"
+    #     state: restarted # will cause reinitialization of the DB
+    #     daemon_reload: true
+    #   delegate_to: "{{ item.deploy_host }}"
+    #   with_items: "{{ redis_endpoints.endpoints }}"
 
     - name: Build the go executables locally
       ansible.builtin.shell:
@@ -125,7 +125,7 @@
 
     - name: Create new directories
       ansible.builtin.file:
-        path: "{{ '/root/treebeard/' + item[0] + '/'  + item[1].id | string + '/' + item[1].replicaid | default('') | string }}"
+        path: "{{ '/home/jmeng/treebeard/' + item[0] + '/'  + item[1].id | string + '/' + item[1].replicaid | default('') | string }}"
         state: directory
         mode: '0755'
       delegate_to: "{{ item[1].deploy_host }}"
@@ -139,7 +139,7 @@
     - name: Copy executables
       ansible.builtin.copy:
         src: "../cmd/{{ item[0] }}/{{ item[0] }}"
-        dest: "{{ '/root/treebeard/' + item[0] + '/' + item[0] }}"
+        dest: "{{ '/home/jmeng/treebeard/' + item[0] + '/' + item[0] }}"
         mode: '0777'
       delegate_to: "{{ item[1].deploy_host }}"
       loop: >-
@@ -158,7 +158,7 @@
     - name: Copy configs
       ansible.builtin.copy:
         src: "{{ experiment_path }}/{{ item[0] }}"
-        dest: "/root/treebeard/{{ item[0] }}"
+        dest: "/home/jmeng/treebeard/{{ item[0] }}"
         mode: '0666'
       delegate_to: "{{ item[1] }}"
       loop: "{{ ['router_endpoints.yaml', 'shardnode_endpoints.yaml', 'oramnode_endpoints.yaml', 'redis_endpoints.yaml', 'parameters.yaml', 'trace.txt'] | product(groups['all']) | list }}"
@@ -170,48 +170,48 @@
       delegate_to: "{{ item.deploy_host }}"
       with_items: "{{ oramnode_endpoints.endpoints }}"
 
-    - name: Stop previous services
-      ansible.builtin.shell:
-        cmd: systemctl stop treebeard-*   
+    # - name: Stop previous services
+    #   ansible.builtin.shell:
+    #     cmd: systemctl stop treebeard-*   
 
-    - name: Start oramnode services
-      ansible.builtin.systemd:
-        name: "treebeard-oramnode-{{ item.id }}-{{ item.replicaid }}"
-        state: restarted
-        daemon_reload: true
-      delegate_to: "{{ item.deploy_host }}"
-      loop_control:
-        pause: 1 # let the first node become the leader first
-      with_items: "{{ oramnode_endpoints.endpoints }}"
+    # - name: Start oramnode services
+    #   ansible.builtin.systemd:
+    #     name: "treebeard-oramnode-{{ item.id }}-{{ item.replicaid }}"
+    #     state: restarted
+    #     daemon_reload: true
+    #   delegate_to: "{{ item.deploy_host }}"
+    #   loop_control:
+    #     pause: 1 # let the first node become the leader first
+    #   with_items: "{{ oramnode_endpoints.endpoints }}"
 
     - name: Create shardnode systemd services
       template:
         src: templates/treebeard-shardnode.service.j2
-        dest: "/lib/systemd/system/treebeard-shardnode-{{ item.id }}-{{ item.replicaid }}.service"
+        dest: "/home/jmeng/treebeard-shardnode-{{ item.id }}-{{ item.replicaid }}.service"
       delegate_to: "{{ item.deploy_host }}"
       with_items: "{{ shardnode_endpoints.endpoints }}"
 
-    - name: Start shardnode services
-      ansible.builtin.systemd:
-        name: "treebeard-shardnode-{{ item.id }}-{{ item.replicaid }}"
-        state: restarted
-        daemon_reload: true
-      delegate_to: "{{ item.deploy_host }}"
-      loop_control:
-        pause: 1 # let the first node become the leader first
-      with_items: "{{ shardnode_endpoints.endpoints }}"
+    # - name: Start shardnode services
+    #   ansible.builtin.systemd:
+    #     name: "treebeard-shardnode-{{ item.id }}-{{ item.replicaid }}"
+    #     state: restarted
+    #     daemon_reload: true
+    #   delegate_to: "{{ item.deploy_host }}"
+    #   loop_control:
+    #     pause: 1 # let the first node become the leader first
+    #   with_items: "{{ shardnode_endpoints.endpoints }}"
 
     - name: Create router systemd services
       template:
         src: templates/treebeard-router.service.j2
-        dest: "/lib/systemd/system/treebeard-router-{{ item.id }}.service"
+        dest: "/home/jmeng/treebeard-router-{{ item.id }}.service"
       delegate_to: "{{ item.deploy_host }}"
       with_items: "{{ router_endpoints.endpoints }}"
 
-    - name: Start router services
-      ansible.builtin.systemd:
-        name: "treebeard-router-{{ item.id }}"
-        state: restarted
-        daemon_reload: true
-      delegate_to: "{{ item.deploy_host }}"
-      with_items: "{{ router_endpoints.endpoints }}"
+    # - name: Start router services
+    #   ansible.builtin.systemd:
+    #     name: "treebeard-router-{{ item.id }}"
+    #     state: restarted
+    #     daemon_reload: true
+    #   delegate_to: "{{ item.deploy_host }}"
+    #   with_items: "{{ router_endpoints.endpoints }}"

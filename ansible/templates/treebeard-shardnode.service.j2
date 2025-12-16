@@ -5,9 +5,9 @@ After=syslog.target network.target
 
 [Service]
 Type=simple
-StandardOutput=file:/root/treebeard/shardnode/{{ 'shardnode-' + item.id | string + '-' + item.replicaid | string + '.stdout.log' }}
-StandardError=file:/root/treebeard/shardnode/{{ 'shardnode-' + item.id | string + '-' + item.replicaid | string + '.stderr.log' }}
-ExecStart=/root/treebeard/shardnode/shardnode \
+StandardOutput=file:/home/jmeng/treebeard/shardnode/{{ 'shardnode-' + item.id | string + '-' + item.replicaid | string + '.stdout.log' }}
+StandardError=file:/home/jmeng/treebeard/shardnode/{{ 'shardnode-' + item.id | string + '-' + item.replicaid | string + '.stderr.log' }}
+ExecStart=/home/jmeng/treebeard/shardnode/shardnode \
     -shardnodeid {{ item.id }} \
     -bindip {{ item.local_bind_ip }} \
     -advip {{ item.exposed_ip }} \
@@ -18,8 +18,8 @@ ExecStart=/root/treebeard/shardnode/shardnode \
     # this assumes there are 3 replicas (Dangerous assmumption)
     {{'-joinaddr=' + shardnode_endpoints.endpoints[item.id * 3].exposed_ip + ':' + shardnode_endpoints.endpoints[item.id * 3].port | string }} \
     {% endif %}
-    -conf /root/treebeard/ \
-    -logpath {{ '/root/treebeard/shardnode/'  + item.id | string + '/' + item.replicaid | string + '/all.log' }}
+    -conf /home/jmeng/treebeard/ \
+    -logpath {{ '/home/jmeng/treebeard/shardnode/'  + item.id | string + '/' + item.replicaid | string + '/all.log' }}
 Restart=on-failure
 
 [Install]

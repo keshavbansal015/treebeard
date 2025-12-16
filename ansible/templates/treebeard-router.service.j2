@@ -5,7 +5,7 @@ After=syslog.target network.target
 
 [Service]
 Type=simple
-ExecStart=/root/treebeard/router/router -routerid {{ item.id }} -ip {{ item.local_bind_ip }} -port {{ item.port }} -conf /root/treebeard/ -logpath /root/treebeard/router/{{ item.id }}/all.log
+ExecStart=/home/jmeng/treebeard/router/router -routerid {{ item.id }} -ip {{ item.local_bind_ip }} -port {{ item.port }} -conf /home/jmeng/treebeard/ -logpath /home/jmeng/treebeard/router/{{ item.id }}/all.log
 Restart=on-failure
 
 [Install]

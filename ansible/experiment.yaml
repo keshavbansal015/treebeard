@@ -2,13 +2,13 @@
 - name: Run the Experiment
   hosts: host0
   become: yes
-  become_user: root
+  become_user: jmeng
   tasks:
-  - name: Run the Client
-    ansible.builtin.shell:
-      cmd: "/root/treebeard/client -duration 20 -conf /root/treebeard -output /root/treebeard/output.txt -logpath /root/treebeard/client.log"
-  - name: Get the output
-    ansible.builtin.fetch:
-      src: "/root/treebeard/output.txt"
-      dest: "{{ experiment_output_path }}"
-      flat: yes
+    - name: Run the Client
+      ansible.builtin.shell:
+        cmd: "/home/jmeng/treebeard/client -duration 20 -conf /home/jmeng/treebeard -output /home/jmeng/treebeard/output.txt -logpath /home/jmeng/treebeard/client.log"
+    - name: Get the output
+      ansible.builtin.fetch:
+        src: "/home/jmeng/treebeard/output.txt"
+        dest: "{{ experiment_output_path }}"
+        flat: yes
