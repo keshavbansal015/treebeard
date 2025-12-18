@@ -236,7 +236,7 @@ func writeToFile(filePath string) error {
 	defer f.Close()
 
 	timeBetweenRequests := make([]time.Duration, 0)
-	totalRequests := len(requestSentTime) - 1
+	totalRequests := len(requestSentTime)
 	for i := 1; i < totalRequests; i++ {
 		timeBetweenRequests = append(timeBetweenRequests, requestSentTime[i].Sub(requestSentTime[i-1]))
 		_, err = f.WriteString(fmt.Sprintf("%v\n", requestSentTime[i]))
@@ -257,7 +257,7 @@ func writeToFile(filePath string) error {
 	}
 
 	timeBetweenResponses := make([]time.Duration, 0)
-	totalRequests = len(requestReceivedTime) - 1
+	totalRequests = len(requestReceivedTime)
 	for i := 1; i < totalRequests; i++ {
 		timeBetweenResponses = append(timeBetweenResponses, requestReceivedTime[i].Sub(requestSentTime[i-1]))
 		_, err = f.WriteString(fmt.Sprintf("%v\n", requestReceivedTime[i]))
